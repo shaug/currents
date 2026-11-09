@@ -22,6 +22,8 @@ targets deny unwrap/expect/panic and unchecked arithmetic. Test assertions and
 build-only xtask are excluded from those production-only lints, but remain under
 all-target warnings-as-errors. Unsafe is forbidden by inherited workspace policy,
 including types/domain/planning. Do not weaken these settings to pass a check.
+Build-only xtask uses exact-pinned syn 3.0.10 to parse Rust attributes rather than
+splitting source text; conditional/macro-generated exceptions are rejected.
 Function-scoped exceptions require an explicit reason and matching reviewed entry
 in docs/lint-allowlist.json; `expect` also fails when no longer needed.
 Release overflow checks are enabled and panic unwinds.

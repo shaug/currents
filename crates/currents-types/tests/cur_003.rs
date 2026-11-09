@@ -93,6 +93,24 @@ fn cur_003_1() {
             marker,
         );
     }
+    for source in [
+        "#[allow(clippy::unwrap_used, reason = \"tracked in #12\")]\npub fn bad(v: Option<u8>) -> u8 { v.unwrap() }\n",
+        "#![allow(clippy::unwrap_used, reason = \"tracked in #12\")]\npub fn bad(v: Option<u8>) -> u8 { v.unwrap() }\n",
+        "#[expect(clippy::unwrap_used, reason = r\"review #12 ]\")]\npub fn bad(v: Option<u8>) -> u8 { v.unwrap() }\n",
+        "#[cfg_attr(not(test), allow(clippy::unwrap_used, reason = \"tracked in #12\"))]\npub fn bad(v: Option<u8>) -> u8 { v.unwrap() }\n",
+    ] {
+        fs::write(d.path().join("src/lib.rs"), source).unwrap();
+        fail(
+            run(&[
+                "qualify",
+                "allowlist",
+                "--manifest-path",
+                manifest.to_str().unwrap(),
+            ]),
+            "allowlist",
+        );
+    }
+    pass(run(&["qualify", "allowlist"]));
     pass(run(&["qualify", "schema-drift"]));
     let schema = d.path().join("stale.json");
     fs::write(&schema, "{}").unwrap();

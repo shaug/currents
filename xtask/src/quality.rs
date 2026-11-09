@@ -144,48 +144,115 @@ fn allowlist(manifest: Option<&Path>) -> Result<Value> {
             }
         }
     }
-    let mut found = vec![];
+    let approved = entries.as_array().ok_or("invalid allowlist")?;
+    let mut count = 0;
     for file in files
         .into_iter()
         .filter(|p| p.extension().is_some_and(|s| s == "rs"))
     {
-        let text = read(&file)?;
-        // Formatting is checked separately. Multiline attributes are folded before comparison.
-        for fragment in text.split('#').skip(1) {
-            let Some(end) = fragment.find(']') else {
-                continue;
-            };
-            let attr = format!("#{}", &fragment[..=end]);
-            let compact: String = attr.chars().filter(|c| !c.is_whitespace()).collect();
-            if compact.contains("allow(") || compact.contains("expect(") {
-                let approved =
-                    entries
-                        .as_array()
-                        .ok_or("invalid allowlist")?
-                        .iter()
-                        .any(|e| {
-                            let a: String = e["attribute"]
-                                .as_str()
-                                .unwrap_or("")
-                                .chars()
-                                .filter(|c| !c.is_whitespace())
-                                .collect();
-                            file == root().join(e["path"].as_str().unwrap_or(""))
-                                && compact == a
-                                && fragment[end.saturating_add(1)..].trim_start().starts_with(
-                                    &format!("pub fn {}(", e["function"].as_str().unwrap_or("")),
-                                )
-                                && e["justification"].as_str().is_some_and(|s| !s.is_empty())
-                        });
-                if !approved {
-                    return Err("undocumented or overly broad lint allowlist entry".into());
+        let syntax =
+            syn::parse_file(&read(&file)?).map_err(|_| "allowlist: invalid Rust syntax")?;
+        let mut audit = LintAudit {
+            approved,
+            file: &file,
+            function: None,
+            rejected: false,
+            count: 0,
+        };
+        syn::visit::Visit::visit_file(&mut audit, &syntax);
+        if audit.rejected {
+            return Err("undocumented or overly broad lint allowlist entry".into());
+        }
+        count += audit.count;
+    }
+    Ok(json!({"reviewed_scoped_attributes":count}))
+}
+
+struct LintAudit<'a> {
+    approved: &'a [Value],
+    file: &'a Path,
+    function: Option<String>,
+    rejected: bool,
+    count: usize,
+}
+impl<'ast> syn::visit::Visit<'ast> for LintAudit<'_> {
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        let previous = self.function.replace(item.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, item);
+        self.function = previous;
+    }
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        let previous = self.function.replace(item.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, item);
+        self.function = previous;
+    }
+    fn visit_attribute(&mut self, attr: &'ast syn::Attribute) {
+        use syn::parse::Parser;
+        let syn::Meta::List(list) = &attr.meta else {
+            return;
+        };
+        let tokens = list.tokens.to_string();
+        if list.path.is_ident("cfg_attr") && (tokens.contains("allow") || tokens.contains("expect"))
+        {
+            self.rejected = true; // Conditional exemptions are not function-scoped approvals.
+        }
+        if !list.path.is_ident("allow") && !list.path.is_ident("expect") {
+            return;
+        }
+        let approved = matches!(attr.style, syn::AttrStyle::Outer)
+            && self.approved.iter().any(|entry| {
+                if self.file != root().join(entry["path"].as_str().unwrap_or(""))
+                    || self.function.as_deref() != entry["function"].as_str()
+                    || !entry["justification"]
+                        .as_str()
+                        .is_some_and(|s| !s.is_empty())
+                {
+                    return false;
                 }
-                found.push(file.clone());
-            }
+                let Ok(attrs) = syn::Attribute::parse_outer
+                    .parse_str(entry["attribute"].as_str().unwrap_or(""))
+                else {
+                    return false;
+                };
+                attrs.len() == 1
+                    && attrs.iter().any(|expected| {
+                        let syn::Meta::List(expected) = &expected.meta else {
+                            return false;
+                        };
+                        expected.path.is_ident(if list.path.is_ident("allow") {
+                            "allow"
+                        } else {
+                            "expect"
+                        }) && expected.tokens.to_string() == tokens
+                    })
+            });
+        if approved {
+            self.count += 1;
+        } else {
+            self.rejected = true;
         }
     }
-    Ok(json!({"reviewed_scoped_attributes":found.len()}))
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        // Macro-expanded exceptions cannot carry a directly audited function scope.
+        let tokens: String = mac
+            .tokens
+            .to_string()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if tokens.contains("#[allow(")
+            || tokens.contains("#![allow(")
+            || tokens.contains("#[expect(")
+            || tokens.contains("#![expect(")
+            || tokens.contains("#[cfg_attr(")
+                && (tokens.contains("allow(") || tokens.contains("expect("))
+        {
+            self.rejected = true;
+        }
+        syn::visit::visit_macro(self, mac);
+    }
 }
+
 fn schema(path: Option<&Path>) -> Result<Value> {
     let generated = cargo(&[
         "run",
