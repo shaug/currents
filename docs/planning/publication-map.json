@@ -1,0 +1,1575 @@
+{
+  "schema_version": "1.0.0",
+  "verified_at": "2026-11-09T12:19:31.458384+00:00",
+  "repository": {
+    "url": "https://github.com/shaug/currents",
+    "id": 1451299050,
+    "visibility": "public"
+  },
+  "reviewed_source_commit": "980cb30687c91df13ab9027a28d9d3a7c9ef6ae2",
+  "reviewed_manifest_sha256": "1f717201abc45371be5352b6829158b4b80efdd11993479424b7063127aa3bf9",
+  "counts": {
+    "tickets": 58,
+    "epics": 9,
+    "issues": 67,
+    "milestones": 7,
+    "planned_labels": 14,
+    "total_labels_including_defaults": 24,
+    "parent_links": 58,
+    "dependency_edges": 222,
+    "acceptance_assertions": 255
+  },
+  "verification": {
+    "exact_issue_bodies": true,
+    "title_labels_milestones_assignees": true,
+    "exact_parents_both_directions": true,
+    "exact_dependencies_both_directions": true,
+    "all_pages_read": true
+  },
+  "labels": [
+    {
+      "name": "area:acquisition",
+      "color": "1d76db",
+      "description": "Primary acquisition workstream."
+    },
+    {
+      "name": "area:domain",
+      "color": "1d76db",
+      "description": "Primary domain workstream."
+    },
+    {
+      "name": "area:native",
+      "color": "1d76db",
+      "description": "Primary native workstream."
+    },
+    {
+      "name": "area:planning",
+      "color": "1d76db",
+      "description": "Primary planning workstream."
+    },
+    {
+      "name": "area:project",
+      "color": "1d76db",
+      "description": "Primary project workstream."
+    },
+    {
+      "name": "area:quality",
+      "color": "1d76db",
+      "description": "Primary quality workstream."
+    },
+    {
+      "name": "area:queries",
+      "color": "1d76db",
+      "description": "Primary queries workstream."
+    },
+    {
+      "name": "area:recovery",
+      "color": "1d76db",
+      "description": "Primary recovery workstream."
+    },
+    {
+      "name": "area:storage",
+      "color": "1d76db",
+      "description": "Primary storage workstream."
+    },
+    {
+      "name": "release:mvp",
+      "color": "1d76db",
+      "description": "Required for the complete first usable release unless documented optional disabled configuration."
+    },
+    {
+      "name": "scope:synthetic-first",
+      "color": "1d76db",
+      "description": "Can start without private financial data or credentials."
+    },
+    {
+      "name": "type:epic",
+      "color": "5319e7",
+      "description": "Parent workstream; no child-to-parent dependency."
+    },
+    {
+      "name": "type:gate",
+      "color": "5319e7",
+      "description": "Qualification or owner input must be evidenced,not assumed."
+    },
+    {
+      "name": "type:implementation",
+      "color": "5319e7",
+      "description": "Concrete independently reviewed implementation deliverable."
+    }
+  ],
+  "milestones": {
+    "M0": {
+      "id": 19353768,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Co",
+      "number": 1,
+      "title": "M0: Qualify foundations and scope",
+      "description": "Pinned tools/contracts/secure CI/native target qualification and explicit household input contract. Owner-private input can remain blocked without halting synthetic work.\n\nExit gate: CUR-001\u2013004 pass engineering checks; CUR-047 template passes and unresolved owner inputs explicitly listed. No live account prerequisite to M1.\n\n<!-- currents-plan:2026-11-09; milestone:M0 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/1"
+    },
+    "M1": {
+      "id": 19353769,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Cp",
+      "number": 2,
+      "title": "M1: Prove encrypted synthetic slice",
+      "description": "Three separately qualified storage seams, ordered authority, exact accounting, commands/replay and bounded import/recognition.\n\nExit gate: CUR-005\u2013014 pass on Mac arm64/Linux x86_64 including encrypted1,200-op/fault/status and exact canonical replay. Synthetic-only developer preview; not MVP.\n\n<!-- currents-plan:2026-11-09; milestone:M1 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/2"
+    },
+    "M2": {
+      "id": 19353770,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Cq",
+      "number": 3,
+      "title": "M2: Complete financial semantics",
+      "description": "Associations/corrections/reconciliation, present positions/organization/history, investments/FX/loans/manual and complete forecasts.\n\nExit gate: CUR-015\u2013028 pass all financial counterexamples and S1\u2013S10 engine fixtures; no financial scope postponed beyond usable MVP.\n\n<!-- currents-plan:2026-11-09; milestone:M2 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/3"
+    },
+    "M3": {
+      "id": 19353771,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Cr",
+      "number": 4,
+      "title": "M3: Protect and recover private records",
+      "description": "Portable archives, snapshots, generation activation, keys/locking, backup/retention and privacy checks.\n\nExit gate: CUR-029\u2013033 and049 pass full-replay/offline lost-device/hostile-input/fault tests with real-data gate still off until signed host and owner setup.\n\n<!-- currents-plan:2026-11-09; milestone:M3 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/4"
+    },
+    "M4": {
+      "id": 19353772,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Cs",
+      "number": 5,
+      "title": "M4: Ship coherent native clients",
+      "description": "Persistent FFI, XPC, owner authority, complete Mac UX, CLI/offline reader and restricted optional MCP.\n\nExit gate: CUR-034\u2013040 and056 pass parity/accessibility/retry/scope tests on qualified platforms; signed trust certification finishes in M6. No web shell or independent client math.\n\n<!-- currents-plan:2026-11-09; milestone:M4 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/5"
+    },
+    "M5": {
+      "id": 19353773,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Ct",
+      "number": 6,
+      "title": "M5: Qualify household acquisition",
+      "description": "Read-only refresh/provider coverage, Apple entitlement/mobile evidence and owner-private activation.\n\nExit gate: CUR-041\u2013046,048,057,058 pass per-account coverage/consent/recovery gates or permitted owner-accepted limitations recorded. Missing Apple/provider feasibility remains visible release blocker.\n\n<!-- currents-plan:2026-11-09; milestone:M5 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/6"
+    },
+    "M6": {
+      "id": 19353775,
+      "node_id": "MI_kwDOVoEQ6s4BJ1Cv",
+      "number": 7,
+      "title": "M6: Qualify complete household release",
+      "description": "Deep properties/faults, performance, docs, SBOM/provenance, signed distribution and all journey acceptance.\n\nExit gate: CUR-050\u2013055 pass exact candidate commit; S1\u2013S12 and every inventory component/forecast horizon/protection gate satisfied. Explicit owner release approval still required before publication.\n\n<!-- currents-plan:2026-11-09; milestone:M6 -->",
+      "html_url": "https://github.com/shaug/currents/milestone/7"
+    }
+  },
+  "issues": {
+    "E01": {
+      "number": 1,
+      "url": "https://github.com/shaug/currents/issues/1",
+      "body_sha256": "fa1d358937d79605acb47e82fc0ed8a0a38b851d247b1c47551440f127a2c100",
+      "id": 6285492251,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqUAGw",
+      "title": "[E01] Establish reproducible project foundations",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E02": {
+      "number": 2,
+      "url": "https://github.com/shaug/currents/issues/2",
+      "body_sha256": "7a58559b4c3773ece4bbc1d0b5d9b61731f0bd475d99c4dafc276fbb792c5d19",
+      "id": 6285503000,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqUqGA",
+      "title": "[E02] Preserve atomic durable authority",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E03": {
+      "number": 3,
+      "url": "https://github.com/shaug/currents/issues/3",
+      "body_sha256": "095b53406260de4a1d303ec2b14c717a2f25df1b050f5bd58d20a3e57708139b",
+      "id": 6285504322,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqUvQg",
+      "title": "[E03] Implement financial interpretation integrity",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E04": {
+      "number": 4,
+      "url": "https://github.com/shaug/currents/issues/4",
+      "body_sha256": "971e7072350b32a6f0caf2eccaba404031408dde523cfd7307309dc805bf6686",
+      "id": 6285505898,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqU1ag",
+      "title": "[E04] Explain present and historical position",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E05": {
+      "number": 5,
+      "url": "https://github.com/shaug/currents/issues/5",
+      "body_sha256": "91d925c807ea62fdfdada9110e3214b393d3e77f48e2611d9fdabdb9c7547425",
+      "id": 6285507237,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqU6pQ",
+      "title": "[E05] Build portable conditional forecasts",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E06": {
+      "number": 6,
+      "url": "https://github.com/shaug/currents/issues/6",
+      "body_sha256": "1634c2aaa57b169d35b1d0ab46e8f18daebf68e528f4607721c0f414f8503e7d",
+      "id": 6285508550,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqU_xg",
+      "title": "[E06] Protect and recover durable records",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E07": {
+      "number": 7,
+      "url": "https://github.com/shaug/currents/issues/7",
+      "body_sha256": "811f979eef39d8a0b135a7591c5d97cb925a664506ad83961e137fd75c9aa0e5",
+      "id": 6285509866,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqVE6g",
+      "title": "[E07] Deliver native controlled clients",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E08": {
+      "number": 8,
+      "url": "https://github.com/shaug/currents/issues/8",
+      "body_sha256": "a376ad9375351f29c460492fab7b48acf2154cd4277d93cbdd2ea5992e6129b5",
+      "id": 6285511460,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqVLJA",
+      "title": "[E08] Acquire reliable read-only evidence",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "E09": {
+      "number": 9,
+      "url": "https://github.com/shaug/currents/issues/9",
+      "body_sha256": "5cf9fd5a0c12109d71c793ee30edc9dea568148e917d8583f372f49909ad1db2",
+      "id": 6285512814,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqVQbg",
+      "title": "[E09] Qualify complete household releases",
+      "kind": "epic",
+      "labels": [
+        "type:epic"
+      ],
+      "milestone": null,
+      "epic": null,
+      "depends_on": []
+    },
+    "CUR-001": {
+      "number": 10,
+      "url": "https://github.com/shaug/currents/issues/10",
+      "body_sha256": "98cc31a1bb4198752a36d241ebd40ee5fc40787b6c186a1d5c9a68ebdc43124e",
+      "id": 6285514183,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqVVxw",
+      "title": "[CUR-001] Qualify workspace and dependency pins",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:project",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M0",
+      "epic": "E01",
+      "depends_on": []
+    },
+    "CUR-002": {
+      "number": 11,
+      "url": "https://github.com/shaug/currents/issues/11",
+      "body_sha256": "0adb2b9fa5dbd20a91e5dc5f47362eb6d4bb13c0ffebfc211b6bd5745002493a",
+      "id": 6285521914,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqVz-g",
+      "title": "[CUR-002] Define versioned records and contracts",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:project",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M0",
+      "epic": "E01",
+      "depends_on": [
+        "CUR-001"
+      ]
+    },
+    "CUR-003": {
+      "number": 12,
+      "url": "https://github.com/shaug/currents/issues/12",
+      "body_sha256": "4d3c0868454f113382b214650004c92c8e8c0b8d327bbccd9d82b18f04714b61",
+      "id": 6285523426,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqV54g",
+      "title": "[CUR-003] Establish secure pull request checks",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:project",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M0",
+      "epic": "E01",
+      "depends_on": [
+        "CUR-001",
+        "CUR-002"
+      ]
+    },
+    "CUR-004": {
+      "number": 13,
+      "url": "https://github.com/shaug/currents/issues/13",
+      "body_sha256": "9fb68d6d440ed5991e30c8f1ed633e4ed443e106a23b94b0403b5e42b2e6a14b",
+      "id": 6285524901,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqV_pQ",
+      "title": "[CUR-004] Qualify native platform targets",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:native",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M0",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-001"
+      ]
+    },
+    "CUR-005": {
+      "number": 14,
+      "url": "https://github.com/shaug/currents/issues/14",
+      "body_sha256": "d9fe7aee81885c6b800dc20c007020055836998297c7a499411bd78a94bba2de",
+      "id": 6285526233,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWE2Q",
+      "title": "[CUR-005] Preserve atomic composition seam",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:storage",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E02",
+      "depends_on": [
+        "CUR-001",
+        "CUR-002"
+      ]
+    },
+    "CUR-006": {
+      "number": 15,
+      "url": "https://github.com/shaug/currents/issues/15",
+      "body_sha256": "cbb8254d8aa988634be8adebb9ab72b522451d16756dfdc919466c56c30308bd",
+      "id": 6285527578,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWKGg",
+      "title": "[CUR-006] Qualify encrypted connection initialization",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:storage",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E02",
+      "depends_on": [
+        "CUR-005"
+      ]
+    },
+    "CUR-007": {
+      "number": 16,
+      "url": "https://github.com/shaug/currents/issues/16",
+      "body_sha256": "3f6d5af34152c9375217a30866cfa72954041449222554ce6a73f56878a9037b",
+      "id": 6285528877,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWPLQ",
+      "title": "[CUR-007] Support atomic multi-batch closures",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:storage",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E02",
+      "depends_on": [
+        "CUR-005",
+        "CUR-006"
+      ]
+    },
+    "CUR-008": {
+      "number": 17,
+      "url": "https://github.com/shaug/currents/issues/17",
+      "body_sha256": "659ad24ace9db3dec3227b17705dbcf44f6c627ab9709dbe31de59571ea8d029",
+      "id": 6285530350,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWU7g",
+      "title": "[CUR-008] Persist ordered evidence and decisions",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:storage",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E02",
+      "depends_on": [
+        "CUR-002",
+        "CUR-006"
+      ]
+    },
+    "CUR-009": {
+      "number": 18,
+      "url": "https://github.com/shaug/currents/issues/18",
+      "body_sha256": "1f0f4f6ef31b6cdee6fee122f7c77c48263baa6d1e690f59facbe0898d844a58",
+      "id": 6285531879,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWa5w",
+      "title": "[CUR-009] Freeze exact native accounting batches",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-002",
+        "CUR-005",
+        "CUR-008"
+      ]
+    },
+    "CUR-010": {
+      "number": 19,
+      "url": "https://github.com/shaug/currents/issues/19",
+      "body_sha256": "bfcb2f73fd9c00fbdd64d7de265d83506dc1860a53c2fa1eb410e084047be2b4",
+      "id": 6285533369,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWguQ",
+      "title": "[CUR-010] Implement serialized command lifecycle",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:storage",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E02",
+      "depends_on": [
+        "CUR-007",
+        "CUR-008",
+        "CUR-009"
+      ]
+    },
+    "CUR-011": {
+      "number": 20,
+      "url": "https://github.com/shaug/currents/issues/20",
+      "body_sha256": "9a217cbe85dc7b84d9264f1bed2c64db9cb08df81315a7c61f0260cd9fa0e976",
+      "id": 6285535006,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWnHg",
+      "title": "[CUR-011] Verify and rebuild complete history",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:storage",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E02",
+      "depends_on": [
+        "CUR-008",
+        "CUR-009",
+        "CUR-010"
+      ]
+    },
+    "CUR-012": {
+      "number": 21,
+      "url": "https://github.com/shaug/currents/issues/21",
+      "body_sha256": "393860b622659ee285f33739247ddbdb45a848f46c1c72226b781644446b2cd7",
+      "id": 6285536363,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWsaw",
+      "title": "[CUR-012] Import bounded files without recognition",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:acquisition",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-002",
+        "CUR-008",
+        "CUR-010"
+      ]
+    },
+    "CUR-013": {
+      "number": 22,
+      "url": "https://github.com/shaug/currents/issues/22",
+      "body_sha256": "48683c4312be9fff00f120462e009ce2dd6d8f778fea65b3b5bc659051481054",
+      "id": 6285537773,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqWx7Q",
+      "title": "[CUR-013] Recognize explicit financial activity",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-009",
+        "CUR-010",
+        "CUR-012"
+      ]
+    },
+    "CUR-014": {
+      "number": 23,
+      "url": "https://github.com/shaug/currents/issues/23",
+      "body_sha256": "b67ea0153f8652bc0b667e4ed80ac9de1553bf085edd0a6feb2697fdfe9b35a7",
+      "id": 6285539234,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqW3og",
+      "title": "[CUR-014] Prove encrypted synthetic vertical slice",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:quality",
+        "release:mvp",
+        "scope:synthetic-first"
+      ],
+      "milestone": "M1",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-003",
+        "CUR-011",
+        "CUR-013"
+      ]
+    },
+    "CUR-015": {
+      "number": 24,
+      "url": "https://github.com/shaug/currents/issues/24",
+      "body_sha256": "dc266477bd680ccd7d3dfcd04871901af0f92da8c1745558a76cc1d4921741a4",
+      "id": 6285540705,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqW9YQ",
+      "title": "[CUR-015] Associate source facets and economic legs",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-012",
+        "CUR-013"
+      ]
+    },
+    "CUR-016": {
+      "number": 25,
+      "url": "https://github.com/shaug/currents/issues/25",
+      "body_sha256": "43f93ed554055d423c66ff0c4ff29b7a42ae47719ee48c15186295743cc1dbc8",
+      "id": 6285542036,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXClA",
+      "title": "[CUR-016] Correct recognitions and replace segments",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-007",
+        "CUR-013",
+        "CUR-015"
+      ]
+    },
+    "CUR-017": {
+      "number": 26,
+      "url": "https://github.com/shaug/currents/issues/26",
+      "body_sha256": "7c650e9feb8e9db4e962e9beba22b0cdbf5c96bef2606dd4f50833b6c574f220",
+      "id": 6285543364,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXHxA",
+      "title": "[CUR-017] Evaluate scoped reconciliation claims",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:queries",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E04",
+      "depends_on": [
+        "CUR-015",
+        "CUR-016"
+      ]
+    },
+    "CUR-018": {
+      "number": 27,
+      "url": "https://github.com/shaug/currents/issues/27",
+      "body_sha256": "6830930ed459210bbdf22450d7e9fa51d6108d8fabda373d06b90b349d34cb91",
+      "id": 6285544921,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXN2Q",
+      "title": "[CUR-018] Select honest household positions",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:queries",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E04",
+      "depends_on": [
+        "CUR-013",
+        "CUR-015",
+        "CUR-016",
+        "CUR-017"
+      ]
+    },
+    "CUR-019": {
+      "number": 28,
+      "url": "https://github.com/shaug/currents/issues/28",
+      "body_sha256": "0b6bf3c042ea7e532f6cb66f2ccc65e339d82c4ac15ff6b97b6ea2e9375250af",
+      "id": 6285546527,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXUHw",
+      "title": "[CUR-019] Preserve organization and rule authority",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-010",
+        "CUR-015",
+        "CUR-016"
+      ]
+    },
+    "CUR-020": {
+      "number": 29,
+      "url": "https://github.com/shaug/currents/issues/29",
+      "body_sha256": "bbe163aab3ef2a12bfdf9d80fbc6fd41da308a1eb8d5572c1d6f50d2dea40821",
+      "id": 6285547895,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXZdw",
+      "title": "[CUR-020] Build review inbox and history reports",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:queries",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E04",
+      "depends_on": [
+        "CUR-017",
+        "CUR-018",
+        "CUR-019"
+      ]
+    },
+    "CUR-021": {
+      "number": 30,
+      "url": "https://github.com/shaug/currents/issues/30",
+      "body_sha256": "8069230d790fb5d204e8fbc3bdfa340fd3a1c5c09a667c3aa02e74ce9c92bd18",
+      "id": 6285549340,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXfHA",
+      "title": "[CUR-021] Track investment quantities and actions",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-009",
+        "CUR-015",
+        "CUR-016"
+      ]
+    },
+    "CUR-022": {
+      "number": 31,
+      "url": "https://github.com/shaug/currents/issues/31",
+      "body_sha256": "19d6da2ed73b698a17181952a6d4440a23ffac3376a706f7442a646c51d1e97c",
+      "id": 6285550872,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXlGA",
+      "title": "[CUR-022] Allocate known and unknown investment basis",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-021",
+        "CUR-016"
+      ]
+    },
+    "CUR-023": {
+      "number": 32,
+      "url": "https://github.com/shaug/currents/issues/32",
+      "body_sha256": "fdc303cc4d6fa7ef289466299a81089bdb854074df5b8c7b549b9e515d5aaf8d",
+      "id": 6285552337,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXq0Q",
+      "title": "[CUR-023] Validate FX and valuation conversion",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-009",
+        "CUR-018",
+        "CUR-021"
+      ]
+    },
+    "CUR-024": {
+      "number": 33,
+      "url": "https://github.com/shaug/currents/issues/33",
+      "body_sha256": "fceab06d56ccb21a3101663df8a020d8924397234c48039cfed4998e90631adb",
+      "id": 6285553784,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqXweA",
+      "title": "[CUR-024] Represent loans and manual positions",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:domain",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E03",
+      "depends_on": [
+        "CUR-013",
+        "CUR-018"
+      ]
+    },
+    "CUR-025": {
+      "number": 34,
+      "url": "https://github.com/shaug/currents/issues/34",
+      "body_sha256": "7f5cc269edda501e60bd13b98fd2b23978897f9c6730f33e89e40e761d46cffa",
+      "id": 6285555225,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqX2GQ",
+      "title": "[CUR-025] Persist commitments and calendar expansion",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:planning",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E05",
+      "depends_on": [
+        "CUR-002",
+        "CUR-010"
+      ]
+    },
+    "CUR-026": {
+      "number": 35,
+      "url": "https://github.com/shaug/currents/issues/35",
+      "body_sha256": "ec1af55fa11f466d76cc5783b9bde3b554d58ccaca680e95534b5bc778f356d8",
+      "id": 6285556696,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqX72A",
+      "title": "[CUR-026] Conserve forecast actual and pending matches",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:planning",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E05",
+      "depends_on": [
+        "CUR-015",
+        "CUR-018",
+        "CUR-025"
+      ]
+    },
+    "CUR-027": {
+      "number": 36,
+      "url": "https://github.com/shaug/currents/issues/36",
+      "body_sha256": "756833627d373ff77e1558a1df8b8b60377b04119da82f7dbc6483d7b1a0ff0c",
+      "id": 6285558174,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYBng",
+      "title": "[CUR-027] Generate reproducible household forecasts",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:planning",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E05",
+      "depends_on": [
+        "CUR-023",
+        "CUR-024",
+        "CUR-025",
+        "CUR-026"
+      ]
+    },
+    "CUR-028": {
+      "number": 37,
+      "url": "https://github.com/shaug/currents/issues/37",
+      "body_sha256": "970d620c41d486d6b9bcdfc10b955205258b5a986ce1e83d47db57a686cddb00",
+      "id": 6285559860,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYINA",
+      "title": "[CUR-028] Suggest recurrence and rolling spending rates",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:planning",
+        "release:mvp"
+      ],
+      "milestone": "M2",
+      "epic": "E05",
+      "depends_on": [
+        "CUR-019",
+        "CUR-020",
+        "CUR-025",
+        "CUR-026",
+        "CUR-027"
+      ]
+    },
+    "CUR-029": {
+      "number": 38,
+      "url": "https://github.com/shaug/currents/issues/38",
+      "body_sha256": "921ed298bdda176a4fb4dbd99568c293022d26b7d55840814a257f97363ef99f",
+      "id": 6285561328,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYN8A",
+      "title": "[CUR-029] Build self-contained encrypted archives",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:recovery",
+        "release:mvp"
+      ],
+      "milestone": "M3",
+      "epic": "E06",
+      "depends_on": [
+        "CUR-006",
+        "CUR-011",
+        "CUR-016",
+        "CUR-019",
+        "CUR-027"
+      ]
+    },
+    "CUR-030": {
+      "number": 39,
+      "url": "https://github.com/shaug/currents/issues/39",
+      "body_sha256": "1ce8c467715285b67b3ad00d24d6c04bfe825e52c578cb45b27a6f91565f7d1a",
+      "id": 6285562991,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYUbw",
+      "title": "[CUR-030] Verify disposable replay snapshots",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:recovery",
+        "release:mvp"
+      ],
+      "milestone": "M3",
+      "epic": "E06",
+      "depends_on": [
+        "CUR-011",
+        "CUR-027",
+        "CUR-029"
+      ]
+    },
+    "CUR-031": {
+      "number": 40,
+      "url": "https://github.com/shaug/currents/issues/40",
+      "body_sha256": "4aee77da6eb22e42785aab4e5d9ac8a2db18829cf715168fe1ee4fee197c0a05",
+      "id": 6285564760,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYbWA",
+      "title": "[CUR-031] Activate safe migration and key generations",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:recovery",
+        "release:mvp"
+      ],
+      "milestone": "M3",
+      "epic": "E06",
+      "depends_on": [
+        "CUR-029",
+        "CUR-030"
+      ]
+    },
+    "CUR-032": {
+      "number": 41,
+      "url": "https://github.com/shaug/currents/issues/41",
+      "body_sha256": "fa4a16edbb7736423256fb5f46ab0fd52cd81575a593a889eac563006a519958",
+      "id": 6285566492,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYiHA",
+      "title": "[CUR-032] Enforce key custody and lock lifecycle",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:recovery",
+        "release:mvp"
+      ],
+      "milestone": "M3",
+      "epic": "E06",
+      "depends_on": [
+        "CUR-004",
+        "CUR-006",
+        "CUR-010",
+        "CUR-031"
+      ]
+    },
+    "CUR-033": {
+      "number": 42,
+      "url": "https://github.com/shaug/currents/issues/42",
+      "body_sha256": "94960d8e90f98d8f27e32bc9726a7c3d78daaf9b1586a945e1ae0778b9ad02d2",
+      "id": 6285568016,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYoEA",
+      "title": "[CUR-033] Manage backup protection and retention",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:recovery",
+        "release:mvp"
+      ],
+      "milestone": "M3",
+      "epic": "E06",
+      "depends_on": [
+        "CUR-029",
+        "CUR-031",
+        "CUR-032"
+      ]
+    },
+    "CUR-034": {
+      "number": 43,
+      "url": "https://github.com/shaug/currents/issues/43",
+      "body_sha256": "3485588a563d20794ddd3b64a0abbd6928d1ea7ab8e7201cce7ed354be922270",
+      "id": 6285569550,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYuDg",
+      "title": "[CUR-034] Harden persistent Rust Swift boundary",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-004",
+        "CUR-010",
+        "CUR-011",
+        "CUR-032"
+      ]
+    },
+    "CUR-035": {
+      "number": 44,
+      "url": "https://github.com/shaug/currents/issues/44",
+      "body_sha256": "6f0bb948d8aa4c55e85b87cd7e6f8e350e5345c3ed4ec7e400482f489c8e9138",
+      "id": 6285570983,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqYzpw",
+      "title": "[CUR-035] Authenticate owner process and XPC sessions",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-004",
+        "CUR-032",
+        "CUR-034"
+      ]
+    },
+    "CUR-036": {
+      "number": 45,
+      "url": "https://github.com/shaug/currents/issues/45",
+      "body_sha256": "9e30d4215f5f7bdfce14f27ded721d9f361cb8c59d736fd12aab1cc70e870283",
+      "id": 6285572566,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqY51g",
+      "title": "[CUR-036] Enforce scoped authority and owner approval",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-010",
+        "CUR-019",
+        "CUR-035"
+      ]
+    },
+    "CUR-037": {
+      "number": 46,
+      "url": "https://github.com/shaug/currents/issues/46",
+      "body_sha256": "838ea05e80a0d16c25255d619775db0e6b26e2cd2c7c79d2506f3f7c73358d83",
+      "id": 6285574098,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqY_0g",
+      "title": "[CUR-037] Build native position and review experience",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-018",
+        "CUR-020",
+        "CUR-024",
+        "CUR-035",
+        "CUR-036"
+      ]
+    },
+    "CUR-038": {
+      "number": 47,
+      "url": "https://github.com/shaug/currents/issues/47",
+      "body_sha256": "8dac940d95670c287d260bbc9d64ff079d69a7fa8f802cdeb76a76b1abd08a24",
+      "id": 6285578418,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZQsg",
+      "title": "[CUR-038] Complete native financial workflows",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-017",
+        "CUR-019",
+        "CUR-022",
+        "CUR-023",
+        "CUR-027",
+        "CUR-028",
+        "CUR-033",
+        "CUR-037"
+      ]
+    },
+    "CUR-039": {
+      "number": 48,
+      "url": "https://github.com/shaug/currents/issues/48",
+      "body_sha256": "70e4448f51548fb81e94e0cee6c08d830970b75cc2afe9f64c0ccdfa3ed5a5e0",
+      "id": 6285579961,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZWuQ",
+      "title": "[CUR-039] Expose CLI and offline verification",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-029",
+        "CUR-035",
+        "CUR-036"
+      ]
+    },
+    "CUR-040": {
+      "number": 49,
+      "url": "https://github.com/shaug/currents/issues/49",
+      "body_sha256": "177e52154ce876a91d709e0e06039875a65316d69155a1f028eeb8e09ab093fb",
+      "id": 6285581660,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZdXA",
+      "title": "[CUR-040] Restrict local MCP proposals and reads",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-036",
+        "CUR-039"
+      ]
+    },
+    "CUR-041": {
+      "number": 50,
+      "url": "https://github.com/shaug/currents/issues/50",
+      "body_sha256": "8f31744b9e8631866bc7063e9d88bab323d6b4650823c44b58979aac47bfbcb3",
+      "id": 6285583252,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZjlA",
+      "title": "[CUR-041] Coordinate read-only source refreshes",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-012",
+        "CUR-015",
+        "CUR-032",
+        "CUR-036"
+      ]
+    },
+    "CUR-042": {
+      "number": 51,
+      "url": "https://github.com/shaug/currents/issues/51",
+      "body_sha256": "5349cbd6ffe4f8b6dd59254a4e3498a60e3c6353b747df37330086424b1f58d0",
+      "id": 6285584836,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZpxA",
+      "title": "[CUR-042] Qualify provider coverage and consent",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-041",
+        "CUR-047"
+      ]
+    },
+    "CUR-043": {
+      "number": 52,
+      "url": "https://github.com/shaug/currents/issues/52",
+      "body_sha256": "a8a6618bc4cf5d5f19ac9648c3cccb388a79613e6680c031d9fb63507b9a81e8",
+      "id": 6285586369,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZvwQ",
+      "title": "[CUR-043] Implement qualified provider adapters",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-041",
+        "CUR-042",
+        "CUR-048"
+      ]
+    },
+    "CUR-044": {
+      "number": 53,
+      "url": "https://github.com/shaug/currents/issues/53",
+      "body_sha256": "0e1729e3b98a35161e6a2a26c9262a8c69b97e82200ee3d13482f19a5aff7940",
+      "id": 6285588172,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZ2zA",
+      "title": "[CUR-044] Qualify Apple Card acquisition route",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-004",
+        "CUR-047"
+      ]
+    },
+    "CUR-045": {
+      "number": 54,
+      "url": "https://github.com/shaug/currents/issues/54",
+      "body_sha256": "483588c352c9e2292995815691b9c38298c7eff0c22806b7ed8b434e182a15c5",
+      "id": 6285589921,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqZ9oQ",
+      "title": "[CUR-045] Secure mobile bundles and acknowledgments",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-029",
+        "CUR-031",
+        "CUR-032",
+        "CUR-041"
+      ]
+    },
+    "CUR-046": {
+      "number": 55,
+      "url": "https://github.com/shaug/currents/issues/55",
+      "body_sha256": "e78a2ce45b186a2950965ec405c038d83cb1c6625edbd8a1292ec9a31fe57e21",
+      "id": 6285591819,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqaFCw",
+      "title": "[CUR-046] Build protected iOS capture satellite",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-004",
+        "CUR-045",
+        "CUR-058"
+      ]
+    },
+    "CUR-047": {
+      "number": 56,
+      "url": "https://github.com/shaug/currents/issues/56",
+      "body_sha256": "02b1855bef2fc282664be4613b010eaf8f585bca1531a59450fff652c2d3a5a5",
+      "id": 6285593325,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqaK7Q",
+      "title": "[CUR-047] Define household scope and meaning inputs",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M0",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-002"
+      ]
+    },
+    "CUR-048": {
+      "number": 57,
+      "url": "https://github.com/shaug/currents/issues/57",
+      "body_sha256": "e94bdd4f57557b8d1d4ed8de7ea51aa4292fcca07f5783513abf5b1c643fe3ee",
+      "id": 6285594828,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqaQzA",
+      "title": "[CUR-048] Gate private dataset activation",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-033",
+        "CUR-036",
+        "CUR-038",
+        "CUR-047",
+        "CUR-049",
+        "CUR-035",
+        "CUR-056"
+      ]
+    },
+    "CUR-049": {
+      "number": 58,
+      "url": "https://github.com/shaug/currents/issues/58",
+      "body_sha256": "5fafe548062086e9954437988c56e9f7a685598d3a35d6b292e82085ee65e36d",
+      "id": 6285596399,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqaW7w",
+      "title": "[CUR-049] Audit privacy and hostile input surfaces",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M3",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-003",
+        "CUR-006",
+        "CUR-012",
+        "CUR-029",
+        "CUR-032"
+      ]
+    },
+    "CUR-050": {
+      "number": 59,
+      "url": "https://github.com/shaug/currents/issues/59",
+      "body_sha256": "f43f425aa5dd027bb30e03dffbae89fbd3e3e50cda1b9974920ddfe9af0e591e",
+      "id": 6285597944,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqac-A",
+      "title": "[CUR-050] Exercise full faults and semantic properties",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M6",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-016",
+        "CUR-017",
+        "CUR-018",
+        "CUR-022",
+        "CUR-023",
+        "CUR-028",
+        "CUR-030",
+        "CUR-031",
+        "CUR-034",
+        "CUR-036",
+        "CUR-040",
+        "CUR-045",
+        "CUR-049"
+      ]
+    },
+    "CUR-051": {
+      "number": 60,
+      "url": "https://github.com/shaug/currents/issues/60",
+      "body_sha256": "c0be3366e01b8e38e973f64ced23b325b714da7c07ea0d6f0be0c39debbdc9a4",
+      "id": 6285599468,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqai7A",
+      "title": "[CUR-051] Qualify performance without weakening truth",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M6",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-018",
+        "CUR-020",
+        "CUR-027",
+        "CUR-030",
+        "CUR-038",
+        "CUR-050"
+      ]
+    },
+    "CUR-052": {
+      "number": 61,
+      "url": "https://github.com/shaug/currents/issues/61",
+      "body_sha256": "b1e6189ddd9a3f2f4b50db2ffc592790266df95e41770b5f797d2b30dc00e06c",
+      "id": 6285601028,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqapBA",
+      "title": "[CUR-052] Automate release metadata and provenance",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M6",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-003",
+        "CUR-004",
+        "CUR-029",
+        "CUR-031",
+        "CUR-039",
+        "CUR-049"
+      ]
+    },
+    "CUR-053": {
+      "number": 62,
+      "url": "https://github.com/shaug/currents/issues/62",
+      "body_sha256": "d7e830082203a95c9276c8886c853bc20d0501c32b5a38a53bed74b3896f99ec",
+      "id": 6285602505,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqauyQ",
+      "title": "[CUR-053] Qualify signed native distribution",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M6",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-004",
+        "CUR-035",
+        "CUR-036",
+        "CUR-038",
+        "CUR-046",
+        "CUR-050",
+        "CUR-052",
+        "CUR-056",
+        "CUR-044"
+      ]
+    },
+    "CUR-054": {
+      "number": 63,
+      "url": "https://github.com/shaug/currents/issues/63",
+      "body_sha256": "9c34f60d40aa619f0c369fa5e4372a6a78661c50b01fe0f73aa5e2f0f6d80dc0",
+      "id": 6285604105,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqa1CQ",
+      "title": "[CUR-054] Accept all household release journeys",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M6",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-014",
+        "CUR-017",
+        "CUR-018",
+        "CUR-020",
+        "CUR-022",
+        "CUR-023",
+        "CUR-024",
+        "CUR-028",
+        "CUR-033",
+        "CUR-038",
+        "CUR-039",
+        "CUR-040",
+        "CUR-043",
+        "CUR-046",
+        "CUR-048",
+        "CUR-050",
+        "CUR-051",
+        "CUR-053",
+        "CUR-055",
+        "CUR-057",
+        "CUR-058"
+      ]
+    },
+    "CUR-055": {
+      "number": 64,
+      "url": "https://github.com/shaug/currents/issues/64",
+      "body_sha256": "0fd79914226bde68d17c8f219e6fa1c9c59107f03fddcd7fbc2c1390b6178e41",
+      "id": 6285605628,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqa6_A",
+      "title": "[CUR-055] Document independent recovery and compatibility",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:quality",
+        "release:mvp"
+      ],
+      "milestone": "M6",
+      "epic": "E09",
+      "depends_on": [
+        "CUR-029",
+        "CUR-031",
+        "CUR-033",
+        "CUR-039",
+        "CUR-040",
+        "CUR-046",
+        "CUR-052"
+      ]
+    },
+    "CUR-056": {
+      "number": 65,
+      "url": "https://github.com/shaug/currents/issues/65",
+      "body_sha256": "20aeb073a206bf39654bb46f910ec474d0b24142a12e322545f5cd6702315e55",
+      "id": 6285623434,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqcAig",
+      "title": "[CUR-056] Qualify signed owner host before private data",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:native",
+        "release:mvp"
+      ],
+      "milestone": "M4",
+      "epic": "E07",
+      "depends_on": [
+        "CUR-032",
+        "CUR-035",
+        "CUR-036",
+        "CUR-039",
+        "CUR-040"
+      ]
+    },
+    "CUR-057": {
+      "number": 66,
+      "url": "https://github.com/shaug/currents/issues/66",
+      "body_sha256": "8a26684462e53e001d723cc0f347cc9c9d8741ebeed67fae41b7c7a8d691b5df",
+      "id": 6285625626,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqcJGg",
+      "title": "[CUR-057] Verify protected Apple Card account coverage",
+      "kind": "ticket",
+      "labels": [
+        "type:gate",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-044",
+        "CUR-046",
+        "CUR-048",
+        "CUR-056",
+        "CUR-058"
+      ]
+    },
+    "CUR-058": {
+      "number": 67,
+      "url": "https://github.com/shaug/currents/issues/67",
+      "body_sha256": "0d2141e04c515f83dfd5f8249387984b6df66865c5419ee4846edbb15f9d60c1",
+      "id": 6285627455,
+      "node_id": "I_kwDOVoEQ6s8AAAABdqcQPw",
+      "title": "[CUR-058] Qualify iOS encrypted transfer bridge",
+      "kind": "ticket",
+      "labels": [
+        "type:implementation",
+        "area:acquisition",
+        "release:mvp"
+      ],
+      "milestone": "M5",
+      "epic": "E08",
+      "depends_on": [
+        "CUR-004",
+        "CUR-006",
+        "CUR-029",
+        "CUR-045"
+      ]
+    }
+  }
+}

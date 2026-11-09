@@ -79,6 +79,6 @@ The iOS transfer-only Rust/Swift component has explicit device/simulator builds,
 
 Run `python3 docs/planning/validate.py` to repeat the structural checks. They do not replace semantic review or future application tests.
 
-### Current completion boundary
+### Completion boundary at review closure
 
-The local design, separate implementation plan, reviews and complete proposed GitHub payloads are ready. No application implementation, dependency installation, live financial access, signing, production qualification or application release was performed. GitHub publication remains pending confirmation of the repository target, visibility and publication scope; no remote issues, labels, milestones or relationships are claimed created here.
+The local design, separate implementation plan, reviews and complete proposed GitHub payloads are ready. No application implementation, dependency installation, live financial access, signing, production qualification or application release was performed. At review closure, GitHub publication was pending confirmation of the repository target, visibility and publication scope. Publication was subsequently authorized and completed; the [publication receipt](planning/publication.md) records the verified remote objects and mapping. That publication does not change the reviewed design/plan hashes or pass an implementation gate.

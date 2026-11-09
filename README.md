@@ -13,7 +13,7 @@ This repository contains the architectural constitution, the reviewed Rust-based
 - [Implementation plan](docs/implementation-plan.md): milestones, epics, dependency choices and implementation tickets.
 - [Historical preliminary design](docs/preliminary-technical-design.md): retained superseded proposal.
 - [Review record](docs/review-record.md): corrected adversarial findings, final artifact hashes, checks and remaining qualification gates.
-- [GitHub issue package](docs/planning/README.md): complete proposed issue bodies and validated dependency manifest; publication is pending.
+- [Live GitHub implementation tracker](https://github.com/shaug/currents/issues): 58 tickets and 9 epic parents, with milestones, labels and native dependencies. See the [verified publication receipt](docs/planning/publication.md) and [frozen planning source](docs/planning/README.md).
 - [Constitution provenance](docs/constitution-provenance.md): source identity and preservation check.
 
 The selected direction is a client-independent Rust engine with a pinned doubleentry accounting adapter and private SQLite transaction seam, plus a native SwiftUI/AppKit Mac client. SQLCipher and the unified persistent Rust/Swift path remain explicit qualification gates. The initial usable product covers the household financial picture, organization and one-, three- and twelve-month account forecasts; a synthetic proving slice does not reduce that scope. No live provider access or shipping release is implied by the documentation.

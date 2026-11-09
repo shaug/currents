@@ -1,6 +1,8 @@
-# Proposed GitHub issue package
+# GitHub implementation issue package
 
-This directory is local documentation, not published issues. Start with [the implementation plan](../implementation-plan.md), [contracts](contracts.md) and [dependencies](dependencies.md).
+The complete plan is published in [GitHub issues](https://github.com/shaug/currents/issues). See the [verified publication receipt](publication.md) and [actual issue mapping](publication-map.json). Start with [the implementation plan](../implementation-plan.md), [contracts](contracts.md) and [dependencies](dependencies.md).
+
+The manifest, generated plan index and source bodies below are the frozen reviewed pre-publication snapshot. Their pending/proposed status and unset repository/authorization fields are historical source metadata. They are not the current publication state; implementation progress belongs in the live issues.
 
 ## Contents and regeneration
 
