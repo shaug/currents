@@ -5,3 +5,13 @@ useDefault = true
 id = "currents-account-canary"
 description = "Private-account marker, including synthetic qualification canary"
 regex = 'CURRENTS_PRIVATE_ACCOUNT=[0-9]{8,}'
+
+# Exact public C2SP Merkle proof from the hash-verified doubleentry snapshot.
+# Match both this path and the complete immutable line, never the vendor tree.
+[[allowlists]]
+description = "Pinned public C2SP proof vector, not an API credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)vendor/doubleentry/tests/vectors/c2sp/trees/inclusion\.txt$''']
+regexTarget = "line"
+regexes = ['''^\n?proof: 65535 70000 M2X/hMlD/dS5tYnWd7ioCtUa245a0NxAJUXu3kfe4VA= vS/jF686OtSJDjnC8cL56stTs6fVswbrJ1DQTTUXL14= 5WZnuhldICoX50f4SlhAK/v4taI/pbqdQ/IOAhTXQ1I= wxtLFb\+\+e\+eugMuhLn40CqWINnGF1h4xsQlY3MUt4CM= nRtv0DPkJELqKZ1Q6IZlsTLIqabsG\+9GMeq\+6HAvclE= rCwwglky/9ZscSelz1\+O5i4eZgpFr1LL73a/iLTnG3A= MJc5yVswiyJhmFRyYoIcz7e6UJadKK35phJgRQNTnEc= BCEMJfa\+nTsvZDjM\+ix6cSOhvDez27dxazcYAM517lY= qcHBHbWvYLm5zZ1kdZTiv3aPtb9xHUTq6jb417QvfOg= aNWv7N2xN8syuWz7ygSkcr\+Z7tQ8gZFjn6k0f7G9kSg= MFB74OrfITSNV7FiwF/AM4FvVxaQhPY4aMm3jq1S9nM= yY2Dpbh43vC0zG2LPuuNZt\+IpM5eIpBUS9MTjAmGOQY= q9dWkbJgMR7zM3xpYv5OY3CvJ7tL2PkZABu3DCrr/Ug= 3vCmnMbcva2bE19m7TtztAtppVFku\+qxOqXMMjwcJdo= woNG6GEs4afXAqOPAwzcYXRuyW4RyWJG28XvapikqKA= 8q3XUaWOXWTjaraF83wdF4stdxbW3RBjA2Yl\+z09uBM= z9x9WoEEqHdH78kMc24iWSVTkslv8QDJZR/pp7chKaw=$''']

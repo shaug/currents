@@ -171,10 +171,22 @@ fn cur_003_3() {
         "--source",
         d.path().to_str().unwrap(),
     ]));
+    // Public C2SP proof hashes must not suppress actual secrets in that same file.
+    let vector = "vendor/doubleentry/tests/vectors/c2sp/trees/inclusion.txt";
+    let fixture = d.path().join(vector);
+    fs::create_dir_all(fixture.parent().unwrap()).unwrap();
+    let public_proof = fs::read_to_string(root().join(vector)).unwrap();
+    fs::write(&fixture, &public_proof).unwrap();
+    pass(run(&[
+        "qualify",
+        "privacy",
+        "--source",
+        d.path().to_str().unwrap(),
+    ]));
     let key = ["AKIA", "ABCDEFGHIJKLMNOP"].concat();
     let account = ["CURRENTS_PRIVATE_ACCOUNT=", "123456789012"].concat();
     for canary in [&key, &account] {
-        fs::write(d.path().join("canary.txt"), format!("{canary}\n")).unwrap();
+        fs::write(&fixture, format!("{public_proof}\n{canary}\n")).unwrap();
         let out = run(&["qualify", "privacy", "--source", d.path().to_str().unwrap()]);
         assert!(!out.status.success());
         for bytes in [&out.stdout, &out.stderr] {
