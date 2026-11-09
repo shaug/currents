@@ -321,6 +321,40 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-005" {
+        let assertions = ["cur_005_1", "cur_005_2", "cur_005_3", "cur_005_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_005",
+            "--",
+            "--list",
+        ])?;
+        let tests: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if tests != assertions.iter().copied().collect() {
+            return Err(format!("test registry mismatch or zero tests: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_005",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err(format!("incomplete test execution: {text}"));
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes())}),
+        );
+    }
     if name == "CUR-002" {
         let assertions = ["cur_002_1", "cur_002_2", "cur_002_3", "cur_002_4"];
         let list = cargo(&[
