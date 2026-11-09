@@ -39,12 +39,23 @@ suite fails. Native/security/deep/release/all and production/private-activation
 gates remain explicitly BLOCKED until their owning tickets register the required
 suites. They never count an absent suite or report as passed.
 
-Every gate emits a versioned `QualificationReportV1`, with exact command, current
-Git head, dirty state, host, evidence and limitations. Reports and full subprocess
-stdout/stderr are retained in `target/qualification/`. Dirty-tree results are
-preliminary and must be rerun at the final committed candidate. A pass certifies
-only the named gate on the recorded host, never another platform or the complete
-product. Compiler identity probes and source hashing are not build qualification.
+Every gate emits C16 `QualificationReportV1`, checked against the required fields
+in `docs/qualification-report.schema.json`. `gate`, `inputs`, `platform`,
+`versions`, `tests`, `evidence`, `status` and `limitations` are always present.
+Inputs bind command, Git head, dirty state, generation time and source/lock/pin
+file digests. Version evidence names executed compiler/Cargo/C tool probes;
+commands retain exact arguments, selected compiler, exit and output digests.
+Executed test functions and outcomes are enumerated from test-run output, not
+inferred from a registry. An empty test list means that command ran no tests.
+Reports and full subprocess stdout/stderr are retained in `target/qualification/`.
+C16 statuses are preserved: successful checks use `Passed`; failed assertions
+and unavailable prerequisites both use `Blocked`, distinguished by
+`evidence.error`. Malformed options also produce a blocked report.
+Dirty-tree results are preliminary and must be rerun at the final committed
+candidate. A pass certifies only the named gate on the recorded host, never
+another platform or the complete product. Compiler probes and source hashing
+are not build qualification. Provider overrides, including `OPENSSL_NO_VENDOR`
+and its target-prefixed forms, are rejected before core/MSRV builds.
 
 ## Source pins and cache verification
 

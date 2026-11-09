@@ -47,6 +47,7 @@ fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Re
 }
 fn checked(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Result<String> {
     let out = output(program, args, cwd, rustc)?;
+    crate::report::record(program, args, cwd, rustc, &out);
     let evidence_dir = root().join("target/qualification");
     fs::create_dir_all(&evidence_dir).map_err(|e| e.to_string())?;
     let record = json!({"program":program,"args":args,"cwd":cwd,"rustc":rustc,"exit":out.status.code(),"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)});
@@ -270,6 +271,7 @@ fn check_native_environment() -> Result<()> {
     for (key, _) in env::vars_os() {
         let key = key.to_string_lossy();
         if key.ends_with("OPENSSL_DIR")
+            || key.ends_with("OPENSSL_NO_VENDOR")
             || key.ends_with("OPENSSL_LIB_DIR")
             || key.ends_with("OPENSSL_INCLUDE_DIR")
             || key == "LIBSQLITE3_SYS_USE_PKG_CONFIG"
@@ -419,7 +421,15 @@ fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
 pub fn run(args: Vec<String>) -> Result<()> {
     let command = args.first().map(String::as_str).unwrap_or("");
     let gate = args.get(1).map(String::as_str).unwrap_or("");
-    let result=match (command,gate) {
+    for (program, version_args) in [
+        ("rustc", &["-vV"][..]),
+        ("cargo", &["--version"][..]),
+        ("cc", &["--version"][..]),
+    ] {
+        let _ = checked(Path::new(program), version_args, &root(), None);
+    }
+    let result = (|| {
+        match (command,gate) {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false), ("check","msrv")=>core(true),
         ("qualify","workspace")=>workspace(),
@@ -430,18 +440,14 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("qualify","msrv")=>core(true),
         ("check","native"|"security"|"deep"|"release"|"all") | ("gates",_)=>Err(format!("BLOCKED: {command} {gate} requires suites registered by later owning tickets")),
         _=>Err(format!("BLOCKED: unregistered command: {}",args.join(" "))),
-    };
+    }
+    })();
     let head = checked(Path::new("git"), &["rev-parse", "HEAD"], &root(), None)
         .unwrap_or_else(|_| "unknown".into());
     let dirty = checked(Path::new("git"), &["status", "--porcelain"], &root(), None)
         .map(|s| !s.is_empty())
         .unwrap_or(true);
-    let status = match &result {
-        Ok(_) => "pass",
-        Err(e) if e.starts_with("BLOCKED:") => "blocked",
-        Err(_) => "fail",
-    };
-    let report = json!({"schema":"QualificationReportV1","schema_version":1,"command":args,"candidate_sha":head.trim(),"dirty":dirty,"host":{"os":env::consts::OS,"arch":env::consts::ARCH},"unix_seconds":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),"status":status,"evidence":result.as_ref().ok(),"error":result.as_ref().err(),"limitations":["Synthetic workspace only; no financial, signed-native or production qualification.","A pass applies only to the named gate and recorded host."]});
+    let report = crate::report::build(&root(), &args, &head, dirty, &result);
     let report_dir = root().join("target/qualification");
     fs::create_dir_all(&report_dir).map_err(|e| e.to_string())?;
     let report_bytes = serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?;

@@ -33,7 +33,22 @@ fn cur_001_1() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("\"status\": \"pass\""));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"status\": \"Passed\""));
+    for field in [
+        "gate",
+        "inputs",
+        "platform",
+        "versions",
+        "tests",
+        "evidence",
+        "status",
+        "limitations",
+    ] {
+        assert!(String::from_utf8_lossy(&output.stdout).contains(&format!("\"{field}\":")));
+    }
+    let malformed = xtask(&["qualify", "dependency-direction", "--manifest-path"]);
+    assert!(!malformed.status.success());
+    assert!(String::from_utf8_lossy(&malformed.stdout).contains("\"status\": \"Blocked\""));
 }
 #[test]
 fn cur_001_2() {
@@ -129,5 +144,22 @@ fn cur_001_4() {
         .unwrap();
     assert!(!missing_tool.status.success());
     assert!(String::from_utf8_lossy(&missing_tool.stderr).contains("BLOCKED"));
+    for key in [
+        "OPENSSL_NO_VENDOR",
+        "X86_64_UNKNOWN_LINUX_GNU_OPENSSL_NO_VENDOR",
+    ] {
+        let output = Command::new("cargo")
+            .current_dir(root())
+            .args(["xtask", "check", "core"])
+            .env(key, "1")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains(&format!("clear native provider override {key}"))
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("\"status\": \"Blocked\""));
+    }
     fs::remove_dir_all(dir).unwrap();
 }

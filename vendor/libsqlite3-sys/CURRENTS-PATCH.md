@@ -26,8 +26,10 @@ and single sys composition; the in-memory cipher test verifies linked runtime
 versions. Neither is a claim of full key initialization/encryption/restore
 qualification, which belongs to later tickets.
 
-The unchanged package version still matches the RustSec package range. Preserve
-that raw scanner diagnostic; no advisory ignore rule is installed. Applicability
+The unchanged package version still falls within the RustSec package range, but
+the observed cargo-deny advisory scan does not flag this local path package. Its
+green result alone is not evidence that the fixed native bytes are safe. No
+advisory ignore rule is installed. Preserve raw scan output. Applicability
 must be reviewed against the pinned fixed source, not waived based on a new
 version string. Requalification must include both Mac and Linux, candidate MSRV,
 source hashes, API/link smoke tests, and preserved runtime provider choices.

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shaug/currents/docs/qualification-report.schema.json",
+  "title": "QualificationReportV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "gate",
+    "inputs",
+    "platform",
+    "versions",
+    "tests",
+    "evidence",
+    "status",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "QualificationReportV1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "gate": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "object",
+      "required": [
+        "command",
+        "candidate_sha",
+        "dirty",
+        "files",
+        "unix_seconds"
+      ]
+    },
+    "platform": {
+      "type": "object",
+      "required": [
+        "os",
+        "arch",
+        "target_override"
+      ]
+    },
+    "versions": {
+      "type": "array"
+    },
+    "tests": {
+      "type": "array"
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "result",
+        "error",
+        "commands"
+      ]
+    },
+    "status": {
+      "enum": [
+        "Unassessed",
+        "Blocked",
+        "Passed",
+        "OwnerAcceptedLimitation"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
