@@ -19,3 +19,6 @@ libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["b
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+
+[dev-dependencies]
+tokio.workspace = true

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "as_of": "2026-11-09",
-  "qualification": "BLOCKED: RUSTSEC-2026-0459 affects selected bundled SQLite/SQLCipher source. Sources and manifests verified; not a production qualification.",
+  "qualification": "Source refresh under qualification: exact official SQLCipher4.20.0/SQLite3.54.1 fixes native WAL source; package-range advisory still blocks until source-specific review and complete target evidence.",
   "crates": [
     {
       "name": "sqlx",
@@ -344,6 +344,15 @@
       "license": "MIT OR Apache-2.0",
       "rust_version": "1.88.0",
       "features": null
+    },
+    {
+      "name": "sqlcipher-src",
+      "version": "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+      "source": "https://static.crates.io/crates/sqlcipher-src/sqlcipher-src-420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2.crate",
+      "sha256": "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe",
+      "license": "MIT",
+      "rust_version": "1.88",
+      "features": []
     }
   ],
   "github_tools": [
@@ -836,6 +845,27 @@
       "source": "https://raw.githubusercontent.com/hupe1980/doubleentry/3c514c97169a98d96f0668e6addfd92e1e8f6f69/Cargo.toml",
       "sha256": "0ea037bbdd701554282ef42d80da736d7aebe5b370064799d3a55fecd5427fd8",
       "path": "kernel-Cargo.toml"
+    },
+    {
+      "name": "sqlcipher-src",
+      "version": "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+      "source": "https://static.crates.io/crates/sqlcipher-src/sqlcipher-src-420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2.crate",
+      "sha256": "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe",
+      "path": "sqlcipher-src-420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2.crate"
+    },
+    {
+      "name": "ledger",
+      "version": "v3.4.1",
+      "source": "https://codeload.github.com/ledger/ledger/tar.gz/d422d3cdbf16e72d653908a3fda8ffda8dfadaf7",
+      "sha256": "dedc90ea00487ab1af08972157be9b8f97fca462e80b071395464931ff44585a",
+      "path": "ledger-v3.4.1.tar.gz"
+    },
+    {
+      "name": "beancount",
+      "version": "3.2.3",
+      "source": "https://codeload.github.com/beancount/beancount/tar.gz/eeda2aa2a3204ffb980dab11220b2abde5e80b38",
+      "sha256": "08beba2cf466a5abb5ec71b8fc2df9627c982e49e493d77b050d9fc9f5808601",
+      "path": "beancount-3.2.3.tar.gz"
     }
   ],
   "rust": [
@@ -1035,5 +1065,18 @@
       "sha256": "08beba2cf466a5abb5ec71b8fc2df9627c982e49e493d77b050d9fc9f5808601",
       "license": "GPL-2.0-only"
     }
-  ]
+  ],
+  "native_source": {
+    "package": "sqlcipher-src",
+    "version": "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+    "sqlcipher": "4.20.0",
+    "sqlite": "3.54.1",
+    "upstream_commit": "355d4db92d3404e71faa8088d071a71d767807f4",
+    "advisory": "RUSTSEC-2026-0459",
+    "fixed_upstream_commit": "e5bf119821f25be1d7f10ef0a2edbe175289166e",
+    "files": {
+      "sqlcipher/sqlcipher.c": "8cd2347d18886fee4651153fabeeeffb7cec008700987dab1c00261febc4220f",
+      "sqlcipher/sqlite3.h": "e36eb6ed4de77e56a633866a8f84ed339785662d0cf79cf099f420b638bf28ec"
+    }
+  }
 }

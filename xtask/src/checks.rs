@@ -301,7 +301,7 @@ fn core(msrv: bool) -> Result<Value> {
     let mut evidence = vec![];
     for args in [
         &["build", "--locked", "--workspace", "--all-targets"][..],
-        &["test", "--locked", "--workspace"][..],
+        &["test", "--locked", "--workspace", "--", "--test-threads=1"][..],
     ] {
         let text = checked(&program, args, &root(), rustc.as_deref())?;
         evidence.push(json!({"command":args,"stdout_sha256":sha(text.as_bytes())}));
@@ -347,7 +347,50 @@ fn ticket(name: &str) -> Result<Value> {
     }
     Ok(json!({"ticket":name,"assertions":ASSERTIONS,"output_sha256":sha(text.as_bytes())}))
 }
+fn native_source() -> Result<Value> {
+    let text = cargo(&["metadata", "--locked", "--format-version", "1"])?;
+    let meta: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let packages = packages(&meta)?;
+    let sys: Vec<_> = packages
+        .iter()
+        .filter(|p| p["name"] == "libsqlite3-sys")
+        .collect();
+    if sys.len() != 1 || sys[0]["version"] != "0.37.0" || !sys[0]["source"].is_null() {
+        return Err("native source must use exactly the private sys0.37 adaptation".into());
+    }
+    let expected = root().join("vendor/libsqlite3-sys/Cargo.toml");
+    if sys[0]["manifest_path"].as_str() != expected.to_str() {
+        return Err("unexpected sys manifest path".into());
+    }
+    let inventory = read_json(&root().join("tools/versions.lock.json"))?;
+    let native = &inventory["native_source"];
+    let source = packages
+        .iter()
+        .find(|p| p["name"] == "sqlcipher-src")
+        .ok_or("missing fixed native source package")?;
+    if source["version"] != native["version"] {
+        return Err("native source version mismatch".into());
+    }
+    let manifest = PathBuf::from(
+        source["manifest_path"]
+            .as_str()
+            .ok_or("missing source manifest")?,
+    );
+    for (name, digest) in native["files"]
+        .as_object()
+        .ok_or("missing source file inventory")?
+    {
+        let bytes = fs::read(manifest.parent().unwrap().join(name)).map_err(|e| e.to_string())?;
+        if digest.as_str() != Some(sha(&bytes).as_str()) {
+            return Err(format!("native source checksum mismatch: {name}"));
+        }
+    }
+    Ok(
+        json!({"sys_manifest":expected,"source":native,"scope":"fixed upstream source bytes and one native stack; runtime behavior separately tested"}),
+    )
+}
 fn quality() -> Result<Value> {
+    native_source()?;
     workspace()?;
     direction(&root().join("Cargo.toml"))?;
     cargo(&["fmt", "--all", "--", "--check"])?;
@@ -380,6 +423,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false), ("check","msrv")=>core(true),
         ("qualify","workspace")=>workspace(),
+        ("qualify","native-source")=>native_source(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
         ("qualify","pin-inventory")=>inventory(&option(&args,"--inventory")?.unwrap_or(root().join("tools/versions.lock.json")), option(&args,"--artifact-root")?.as_deref()),
         ("qualify","msrv") if args.iter().any(|s|s=="--probe")=>msrv_tools().map(|(_,_,v)|json!({"compiler":v.trim(),"scope":"compiler identity only; not a production feature qualification"})),

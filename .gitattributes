@@ -1,0 +1,2 @@
+# Preserve byte-identical upstream vendored files, including their whitespace.
+/vendor/libsqlite3-sys/** -whitespace linguist-vendored

@@ -127,3 +127,21 @@ source/dependency composition, or an explicitly owner-reviewed scoped and expiri
 exception supported by concrete mitigation evidence under the dependency policy.
 No exception, advisory suppression or design amendment is included in this change.
 The lockfile is a reproducible candidate, not a production-qualified dependency set.
+
+### Official-source refresh under review
+
+The preceding blocked snapshot is preserved at commit2ca9bec. Subsequent official
+source research found SQLCipher4.20.0/SQLite3.54.1, commit
+355d4db92d3404e71faa8088d071a71d767807f4, containing the upstream fix. Current
+candidate work adapts the private sys0.37 build to exact registry
+sqlcipher-src420.0.0, without modifying its native implementation or changing the
+SQLx Rust API. See vendor/libsqlite3-sys/CURRENTS-PATCH.md and its complete file
+provenance. `cargo xtask qualify native-source` verifies the actual selected
+amalgamation/header bytes; a separate synthetic runtime test checks both versions.
+Mac current/MSRV builds and runtime smoke tests passed for this composition.
+
+The raw advisory scanner still reports the unchanged package version. It has not
+been suppressed. Final source-specific applicability review and Linux target
+requalification remain required before publication. Source verification is not
+an exception for unresolved vulnerable code. All other advisories still require
+normal independent qualification.

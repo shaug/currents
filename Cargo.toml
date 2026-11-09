@@ -1,6 +1,7 @@
 [workspace]
 members = ["crates/currents-types", "crates/currents-protocol", "crates/currents-cipher", "crates/currents-transfer", "crates/currents-domain", "crates/currents-accounting", "crates/currents-storage", "crates/currents-service", "crates/currents-planning", "crates/currents-acquisition", "crates/currents-ffi", "crates/currents-cli", "crates/currents-mcp", "crates/currents-verify", "xtask"]
 resolver = "3"
+exclude = ["vendor/libsqlite3-sys"]
 
 [workspace.package]
 version = "0.0.0"
@@ -58,3 +59,6 @@ all = "warn"
 
 [profile.release]
 panic = "unwind"
+
+[patch.crates-io]
+libsqlite3-sys = { path = "vendor/libsqlite3-sys" }
