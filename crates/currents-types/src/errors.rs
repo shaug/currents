@@ -79,3 +79,24 @@ impl crate::schema::Schema for ErrorClass {
         serde_json::json!({"type":"string","enum":["unauthorized","locked","unsupported_version","stale_basis","invalid_reference","duplicate_recognition","allocation_conflict","unbalanced","precision_or_overflow","incomplete_basis","integrity_failure","storage_failure","canceled","result_unknown"]})
     }
 }
+
+impl crate::schema::Schema for SafeNextAction {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"type":"string","enum":["authenticate","unlock","upgrade","refresh_basis","correct_input","inspect_evidence","retry_same_command","recover"]})
+    }
+}
+
+impl crate::schema::Schema for EngineError {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({
+            "type":"object",
+            "additionalProperties":false,
+            "required":["class","affected_scope","next_action"],
+            "properties":{
+                "class":ErrorClass::schema(),
+                "affected_scope":Vec::<RecordId>::schema(),
+                "next_action":SafeNextAction::schema()
+            }
+        })
+    }
+}

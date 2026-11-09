@@ -18,6 +18,7 @@ fn cur_002_2() {
     assert!(fixture("bounds.json").contains("scale19"));
     specified_commands();
     strict_bounds();
+    error_contracts();
 }
 #[test]
 fn cur_002_3() {
@@ -416,4 +417,66 @@ fn history_preimage_budget() {
         panic!("expected catalog fixture");
     }
     assert!(currents_protocol::command_digest(&body).is_err());
+}
+
+fn error_contracts() {
+    use currents_types::{EngineError, ErrorClass, SafeNextAction};
+    let vectors: Value = serde_json::from_str(&fixture("errors.json")).unwrap();
+    let schema: Value = serde_json::from_str(
+        &fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas/v1/contracts.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let expected = json!({
+        "type":"object", "additionalProperties":false,
+        "required":["class","affected_scope","next_action"],
+        "properties":{
+            "class":{"type":"string","enum":vectors["classes"]},
+            "affected_scope":{"type":"array","maxItems":16384,"items":{"type":"string","format":"uuid"}},
+            "next_action":{"type":"string","enum":vectors["next_actions"]}
+        }
+    });
+    assert_eq!(
+        schema["$defs"]["EngineError"], expected,
+        "public EngineError schema must exist and match the stable safe error contract"
+    );
+    use currents_types::schema::Schema;
+    assert_eq!(EngineError::schema(), expected);
+    assert_eq!(
+        SafeNextAction::schema(),
+        expected["properties"]["next_action"]
+    );
+    for value in vectors["classes"].as_array().unwrap() {
+        let class: ErrorClass = decode(&serde_json::to_vec(value).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(class).unwrap(), *value);
+    }
+    for value in vectors["next_actions"].as_array().unwrap() {
+        let action: SafeNextAction = decode(&serde_json::to_vec(value).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(action).unwrap(), *value);
+    }
+    for value in vectors["errors"].as_array().unwrap() {
+        let error: EngineError = decode(&serde_json::to_vec(value).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(&error).unwrap(), *value);
+        assert_eq!(
+            decode::<EngineError>(&canonical_bytes(&error).unwrap()).unwrap(),
+            error
+        );
+        for field in ["class", "affected_scope", "next_action"] {
+            let mut missing = value.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(decode::<EngineError>(&serde_json::to_vec(&missing).unwrap()).is_err());
+        }
+        for field in ["sql", "path", "capability", "diagnostic"] {
+            let mut unsafe_field = value.clone();
+            unsafe_field[field] = json!("SYNTHETIC-PRIVATE-CANARY");
+            assert!(decode::<EngineError>(&serde_json::to_vec(&unsafe_field).unwrap()).is_err());
+        }
+        for field in ["class", "next_action"] {
+            let mut unknown = value.clone();
+            unknown[field] = json!("future_unknown_semantics");
+            assert!(decode::<EngineError>(&serde_json::to_vec(&unknown).unwrap()).is_err());
+        }
+    }
 }

@@ -45623,6 +45623,57 @@
       ],
       "type": "object"
     },
+    "EngineError": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_scope": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 16384,
+          "type": "array"
+        },
+        "class": {
+          "enum": [
+            "unauthorized",
+            "locked",
+            "unsupported_version",
+            "stale_basis",
+            "invalid_reference",
+            "duplicate_recognition",
+            "allocation_conflict",
+            "unbalanced",
+            "precision_or_overflow",
+            "incomplete_basis",
+            "integrity_failure",
+            "storage_failure",
+            "canceled",
+            "result_unknown"
+          ],
+          "type": "string"
+        },
+        "next_action": {
+          "enum": [
+            "authenticate",
+            "unlock",
+            "upgrade",
+            "refresh_basis",
+            "correct_input",
+            "inspect_evidence",
+            "retry_same_command",
+            "recover"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "class",
+        "affected_scope",
+        "next_action"
+      ],
+      "type": "object"
+    },
     "ExplanationV1": {
       "additionalProperties": false,
       "properties": {

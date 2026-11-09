@@ -11,7 +11,7 @@ fn main() {
       "AuthoritativeRecordV1":AuthoritativeRecordV1::schema(), "DomainCommitV1":DomainCommitV1::schema(),
       "CommandBodyV1":CommandBodyV1::schema(), "CommandResultV1":CommandResultV1::schema(),
       "PreviewV1":PreviewV1::schema(), "QueryV1":QueryV1::schema(), "QueryResponseV1":QueryResponseV1::schema(),
-      "DecisionPlan":DecisionPlan::schema()
+      "DecisionPlan":DecisionPlan::schema(), "EngineError":EngineError::schema()
      }
     });
     println!("{}", serde_json::to_string_pretty(&schemas).unwrap());
