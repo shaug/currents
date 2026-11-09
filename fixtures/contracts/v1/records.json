@@ -1,0 +1,424 @@
+[
+  {
+    "kind": "Dataset",
+    "value": {
+      "commit_head": "1",
+      "format_versions": {
+        "canonical": 1,
+        "protocol": 1,
+        "records": 1
+      },
+      "household_timezone": {
+        "state": "Missing"
+      },
+      "id": "00000000-0000-0000-0000-000000000001",
+      "ownership_perimeter": [],
+      "policy_versions": {
+        "calendar": 1,
+        "query": 1,
+        "recognition": 1,
+        "selection": 1,
+        "timezone_data": "synthetic"
+      },
+      "reporting_currency": "00000000-0000-0000-0000-000000000001",
+      "unit_catalog": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "kind": "DatasetPolicy",
+    "value": {
+      "freshness_seconds": "1",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "opening_policy": "00000000-0000-0000-0000-000000000001",
+      "policies": {
+        "calendar": 1,
+        "query": 1,
+        "recognition": 1,
+        "selection": 1,
+        "timezone_data": "synthetic"
+      },
+      "source_precedence": [],
+      "version": 1,
+      "withholding_policy": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "kind": "UnitCatalog",
+    "value": {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "units": [],
+      "version": 1
+    }
+  },
+  {
+    "kind": "AccountComponent",
+    "value": {
+      "account_class": "Asset",
+      "account_id": "00000000-0000-0000-0000-000000000001",
+      "aliases": [],
+      "coverage": [],
+      "display_name": "synthetic",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "lifecycle": "Open",
+      "normal_sign": "Debit",
+      "opening_boundary": {
+        "state": "Missing"
+      },
+      "overlapping_components": [],
+      "ownership": {
+        "account_id": "00000000-0000-0000-0000-000000000001",
+        "denominator": "1",
+        "numerator": "1"
+      },
+      "unit_id": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "kind": "AccountAlias",
+    "value": {
+      "account_id": "00000000-0000-0000-0000-000000000001",
+      "alias": {
+        "original_id": "synthetic",
+        "source": {
+          "connection_id": "00000000-0000-0000-0000-000000000001",
+          "device_id": null,
+          "source": "synthetic"
+        }
+      },
+      "id": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "kind": "OwnershipPerimeter",
+    "value": {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "ownership": [],
+      "version": 1
+    }
+  },
+  {
+    "kind": "ImportReceipt",
+    "value": {
+      "adapter_version": "synthetic",
+      "complete": false,
+      "contents": [],
+      "cursor": {
+        "state": "Missing"
+      },
+      "id": "00000000-0000-0000-0000-000000000001",
+      "parser_version": "synthetic",
+      "received_time": "2026-11-09T12:00:00Z",
+      "reported_coverage": [],
+      "requested_coverage": [],
+      "result": "Complete",
+      "source": {
+        "connection_id": "00000000-0000-0000-0000-000000000001",
+        "device_id": null,
+        "source": "synthetic"
+      },
+      "truncated": false
+    }
+  },
+  {
+    "kind": "ObservationVersion",
+    "value": {
+      "content_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "original_ids": [],
+      "prior_version": null,
+      "reported_fields": [],
+      "sanitized_representation": "synthetic",
+      "semantic_kind": "Movement",
+      "source": {
+        "connection_id": "00000000-0000-0000-0000-000000000001",
+        "device_id": null,
+        "source": "synthetic"
+      },
+      "temporal": {
+        "civil": "2026-11-09",
+        "kind": "Date",
+        "original_text": "synthetic"
+      },
+      "tombstone_of": null
+    }
+  },
+  {
+    "kind": "ParseProduct",
+    "value": {
+      "facets": [],
+      "parser_id": "synthetic",
+      "parser_version": "synthetic",
+      "source_version_id": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "kind": "FinancialEvent",
+    "value": {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "interpretation": {
+        "state": "Missing"
+      },
+      "legs": [],
+      "relationships": []
+    }
+  },
+  {
+    "kind": "FinancialLeg",
+    "value": {
+      "account_id": "00000000-0000-0000-0000-000000000001",
+      "allocations": [],
+      "effective": {
+        "civil": "2026-11-09",
+        "kind": "Date",
+        "original_text": "synthetic"
+      },
+      "event_id": "00000000-0000-0000-0000-000000000001",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "interpretation": {
+        "state": "Missing"
+      },
+      "movement": {
+        "coefficient": "1",
+        "scale": 1,
+        "unit_id": "00000000-0000-0000-0000-000000000001"
+      },
+      "posting": {
+        "civil": "2026-11-09",
+        "kind": "Date",
+        "original_text": "synthetic"
+      },
+      "relationships": [],
+      "unresolved_residual": {
+        "state": "Missing"
+      }
+    }
+  },
+  {
+    "kind": "Association",
+    "value": {
+      "allocations": [],
+      "corrections": [],
+      "id": "00000000-0000-0000-0000-000000000001",
+      "kind": "Lifecycle",
+      "legs": [],
+      "reason": "synthetic",
+      "survivor": null
+    }
+  },
+  {
+    "kind": "Allocation",
+    "value": {
+      "amount": {
+        "coefficient": "1",
+        "scale": 1,
+        "unit_id": "00000000-0000-0000-0000-000000000001"
+      },
+      "facet": "00000000-0000-0000-0000-000000000001",
+      "observation": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "kind": "Decision",
+    "value": {
+      "actor": "00000000-0000-0000-0000-000000000001",
+      "adopted_result": [],
+      "authority": "Owner",
+      "command_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "command_id": "00000000-0000-0000-0000-000000000001",
+      "commit": "1",
+      "corrections": [],
+      "decision_type": "Interpretation",
+      "grant_id": null,
+      "id": "00000000-0000-0000-0000-000000000001",
+      "item_position": 1,
+      "policy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "version": 1
+      },
+      "recorded_time": "2026-11-09T12:00:00Z",
+      "references": [],
+      "schema_version": 1,
+      "supersedes": []
+    }
+  },
+  {
+    "kind": "Recognition",
+    "value": {
+      "bookkeeping_date": {
+        "civil": "2026-11-09",
+        "kind": "Date",
+        "original_text": "synthetic"
+      },
+      "date_policy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "version": 1
+      },
+      "evidence_allocations": [],
+      "id": "00000000-0000-0000-0000-000000000001",
+      "kind": "Activity",
+      "leg_ids": [],
+      "lineage": "00000000-0000-0000-0000-000000000001",
+      "postings": [],
+      "scope": {
+        "basis": "Effective",
+        "end": "2026-11-09",
+        "start": "2026-11-09"
+      }
+    }
+  },
+  {
+    "kind": "AccountingSegment",
+    "value": {
+      "approved_accounts": [],
+      "component": "00000000-0000-0000-0000-000000000001",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "included_activity": [],
+      "opening": "00000000-0000-0000-0000-000000000001",
+      "prior_segment": null,
+      "replacement_closure": [],
+      "residual_disposition": {
+        "state": "Missing"
+      }
+    }
+  },
+  {
+    "kind": "ReconciliationClaim",
+    "value": {
+      "comparison_type": "synthetic",
+      "cutoffs": {
+        "basis": "Effective",
+        "end": "2026-11-09",
+        "start": "2026-11-09"
+      },
+      "decision_dependencies": [],
+      "dependency_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "differences": [],
+      "evidence_dependencies": [],
+      "exclusions": [],
+      "id": "00000000-0000-0000-0000-000000000001",
+      "matched_allocations": [],
+      "reason": "synthetic",
+      "scope": [],
+      "status": "Unassessed"
+    }
+  },
+  {
+    "kind": "Organization",
+    "value": {
+      "allocations": [],
+      "id": "00000000-0000-0000-0000-000000000001",
+      "kind": "Party",
+      "parent": null,
+      "supersedes": null,
+      "targets": [],
+      "text": "synthetic",
+      "version": 1
+    }
+  },
+  {
+    "kind": "Rule",
+    "value": {
+      "accounts": [],
+      "conditions": [],
+      "grant_id": "00000000-0000-0000-0000-000000000001",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "operation_kinds": [],
+      "revoked": false,
+      "version": 1
+    }
+  },
+  {
+    "kind": "Review",
+    "value": {
+      "disposition": "Unreviewed",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "reason": "synthetic",
+      "targets": []
+    }
+  },
+  {
+    "kind": "Commitment",
+    "value": {
+      "account_id": "00000000-0000-0000-0000-000000000001",
+      "amount": {
+        "state": "Missing"
+      },
+      "assumptions": [],
+      "calendar_version": 1,
+      "effective_scope": {
+        "basis": "Effective",
+        "end": "2026-11-09",
+        "start": "2026-11-09"
+      },
+      "evidence": [],
+      "id": "00000000-0000-0000-0000-000000000001",
+      "schedule": "synthetic",
+      "timezone": "synthetic",
+      "timezone_data_version": "synthetic",
+      "version": 1
+    }
+  },
+  {
+    "kind": "OccurrenceMatch",
+    "value": {
+      "allocated": {
+        "coefficient": "1",
+        "scale": 1,
+        "unit_id": "00000000-0000-0000-0000-000000000001"
+      },
+      "commitment_id": "00000000-0000-0000-0000-000000000001",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "kind": "Manual",
+      "legs": [],
+      "occurrence_id": "00000000-0000-0000-0000-000000000001",
+      "reason": "synthetic"
+    }
+  },
+  {
+    "kind": "Scenario",
+    "value": {
+      "assumptions": [],
+      "basis": {
+        "dataset_id": "00000000-0000-0000-0000-000000000001",
+        "effective_scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        },
+        "evaluation_instant": "2026-11-09T12:00:00Z",
+        "query_semantics_version": 1,
+        "selection_policy_version": 1,
+        "through_commit": "1",
+        "unit_catalog_version": 1
+      },
+      "commitments": [],
+      "id": "00000000-0000-0000-0000-000000000001",
+      "version": 1
+    }
+  },
+  {
+    "kind": "ForecastRun",
+    "value": {
+      "assumptions": [],
+      "basis": {
+        "dataset_id": "00000000-0000-0000-0000-000000000001",
+        "effective_scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        },
+        "evaluation_instant": "2026-11-09T12:00:00Z",
+        "query_semantics_version": 1,
+        "selection_policy_version": 1,
+        "through_commit": "1",
+        "unit_catalog_version": 1
+      },
+      "id": "00000000-0000-0000-0000-000000000001",
+      "input_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "inputs": [],
+      "outputs": [],
+      "scenario": "00000000-0000-0000-0000-000000000001",
+      "semantics_version": 1
+    }
+  }
+]

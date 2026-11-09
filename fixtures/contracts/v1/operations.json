@@ -1,0 +1,524 @@
+[
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SetAccountCatalog",
+      "value": {
+        "account_class": "Asset",
+        "account_id": "00000000-0000-0000-0000-000000000001",
+        "aliases": [],
+        "component_id": "00000000-0000-0000-0000-000000000001",
+        "display_name": "synthetic",
+        "lifecycle": "Open",
+        "normal_sign": "Debit",
+        "unit_id": "00000000-0000-0000-0000-000000000001"
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SetDatasetPolicy",
+      "value": {
+        "policy": {
+          "freshness_seconds": "1",
+          "id": "00000000-0000-0000-0000-000000000001",
+          "opening_policy": "00000000-0000-0000-0000-000000000001",
+          "policies": {
+            "calendar": 1,
+            "query": 1,
+            "recognition": 1,
+            "selection": 1,
+            "timezone_data": "synthetic"
+          },
+          "source_precedence": [],
+          "version": 1,
+          "withholding_policy": "00000000-0000-0000-0000-000000000001"
+        }
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "RecordManualPosition",
+      "value": {
+        "account_id": "00000000-0000-0000-0000-000000000001",
+        "amount": {
+          "coefficient": "1",
+          "scale": 1,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "as_of": {
+          "civil": "2026-11-09",
+          "kind": "Date",
+          "original_text": "synthetic"
+        },
+        "coverage": {
+          "scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "status": "Complete"
+        },
+        "reason": "synthetic",
+        "source": "synthetic"
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "RecordLoanPayment",
+      "value": {
+        "account_id": "00000000-0000-0000-0000-000000000001",
+        "cash_account_id": "00000000-0000-0000-0000-000000000001",
+        "effective": {
+          "civil": "2026-11-09",
+          "kind": "Date",
+          "original_text": "synthetic"
+        },
+        "evidence": [],
+        "fees": [],
+        "interest": {
+          "coefficient": "1",
+          "scale": 1,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "posting": {
+          "civil": "2026-11-09",
+          "kind": "Date",
+          "original_text": "synthetic"
+        },
+        "principal": {
+          "coefficient": "1",
+          "scale": 1,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        }
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "PublishImport",
+      "value": {
+        "checkpoint": {
+          "state": "Missing"
+        },
+        "receipt": "00000000-0000-0000-0000-000000000001",
+        "staged_batch_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "AdoptInterpretation",
+      "value": {
+        "interpretation": {
+          "authority": "Owner",
+          "evidence": [],
+          "kind": "Interpretation",
+          "reason": "synthetic"
+        },
+        "targets": []
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SetOrganization",
+      "value": {
+        "allocations": [],
+        "id": "00000000-0000-0000-0000-000000000001",
+        "kind": "Party",
+        "parent": null,
+        "supersedes": null,
+        "targets": [],
+        "text": "synthetic",
+        "version": 1
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SetReviewDisposition",
+      "value": {
+        "disposition": "Unreviewed",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "reason": "synthetic",
+        "targets": []
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "Recognize",
+      "value": {
+        "authority_basis": {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "version": 1
+        },
+        "facet_allocations": [],
+        "interpretation": {
+          "authority": "Owner",
+          "evidence": [],
+          "kind": "Interpretation",
+          "reason": "synthetic"
+        },
+        "leg_ids": [],
+        "native_dates": [],
+        "postings": []
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "CorrectRecognition",
+      "value": {
+        "active_recognition": "00000000-0000-0000-0000-000000000001",
+        "reason": "synthetic",
+        "remapping": [],
+        "replacement": []
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "ReplaceAccountingSegment",
+      "value": {
+        "approved_accounts": [],
+        "component": "00000000-0000-0000-0000-000000000001",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "included_activity": [],
+        "opening": "00000000-0000-0000-0000-000000000001",
+        "prior_segment": null,
+        "replacement_closure": [],
+        "residual_disposition": {
+          "state": "Missing"
+        }
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "AssociateLegs",
+      "value": {
+        "allocations": [],
+        "corrections": [],
+        "id": "00000000-0000-0000-0000-000000000001",
+        "kind": "Lifecycle",
+        "legs": [],
+        "reason": "synthetic",
+        "survivor": null
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "EvaluateReconciliation",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "claim": "00000000-0000-0000-0000-000000000001",
+        "dependency_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "ConfirmReconciliation",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "claim": "00000000-0000-0000-0000-000000000001",
+        "dependency_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SetCommitment",
+      "value": {
+        "account_id": "00000000-0000-0000-0000-000000000001",
+        "amount": {
+          "state": "Missing"
+        },
+        "assumptions": [],
+        "calendar_version": 1,
+        "effective_scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        },
+        "evidence": [],
+        "id": "00000000-0000-0000-0000-000000000001",
+        "schedule": "synthetic",
+        "timezone": "synthetic",
+        "timezone_data_version": "synthetic",
+        "version": 1
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SetOccurrenceMatch",
+      "value": {
+        "allocated": {
+          "coefficient": "1",
+          "scale": 1,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "commitment_id": "00000000-0000-0000-0000-000000000001",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "kind": "Manual",
+        "legs": [],
+        "occurrence_id": "00000000-0000-0000-0000-000000000001",
+        "reason": "synthetic"
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "SaveForecast",
+      "value": {
+        "assumptions": [],
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "input_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+        "inputs": [],
+        "outputs": [],
+        "scenario": "00000000-0000-0000-0000-000000000001",
+        "semantics_version": 1
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "Export",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "destination_handle": null,
+        "target_version": null
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "Backup",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "destination_handle": null,
+        "target_version": null
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "Verify",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "destination_handle": null,
+        "target_version": null
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "Rebuild",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "destination_handle": null,
+        "target_version": null
+      }
+    },
+    "protocol_version": 1
+  },
+  {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "1",
+    "operation": {
+      "kind": "Migrate",
+      "value": {
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "destination_handle": null,
+        "target_version": null
+      }
+    },
+    "protocol_version": 1
+  }
+]

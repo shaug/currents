@@ -1,0 +1,119 @@
+{
+  "ReadBasis": {
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "effective_scope": {
+      "basis": "Effective",
+      "end": "2026-11-09",
+      "start": "2026-11-09"
+    },
+    "evaluation_instant": "2026-11-09T12:00:00Z",
+    "query_semantics_version": 1,
+    "selection_policy_version": 1,
+    "through_commit": "1",
+    "unit_catalog_version": 1
+  },
+  "DomainCommitV1": {
+    "command_result": {
+      "command_id": "00000000-0000-0000-0000-000000000001",
+      "commit": null,
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "effects": {
+        "accounts": [],
+        "amounts": [],
+        "invalidations": [],
+        "records": []
+      },
+      "health": [],
+      "state": "Committed"
+    },
+    "decisions": [],
+    "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "native_head_after": {
+      "checkpoint": "0000000000000000000000000000000000000000000000000000000000000000",
+      "semantics_version": 1
+    },
+    "previous_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "records": [],
+    "seq": "1"
+  },
+  "CommandResultV1": {
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "commit": null,
+    "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "effects": {
+      "accounts": [],
+      "amounts": [],
+      "invalidations": [],
+      "records": []
+    },
+    "health": [],
+    "state": "Committed"
+  },
+  "PreviewV1": {
+    "approval_scope": {
+      "accounts": [],
+      "fields": [],
+      "operation": "Interpretation"
+    },
+    "closure_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "effects": {
+      "accounts": [],
+      "amounts": [],
+      "invalidations": [],
+      "records": []
+    },
+    "expected_head": "1",
+    "warnings": []
+  },
+  "QueryV1": {
+    "accounts": [],
+    "basis": {
+      "dataset_id": "00000000-0000-0000-0000-000000000001",
+      "effective_scope": {
+        "basis": "Effective",
+        "end": "2026-11-09",
+        "start": "2026-11-09"
+      },
+      "evaluation_instant": "2026-11-09T12:00:00Z",
+      "query_semantics_version": 1,
+      "selection_policy_version": 1,
+      "through_commit": "1",
+      "unit_catalog_version": 1
+    },
+    "kind": "QueryPosition",
+    "records": []
+  },
+  "QueryResponseV1": {
+    "basis": {
+      "dataset_id": "00000000-0000-0000-0000-000000000001",
+      "effective_scope": {
+        "basis": "Effective",
+        "end": "2026-11-09",
+        "start": "2026-11-09"
+      },
+      "evaluation_instant": "2026-11-09T12:00:00Z",
+      "query_semantics_version": 1,
+      "selection_policy_version": 1,
+      "through_commit": "1",
+      "unit_catalog_version": 1
+    },
+    "health": [],
+    "output": {
+      "kind": "Position",
+      "value": []
+    },
+    "processed_head": "1"
+  },
+  "DecisionPlan": {
+    "accounting": {
+      "kind": "MetadataDeclaration",
+      "value": {
+        "accounts": [],
+        "units": []
+      }
+    },
+    "invalidations": [],
+    "records": []
+  }
+}
