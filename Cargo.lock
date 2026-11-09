@@ -468,6 +468,7 @@ dependencies = [
  "currents-planning",
  "currents-storage",
  "currents-types",
+ "serde_json",
  "tokio",
  "tracing",
 ]

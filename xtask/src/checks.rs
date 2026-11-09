@@ -29,7 +29,7 @@ const MEMBERS: &[&str] = &[
 ];
 const ASSERTIONS: &[&str] = &["cur_001_1", "cur_001_2", "cur_001_3", "cur_001_4"];
 
-fn root() -> PathBuf {
+pub(crate) fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -69,7 +69,7 @@ fn checked(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> R
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
-fn cargo(args: &[&str]) -> Result<String> {
+pub(crate) fn cargo(args: &[&str]) -> Result<String> {
     checked(Path::new("cargo"), args, &root(), None)
 }
 fn read_json(path: &Path) -> Result<Value> {
@@ -321,6 +321,9 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-047" {
+        return crate::readiness::qualify();
+    }
     if name == "CUR-005" {
         let assertions = ["cur_005_1", "cur_005_2", "cur_005_3", "cur_005_4"];
         let list = cargo(&[
@@ -495,6 +498,9 @@ fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
         .ok_or_else(|| format!("missing {name} value"))
 }
 pub fn run(args: Vec<String>) -> Result<()> {
+    if args == ["household-readiness"] {
+        return crate::readiness::inspect_stdin();
+    }
     let command = args.first().map(String::as_str).unwrap_or("");
     let gate = args.get(1).map(String::as_str).unwrap_or("");
     for (program, version_args) in [
@@ -509,6 +515,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
         ("qualify","workspace")=>workspace(),
+        ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
         ("qualify","pin-inventory")=>inventory(&option(&args,"--inventory")?.unwrap_or(root().join("tools/versions.lock.json")), option(&args,"--artifact-root")?.as_deref()),
