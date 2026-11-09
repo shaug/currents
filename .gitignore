@@ -19,3 +19,6 @@
 *.db-*
 *.key
 *.pem
+
+# Python documentation tooling cache
+__pycache__/

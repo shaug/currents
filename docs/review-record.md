@@ -1,4 +1,4 @@
-# Currents design and implementation-plan review record
+# Currents design and implementation review record
 
 Date: 2026-11-09 UTC. Scope: documentation and source-backed feasibility review, not application implementation or production qualification.
 
@@ -41,9 +41,9 @@ No production Rust workspace or application was built in this documentation task
 
 Review convergence does not waive these gates. Any failed gate that changes the selected contract requires a documented design revision and renewed review.
 
-## Implementation plan
+## Historical implementation-plan review (2026-11-09)
 
-Reviewed artifacts: [implementation-plan.md](implementation-plan.md), [shared contracts](planning/contracts.md), [dependency decisions](planning/dependencies.md), and the [issue manifest](planning/manifest.json).
+Reviewed artifacts: the implementation plan (retired from the current tree; retained in Git history), [shared contracts](planning/contracts.md), [dependency decisions](planning/dependencies.md), and the [issue manifest](planning/manifest.json).
 
 Converged implementation-plan SHA-256: `11c2fe49ae78fcb993c7919c068ae1d2f0f971ea508917e067769769aaa50669`.
 
@@ -67,7 +67,7 @@ The separate plan underwent two independent adversarial tracks: implementation c
 
 The iOS transfer-only Rust/Swift component has explicit device/simulator builds, encrypted-container interoperability and restricted authority. Its chosen provisioning, entitlement, real-device installation/update and distribution route are separate from Mac notarization. These are future qualification obligations, not passed platform results.
 
-### Validation actually run
+### Validation actually run at review closure (2026-11-09)
 
 - 58 implementation/qualification tickets, 9 epic issues, 7 milestones and 14 label definitions.
 - 100 mapped requirement records, 222 valid acyclic hard-dependency edges and exactly one epic membership per ticket.
@@ -81,4 +81,8 @@ Run `python3 docs/planning/validate.py` to repeat the structural checks. They do
 
 ### Completion boundary at review closure
 
-The local design, separate implementation plan, reviews and complete proposed GitHub payloads are ready. No application implementation, dependency installation, live financial access, signing, production qualification or application release was performed. At review closure, GitHub publication was pending confirmation of the repository target, visibility and publication scope. Publication was subsequently authorized and completed; the [publication receipt](planning/publication.md) records the verified remote objects and mapping. That publication does not change the reviewed design/plan hashes or pass an implementation gate.
+At review closure, the local design, separate implementation plan, reviews and complete proposed GitHub payloads were ready. No application implementation, dependency installation, live financial access, signing, production qualification or application release was performed. At review closure, GitHub publication was pending confirmation of the repository target, visibility and publication scope. Publication was subsequently authorized and verified on 2026-11-09 at 12:19:31 UTC against source commit `980cb30687c91df13ab9027a28d9d3a7c9ef6ae2`: 67 complete issue bodies, 58 native parent-child links and 222 native blocked-by dependencies. The dated receipt and mapping are retained in Git history. That publication does not change the reviewed design/plan hashes or pass an implementation gate.
+
+## Documentation consolidation (2026-11-09)
+
+The implementation plan, publication receipt and redundant mapping were retired from the current tree. Their hashes and review facts above describe historical artifacts, not current document dependencies. Durable cross-ticket guidance now lives in the [engineering guide](engineering-guide.md). [GitHub issues](https://github.com/shaug/currents/issues), parents, dependencies and milestones own current work state. The [reviewed source package](planning/README.md), exact shared contracts, dependency decisions, requirement coverage and all acceptance assertions remain available. No application or production qualification gate is passed by this consolidation.

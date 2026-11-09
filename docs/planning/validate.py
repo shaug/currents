@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Validate local documentation payloads only. No network or GitHub mutation."""
 import json,pathlib,re,sys,hashlib
+from render import render_bodies
+from urllib.parse import unquote, urlsplit
 ROOT=pathlib.Path(__file__).resolve().parent
 REPO=ROOT.parent.parent
 m=json.loads((ROOT/'manifest.json').read_text()); errors=[]
@@ -54,20 +56,55 @@ for t in ids.values():
     for r in t['requirements']:check(r in coverage and t['id'] in coverage[r]['ticket_ids'],f"Bad forward coverage {t['id']} {r}")
 for r in [f'S{i}' for i in range(1,13)]+[f'CINV-{i:02}' for i in range(1,19)]+[f'C-SECTION{i}' for i in [1,3,4,5,6,7,8]]+['C-PREAMBLE']:
     check(r in coverage,f'Missing required coverage {r}')
-check(hashlib.sha256((ROOT.parent/'technical-design.md').read_bytes()).hexdigest()==m['design_sha256'],'Design changed; revalidate plan')
+check(hashlib.sha256((ROOT.parent/'technical-design.md').read_bytes()).hexdigest()==m['design_sha256'],'Design changed; revalidate reviewed baseline')
 contracts=(ROOT/'contracts.md').read_text()
 for t in ids.values():
     for c in t['contracts']:check(f'id="{c.lower()}"' in contracts,f"Unknown contract {c}")
-files=[ROOT.parent/'implementation-plan.md']+list(ROOT.rglob('*.md'))
+# Compare in memory: validation must never repair unreviewed body drift.
+for relative_path, expected in render_bodies(m).items():
+    body = ROOT / relative_path
+    check(body.is_file(), f'Missing rendered body {relative_path}')
+    if body.is_file():
+        check(body.read_text() == expected, f'Rendered body differs: {relative_path}; regenerate and review')
+retired_names = (
+    'docs/implementation-plan.md', 'docs/planning/publication.md',
+    'docs/planning/publication-map.json')
+retired = {REPO / name for name in retired_names}
+
+
+def retired_github_dependency(destination):
+    """Reject current repo references, but allow explicit historical commit links."""
+    url = urlsplit(destination)
+    path = unquote(url.path)
+    if url.hostname == 'github.com':
+        match = re.match(r'/shaug/currents/(?:blob|raw)/(.+)$', path, re.I)
+    elif url.hostname == 'raw.githubusercontent.com':
+        match = re.match(r'/shaug/currents/(.+)$', path, re.I)
+    else:
+        return False
+    if not match:
+        return False
+    reference_path = match.group(1)
+    for name in retired_names:
+        suffix = '/' + name
+        if reference_path.endswith(suffix):
+            reference = reference_path[:-len(suffix)]
+            return re.fullmatch(r'[0-9a-fA-F]{40}', reference) is None
+    return False
+
+files = [REPO / 'README.md'] + sorted((REPO / 'docs').rglob('*.md'))
 links=0
 for f in files:
     text=f.read_text()
     for bad in ['/Users/','chatgpt.com/c/','Sentinel_','currents-design-plan-2026','/tmp/']:
         check(bad not in text,f'Private material marker {bad} in {f.relative_to(REPO)}')
     for dest in re.findall(r'\]\(([^)]+)\)',text):
-        if re.match(r'https?://',dest):continue
+        if re.match(r'https?://',dest):
+            check(not retired_github_dependency(dest), f'Retired document dependency {f.relative_to(REPO)} -> {dest}')
+            continue
         filepart,_,anchor=dest.partition('#')
         target=(f.parent/filepart).resolve() if filepart else f
+        check(target not in retired, f'Retired document dependency {f.relative_to(REPO)} -> {dest}')
         check(target.exists(),f'Broken local link {f.relative_to(REPO)} -> {dest}')
         if anchor and target.exists():
             content=target.read_text()
@@ -79,6 +116,6 @@ check(m['repository'] is None and not m['publication']['authorized'],'Unexpected
 for t in ids.values():check(not any(k in t for k in ['assignee','due_date','repository','github_number']),'Invented remote identity')
 if errors:
     print('\n'.join('ERROR: '+x for x in errors));sys.exit(1)
-print(f"PASS: {len(ids)} tickets; {len(epics)} epics; {len(milestones)} milestones; {len(labels)} labels; {len(coverage)} fully mapped requirements; {sum(len(t['depends_on']) for t in ids.values())} acyclic hard dependency edges; {links} local links/anchors; package/test paths consistent; public-material scan clean; design hash matches.")
+print(f"PASS: {len(ids)} tickets; {len(epics)} epics; {len(milestones)} milestones; {len(labels)} labels; {len(coverage)} fully mapped requirements; {sum(len(t['depends_on']) for t in ids.values())} acyclic hard dependency edges; {links} local links/anchors; rendered bodies match; package/test paths consistent; public-material scan clean; design hash matches.")
 print('Topological order: '+', '.join(order))
 print('Not performed: application tests, HTTP reachability checks, production qualification or GitHub publication.')
