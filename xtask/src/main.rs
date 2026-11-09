@@ -1,4 +1,5 @@
 mod checks;
+mod native;
 mod report;
 
 fn main() {

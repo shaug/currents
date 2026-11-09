@@ -45,7 +45,12 @@ fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Re
         .output()
         .map_err(|e| format!("BLOCKED: {}: {e}", program.display()))
 }
-fn checked(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Result<String> {
+pub(crate) fn checked(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    rustc: Option<&Path>,
+) -> Result<String> {
     let out = output(program, args, cwd, rustc)?;
     crate::report::record(program, args, cwd, rustc, &out);
     let evidence_dir = root().join("target/qualification");
@@ -441,6 +446,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
         ("qualify","workspace")=>workspace(),
+        ("qualify","native-platform")=>crate::native::qualify(&root()),
         ("qualify","native-source")=>native_source(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
         ("qualify","pin-inventory")=>inventory(&option(&args,"--inventory")?.unwrap_or(root().join("tools/versions.lock.json")), option(&args,"--artifact-root")?.as_deref()),
