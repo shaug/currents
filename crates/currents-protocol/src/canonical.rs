@@ -33,35 +33,6 @@ impl Write for Bounded {
         Ok(())
     }
 }
-fn check(
-    value: &serde_json::Value,
-    depth: usize,
-    limits: CanonicalLimits,
-) -> Result<(), EngineError> {
-    if depth > MAX_DEPTH {
-        return Err(EngineError::invalid());
-    }
-    match value {
-        serde_json::Value::Array(a) => {
-            if a.len() > limits.max_collection_items {
-                return Err(EngineError::invalid());
-            }
-            for v in a {
-                check(v, depth + 1, limits)?;
-            }
-        }
-        serde_json::Value::Object(m) => {
-            if m.len() > limits.max_collection_items {
-                return Err(EngineError::invalid());
-            }
-            for v in m.values() {
-                check(v, depth + 1, limits)?;
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
 /// Pure bounded decode. Errors never contain serde's input snippets or caller values.
 pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, EngineError> {
     let value = parse(bytes, MESSAGE_LIMITS)?;
@@ -104,7 +75,6 @@ fn parse(bytes: &[u8], limits: CanonicalLimits) -> Result<serde_json::Value, Eng
         .map_err(|_| EngineError::invalid())?
         .0;
     deserializer.end().map_err(|_| EngineError::invalid())?;
-    check(&value, 0, limits)?;
     Ok(value)
 }
 pub fn canonical_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, EngineError> {

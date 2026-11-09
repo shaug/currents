@@ -19,6 +19,7 @@ fn cur_002_2() {
     specified_commands();
     strict_bounds();
     error_contracts();
+    canonical_boundary_limits();
 }
 #[test]
 fn cur_002_3() {
@@ -479,4 +480,53 @@ fn error_contracts() {
             assert!(decode::<EngineError>(&serde_json::to_vec(&unknown).unwrap()).is_err());
         }
     }
+}
+
+fn canonical_boundary_limits() {
+    use currents_protocol::{
+        CanonicalLimits, MAX_COLLECTION_ITEMS, MAX_DEPTH, canonical_bytes_with_limits,
+    };
+    // Structural depth counts containers, not delimiter characters inside strings.
+    for depth in [MAX_DEPTH, MAX_DEPTH + 1] {
+        for (open, close) in [("[", "]"), ("{\"child\":", "}")] {
+            let wire = format!("{}0{}", open.repeat(depth), close.repeat(depth));
+            let value: Value = serde_json::from_str(&wire).unwrap();
+            assert_eq!(decode::<Value>(wire.as_bytes()).is_ok(), depth == MAX_DEPTH);
+            assert_eq!(canonical_bytes(&value).is_ok(), depth == MAX_DEPTH);
+        }
+    }
+    assert!(decode::<Value>(br#"{"text":"[[[{{{\"\\"}"#).is_ok());
+    for count in [MAX_COLLECTION_ITEMS, MAX_COLLECTION_ITEMS + 1] {
+        let array = json!(vec![0; count]);
+        let map = Value::Object((0..count).map(|i| (i.to_string(), json!(0))).collect());
+        for value in [array, map] {
+            let wire = serde_json::to_vec(&value).unwrap();
+            assert!(wire.len() < MAX_MESSAGE_BYTES);
+            assert_eq!(
+                decode::<Value>(&wire).is_ok(),
+                count == MAX_COLLECTION_ITEMS
+            );
+            assert_eq!(
+                canonical_bytes(&value).is_ok(),
+                count == MAX_COLLECTION_ITEMS
+            );
+        }
+    }
+    for limit in [0, 2] {
+        let limits = CanonicalLimits {
+            max_bytes: MAX_MESSAGE_BYTES,
+            max_collection_items: limit,
+        };
+        for count in [limit, limit + 1] {
+            let array = json!(vec![0; count]);
+            let map = Value::Object((0..count).map(|i| (i.to_string(), json!(0))).collect());
+            for value in [array, map] {
+                assert_eq!(
+                    canonical_bytes_with_limits(&value, limits).is_ok(),
+                    count == limit
+                );
+            }
+        }
+    }
+    assert!(decode::<Value>(br#"{"duplicate":0,"duplicate":1}"#).is_err());
 }
