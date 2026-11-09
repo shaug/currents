@@ -101,7 +101,42 @@
     "health": [],
     "output": {
       "kind": "Position",
-      "value": []
+      "value": {
+        "aggregate": {
+          "kind": "Exact",
+          "value": {
+            "coefficient": "1",
+            "scale": 1,
+            "unit_id": "00000000-0000-0000-0000-000000000001"
+          }
+        },
+        "anchored_balance": [],
+        "assertions": [],
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "effective_scope": {
+            "basis": "Effective",
+            "end": "2026-11-09",
+            "start": "2026-11-09"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "through_commit": "1",
+          "unit_catalog_version": 1
+        },
+        "coverage": [],
+        "discrepancies": [],
+        "freshness": [],
+        "missing_inputs": [],
+        "movements": [],
+        "pending": [],
+        "scope": {
+          "accounts": [],
+          "components": []
+        },
+        "selected_basis": []
+      }
     },
     "processed_head": "1"
   },

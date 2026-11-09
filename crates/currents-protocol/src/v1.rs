@@ -1,4 +1,5 @@
 //! Stable command bodies never contain live authorization or accepted identities/times.
+pub use currents_types::contracts::*;
 use currents_types::{schema::Schema, *};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,30 +22,8 @@ impl Schema for ProtocolVersion {
         serde_json::json!({"const":1})
     }
 }
-dto!(SetAccountCatalogV1 { account_id:AccountId, component_id:RecordId, account_class:AccountClass, unit_id:UnitId, normal_sign:NormalSign, aliases:Vec<SourceAliasV1>, lifecycle:Lifecycle, display_name:String });
-dto!(SetDatasetPolicyV1 {
-    policy: DatasetPolicyV1
-});
-dto!(ManualPositionV1 {
-    account_id: AccountId,
-    amount: Amount,
-    as_of: TemporalValue,
-    source: String,
-    coverage: CoverageV1,
-    reason: String
-});
-dto!(LoanPaymentV1 { account_id:AccountId, cash_account_id:AccountId, principal:Amount, interest:Amount, fees:Vec<Amount>, effective:TemporalValue, posting:TemporalValue, evidence:Vec<RecordId> });
-dto!(PublishImportV1 { staged_batch_digest:Digest, receipt:RecordId, checkpoint:SourceValue<String> });
-dto!(AdoptInterpretationV1 { targets:Vec<RecordId>, interpretation:InterpretationV1 });
-dto!(RecognitionRequestV1 { leg_ids:Vec<LegId>, facet_allocations:Vec<EvidenceAllocationV1>, postings:Vec<PostingV1>, native_dates:Vec<TemporalValue>, interpretation:InterpretationV1, authority_basis:PolicyReferenceV1 });
-dto!(ReconciliationRequestV1 {
-    claim: RecordId,
-    basis: ReadBasis,
-    dependency_digest: Digest
-});
-dto!(MaintenanceV1 { basis:ReadBasis, destination_handle:Option<RecordId>, target_version:Option<u32> });
 tagged!(OperationV1 {
- SetAccountCatalog(SetAccountCatalogV1), SetDatasetPolicy(SetDatasetPolicyV1), RecordManualPosition(ManualPositionV1), RecordLoanPayment(LoanPaymentV1), PublishImport(PublishImportV1), AdoptInterpretation(AdoptInterpretationV1), SetOrganization(OrganizationRecordV1), SetReviewDisposition(ReviewRecordV1), Recognize(RecognitionRequestV1), CorrectRecognition(CorrectionV1), ReplaceAccountingSegment(AccountingSegmentV1), AssociateLegs(AssociationV1), EvaluateReconciliation(ReconciliationRequestV1), ConfirmReconciliation(ReconciliationRequestV1), SetCommitment(CommitmentV1), SetOccurrenceMatch(OccurrenceMatchV1), SaveForecast(ForecastRunV1), Export(MaintenanceV1), Backup(MaintenanceV1), Verify(MaintenanceV1), Rebuild(MaintenanceV1), Migrate(MaintenanceV1)
+ SetAccountCatalog(SetAccountCatalogV1), SetDatasetPolicy(SetDatasetPolicyV1), RecordManualPosition(ManualPositionV1), RecordLoanPayment(LoanPaymentV1), PublishImport(PublishImportV1), AdoptInterpretation(AdoptInterpretationV1), SetOrganization(OrganizationRequestV1), SetReviewDisposition(ReviewDispositionV1), Recognize(RecognitionRequestV1), CorrectRecognition(CorrectionRequestV1), ReplaceAccountingSegment(SegmentRequestV1), AssociateLegs(AssociationRequestV1), EvaluateReconciliation(ReconciliationRequestV1), ConfirmReconciliation(ConfirmReconciliationV1), SetCommitment(CommitmentV1), SetOccurrenceMatch(OccurrenceMatchV1), SaveForecast(ForecastRunV1), Export(MaintenanceV1), Backup(MaintenanceV1), Verify(MaintenanceV1), Rebuild(MaintenanceV1), Migrate(MaintenanceV1)
 });
 dto!(CommandBodyV1 {
     protocol_version: ProtocolVersion,
@@ -94,7 +73,7 @@ choices!(QueryKindV1 {
 dto!(QueryV1 { kind:QueryKindV1, basis:ReadBasis, accounts:Vec<AccountId>, records:Vec<RecordId> });
 dto!(ApprovalScopeV1 { accounts:Vec<AccountId>, operation:DecisionKind, fields:Vec<String> });
 dto!(PreviewV1 { digest:Digest, expected_head:CommitSeq, effects:EffectsV1, warnings:Vec<ErrorClass>, approval_scope:ApprovalScopeV1, closure_digest:Digest });
-tagged!(QueryOutputV1 { Position(Vec<ManualPositionV1>), History(Vec<AuthoritativeRecordV1>), Explanation(Vec<DecisionEnvelopeV1>), Review(Vec<ReviewRecordV1>), Forecast(ForecastRunV1) });
+tagged!(QueryOutputV1 { Position(PositionResponseV1), History(HistoryResponseV1), Explanation(ExplanationV1), Review(Vec<ReviewRecordV1>), Forecast(ForecastRunV1) });
 dto!(QueryResponseV1 { processed_head:CommitSeq, basis:ReadBasis, health:Vec<Health>, output:QueryOutputV1 });
 /// Host-supplied context. There is intentionally no Deserialize implementation.
 pub struct RequestContext {

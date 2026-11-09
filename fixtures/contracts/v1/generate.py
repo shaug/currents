@@ -34,3 +34,5 @@ import hashlib
 body=json.loads((f/'command.json').read_text())
 preimage=json.dumps(body,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
 save('command-digest.json',{'canonical_utf8':preimage.decode(),'sha256':hashlib.sha256(preimage).hexdigest()})
+
+save('query-outputs.json',{'aggregate':[example(v) for v in s['AggregateV1']['oneOf']], 'history':example(s['HistoryResponseV1']),'explanation':example(s['ExplanationV1'])})

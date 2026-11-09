@@ -136,6 +136,7 @@ impl Schema for TemporalValue {
 #[serde(tag = "state", content = "value", deny_unknown_fields)]
 pub enum SourceValue<T> {
     Missing,
+    Unknown,
     Null,
     Absent,
     Deleted,
@@ -145,7 +146,7 @@ impl<T: Schema> Schema for SourceValue<T> {
     fn schema() -> serde_json::Value {
         use serde_json::json;
         let mut variants = vec![];
-        for state in ["Missing", "Null", "Absent", "Deleted"] {
+        for state in ["Missing", "Unknown", "Null", "Absent", "Deleted"] {
             variants.push(json!({"type":"object","additionalProperties":false,"required":["state"],"properties":{"state":{"const":state}}}));
         }
         variants.push(json!({"type":"object","additionalProperties":false,"required":["state","value"],"properties":{"state":{"const":"Known"},"value":T::schema()}}));

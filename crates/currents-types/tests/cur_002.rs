@@ -16,6 +16,7 @@ fn cur_002_1() {
 #[test]
 fn cur_002_2() {
     assert!(fixture("bounds.json").contains("scale19"));
+    specified_commands();
     strict_bounds();
 }
 #[test]
@@ -27,6 +28,7 @@ fn cur_002_3() {
 fn cur_002_4() {
     assert!(fixture("command.json").contains("expected_head"));
     digest_auth();
+    history_preimage_budget();
 }
 
 use currents_protocol::{
@@ -82,6 +84,25 @@ fn canonical_vectors() {
     );
 }
 fn strict_bounds() {
+    let specified: Value = serde_json::from_str(&fixture("position-incomplete.json")).unwrap();
+    let position: currents_protocol::QueryResponseV1 =
+        decode(&serde_json::to_vec(&specified).unwrap())
+            .expect("C09 incomplete position contract must decode");
+    assert_eq!(serde_json::to_value(position).unwrap(), specified);
+    let outputs: Value = serde_json::from_str(&fixture("query-outputs.json")).unwrap();
+    for aggregate in outputs["aggregate"].as_array().unwrap() {
+        let a: currents_protocol::AggregateV1 =
+            decode(&serde_json::to_vec(aggregate).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(a).unwrap(), *aggregate);
+    }
+    let h: currents_protocol::HistoryResponseV1 =
+        decode(&serde_json::to_vec(&outputs["history"]).unwrap()).unwrap();
+    assert!(h.unknown_date_bucket.is_empty());
+    assert!(h.incomplete_buckets.is_empty());
+    let e: currents_protocol::ExplanationV1 =
+        decode(&serde_json::to_vec(&outputs["explanation"]).unwrap()).unwrap();
+    assert!(e.nodes.is_empty());
+
     let unit = json!({"id":"00000000-0000-0000-0000-000000000001","exponent":18,"native_code":"USD","kind":"Currency"});
     assert!(decode::<currents_types::UnitDefinition>(&serde_json::to_vec(&unit).unwrap()).is_ok());
     let mut bad_unit = unit.clone();
@@ -201,6 +222,7 @@ fn temporal_precision() {
     assert!(!text.contains("00:00"));
     let values = [
         SourceValue::<String>::Missing,
+        SourceValue::Unknown,
         SourceValue::Null,
         SourceValue::Absent,
         SourceValue::Deleted,
@@ -291,4 +313,107 @@ fn digest_auth() {
     let mut injection = decision;
     injection["capability"] = json!(auth1.capability);
     assert!(decode::<DecisionEnvelopeV1>(&serde_json::to_vec(&injection).unwrap()).is_err());
+}
+
+fn specified_commands() {
+    let rejected: Vec<Value> = serde_json::from_str(&fixture("rejected-commands.json")).unwrap();
+    for case in rejected {
+        assert!(decode::<CommandBodyV1>(&serde_json::to_vec(&case).unwrap()).is_err());
+    }
+    let cases: Vec<Value> = serde_json::from_str(&fixture("specified-commands.json")).unwrap();
+    for case in cases {
+        let kind = case["operation"]["kind"].as_str().unwrap();
+        let body: CommandBodyV1 = decode(&serde_json::to_vec(&case).unwrap())
+            .unwrap_or_else(|e| panic!("specified {kind} payload must decode: {e}"));
+        assert_eq!(serde_json::to_value(&body).unwrap(), case);
+        if kind == "SaveForecast" {
+            for months in [1, 3, 12] {
+                let mut horizon = case.clone();
+                horizon["operation"]["value"]["request"]["months"] = json!(months);
+                assert!(decode::<CommandBodyV1>(&serde_json::to_vec(&horizon).unwrap()).is_ok());
+            }
+            for months in [0, 2, 13] {
+                let mut horizon = case.clone();
+                horizon["operation"]["value"]["request"]["months"] = json!(months);
+                assert!(decode::<CommandBodyV1>(&serde_json::to_vec(&horizon).unwrap()).is_err());
+            }
+            let mut invalid_date = case.clone();
+            invalid_date["operation"]["value"]["request"]["start"] = json!("2026-02-30");
+            assert!(decode::<CommandBodyV1>(&serde_json::to_vec(&invalid_date).unwrap()).is_err());
+        }
+        // Every specified field is explicit, even an optional/unknown change.
+        for field in case["operation"]["value"].as_object().unwrap().keys() {
+            let mut missing = case.clone();
+            missing["operation"]["value"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(
+                decode::<CommandBodyV1>(&serde_json::to_vec(&missing).unwrap()).is_err(),
+                "{kind}.{field} cannot silently disappear"
+            );
+        }
+        let mut injected = case.clone();
+        injected["operation"]["value"]["capability"] = json!("CANARY");
+        assert!(decode::<CommandBodyV1>(&serde_json::to_vec(&injected).unwrap()).is_err());
+    }
+}
+
+fn history_preimage_budget() {
+    use currents_protocol::{
+        CanonicalLimits, canonical_bytes_with_limits, commit_digest_with_limits,
+    };
+    let dtos: Value = serde_json::from_str(&fixture("dtos.json")).unwrap();
+    let mut commit: currents_types::DomainCommitV1 =
+        decode(&serde_json::to_vec(&dtos["DomainCommitV1"]).unwrap()).unwrap();
+    // Synthetic history larger than a transport message, not a production history policy.
+    let records: Vec<AuthoritativeRecordV1> = decode(fixture("records.json").as_bytes()).unwrap();
+    let mut record = records
+        .into_iter()
+        .find(|r| matches!(r, AuthoritativeRecordV1::Review(_)))
+        .unwrap();
+    if let AuthoritativeRecordV1::Review(ref mut review) = record {
+        review.reason = "x".repeat(MAX_MESSAGE_BYTES);
+    }
+    commit.records.push(record);
+    let wire = serde_json::to_vec(&commit).unwrap();
+    assert!(wire.len() > MAX_MESSAGE_BYTES);
+    assert!(decode::<currents_types::DomainCommitV1>(&wire).is_err());
+    assert!(canonical_bytes(&commit).is_err());
+    assert!(currents_protocol::commit_digest(&commit).is_err());
+    let limits = CanonicalLimits {
+        max_bytes: wire.len(),
+        max_collection_items: 20000,
+    };
+    let bytes = canonical_bytes_with_limits(&commit, limits).unwrap();
+    assert_eq!(bytes.len(), wire.len());
+    let digest = commit_digest_with_limits(&commit, limits).unwrap();
+    commit.digest = currents_types::Digest([9; 32]);
+    assert_eq!(digest, commit_digest_with_limits(&commit, limits).unwrap());
+    let too_small = CanonicalLimits {
+        max_bytes: wire.len() - 1,
+        ..limits
+    };
+    assert!(canonical_bytes_with_limits(&commit, too_small).is_err());
+    assert!(commit_digest_with_limits(&commit, too_small).is_err());
+    let many = vec![0u8; currents_protocol::MAX_COLLECTION_ITEMS + 1];
+    assert!(canonical_bytes(&many).is_err());
+    assert!(canonical_bytes_with_limits(&many, limits).is_ok());
+    assert!(
+        canonical_bytes_with_limits(
+            &many,
+            CanonicalLimits {
+                max_collection_items: many.len() - 1,
+                ..limits
+            }
+        )
+        .is_err()
+    );
+    let mut body: CommandBodyV1 = decode(fixture("command.json").as_bytes()).unwrap();
+    if let currents_protocol::OperationV1::SetAccountCatalog(ref mut catalog) = body.operation {
+        catalog.display_name = "x".repeat(MAX_MESSAGE_BYTES);
+    } else {
+        panic!("expected catalog fixture");
+    }
+    assert!(currents_protocol::command_digest(&body).is_err());
 }

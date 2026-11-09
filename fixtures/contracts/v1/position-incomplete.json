@@ -1,0 +1,61 @@
+{
+  "processed_head": "1",
+  "basis": {
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "effective_scope": {
+      "basis": "Effective",
+      "end": "2026-11-09",
+      "start": "2026-11-09"
+    },
+    "evaluation_instant": "2026-11-09T12:00:00Z",
+    "query_semantics_version": 1,
+    "selection_policy_version": 1,
+    "through_commit": "1",
+    "unit_catalog_version": 1
+  },
+  "health": [
+    "source_partial"
+  ],
+  "output": {
+    "kind": "Position",
+    "value": {
+      "basis": {
+        "dataset_id": "00000000-0000-0000-0000-000000000001",
+        "effective_scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        },
+        "evaluation_instant": "2026-11-09T12:00:00Z",
+        "query_semantics_version": 1,
+        "selection_policy_version": 1,
+        "through_commit": "1",
+        "unit_catalog_version": 1
+      },
+      "scope": {
+        "accounts": [],
+        "components": []
+      },
+      "assertions": [],
+      "movements": [],
+      "anchored_balance": [],
+      "selected_basis": [],
+      "pending": [],
+      "freshness": [],
+      "coverage": [],
+      "discrepancies": [],
+      "missing_inputs": [
+        "opening evidence"
+      ],
+      "aggregate": {
+        "kind": "Indeterminate",
+        "value": {
+          "components": [],
+          "obstructions": [
+            "opening evidence"
+          ]
+        }
+      }
+    }
+  }
+}

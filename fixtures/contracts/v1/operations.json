@@ -25,21 +25,18 @@
     "operation": {
       "kind": "SetDatasetPolicy",
       "value": {
-        "policy": {
-          "freshness_seconds": "1",
-          "id": "00000000-0000-0000-0000-000000000001",
-          "opening_policy": "00000000-0000-0000-0000-000000000001",
-          "policies": {
-            "calendar": 1,
-            "query": 1,
-            "recognition": 1,
-            "selection": 1,
-            "timezone_data": "synthetic"
-          },
-          "source_precedence": [],
-          "version": 1,
-          "withholding_policy": "00000000-0000-0000-0000-000000000001"
-        }
+        "effective_scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        },
+        "freshness_thresholds": null,
+        "ownership_perimeter": null,
+        "policy_id": "00000000-0000-0000-0000-000000000001",
+        "prior_version": null,
+        "reporting_currency": null,
+        "source_priority": null,
+        "timezone": null
       }
     },
     "protocol_version": 1
@@ -51,7 +48,6 @@
     "operation": {
       "kind": "RecordManualPosition",
       "value": {
-        "account_id": "00000000-0000-0000-0000-000000000001",
         "amount": {
           "coefficient": "1",
           "scale": 1,
@@ -62,16 +58,13 @@
           "kind": "Date",
           "original_text": "synthetic"
         },
-        "coverage": {
-          "scope": {
-            "basis": "Effective",
-            "end": "2026-11-09",
-            "start": "2026-11-09"
-          },
-          "status": "Complete"
-        },
-        "reason": "synthetic",
-        "source": "synthetic"
+        "component": "00000000-0000-0000-0000-000000000001",
+        "evidence": [],
+        "method": "synthetic",
+        "ownership_share": {
+          "denominator": "1",
+          "numerator": "1"
+        }
       }
     },
     "protocol_version": 1
@@ -83,29 +76,39 @@
     "operation": {
       "kind": "RecordLoanPayment",
       "value": {
-        "account_id": "00000000-0000-0000-0000-000000000001",
-        "cash_account_id": "00000000-0000-0000-0000-000000000001",
-        "effective": {
-          "civil": "2026-11-09",
-          "kind": "Date",
-          "original_text": "synthetic"
+        "cash": {
+          "account_id": "00000000-0000-0000-0000-000000000001",
+          "amount": {
+            "coefficient": "1",
+            "scale": 1,
+            "unit_id": "00000000-0000-0000-0000-000000000001"
+          },
+          "effective": {
+            "civil": "2026-11-09",
+            "kind": "Date",
+            "original_text": "synthetic"
+          },
+          "id": "00000000-0000-0000-0000-000000000001",
+          "posting": {
+            "civil": "2026-11-09",
+            "kind": "Date",
+            "original_text": "synthetic"
+          }
         },
-        "evidence": [],
         "fees": [],
         "interest": {
-          "coefficient": "1",
-          "scale": 1,
-          "unit_id": "00000000-0000-0000-0000-000000000001"
-        },
-        "posting": {
-          "civil": "2026-11-09",
-          "kind": "Date",
-          "original_text": "synthetic"
+          "state": "Missing"
         },
         "principal": {
-          "coefficient": "1",
-          "scale": 1,
-          "unit_id": "00000000-0000-0000-0000-000000000001"
+          "state": "Missing"
+        },
+        "source": {
+          "connection_id": "00000000-0000-0000-0000-000000000001",
+          "device_id": null,
+          "source": "synthetic"
+        },
+        "unknown_allocation": {
+          "state": "Missing"
         }
       }
     },
@@ -152,14 +155,19 @@
     "operation": {
       "kind": "SetOrganization",
       "value": {
-        "allocations": [],
-        "id": "00000000-0000-0000-0000-000000000001",
-        "kind": "Party",
-        "parent": null,
-        "supersedes": null,
-        "targets": [],
-        "text": "synthetic",
-        "version": 1
+        "allocation": [],
+        "economic_ids": [],
+        "field": "Party",
+        "override_action": "Preserve",
+        "provenance": {
+          "authority": "Owner",
+          "evidence": [],
+          "kind": "Interpretation",
+          "reason": "synthetic"
+        },
+        "value": {
+          "state": "Missing"
+        }
       }
     },
     "protocol_version": 1
@@ -172,7 +180,6 @@
       "kind": "SetReviewDisposition",
       "value": {
         "disposition": "Unreviewed",
-        "id": "00000000-0000-0000-0000-000000000001",
         "reason": "synthetic",
         "targets": []
       }
@@ -228,7 +235,6 @@
       "value": {
         "approved_accounts": [],
         "component": "00000000-0000-0000-0000-000000000001",
-        "id": "00000000-0000-0000-0000-000000000001",
         "included_activity": [],
         "opening": "00000000-0000-0000-0000-000000000001",
         "prior_segment": null,
@@ -249,7 +255,7 @@
       "value": {
         "allocations": [],
         "corrections": [],
-        "id": "00000000-0000-0000-0000-000000000001",
+        "facets": [],
         "kind": "Lifecycle",
         "legs": [],
         "reason": "synthetic",
@@ -278,8 +284,18 @@
           "through_commit": "1",
           "unit_catalog_version": 1
         },
-        "claim": "00000000-0000-0000-0000-000000000001",
-        "dependency_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+        "cutoff": {
+          "civil": "2026-11-09",
+          "kind": "Date",
+          "original_text": "synthetic"
+        },
+        "evidence": [],
+        "exclusions": [],
+        "kind": "Balance",
+        "scope": {
+          "accounts": [],
+          "components": []
+        }
       }
     },
     "protocol_version": 1
@@ -291,21 +307,8 @@
     "operation": {
       "kind": "ConfirmReconciliation",
       "value": {
-        "basis": {
-          "dataset_id": "00000000-0000-0000-0000-000000000001",
-          "effective_scope": {
-            "basis": "Effective",
-            "end": "2026-11-09",
-            "start": "2026-11-09"
-          },
-          "evaluation_instant": "2026-11-09T12:00:00Z",
-          "query_semantics_version": 1,
-          "selection_policy_version": 1,
-          "through_commit": "1",
-          "unit_catalog_version": 1
-        },
         "claim": "00000000-0000-0000-0000-000000000001",
-        "dependency_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
       }
     },
     "protocol_version": 1
@@ -317,20 +320,45 @@
     "operation": {
       "kind": "SetCommitment",
       "value": {
-        "account_id": "00000000-0000-0000-0000-000000000001",
-        "amount": {
-          "state": "Missing"
+        "amounts": {
+          "base": {
+            "state": "Missing"
+          },
+          "high": {
+            "state": "Missing"
+          },
+          "low": {
+            "state": "Missing"
+          },
+          "nominal": {
+            "state": "Missing"
+          }
         },
-        "assumptions": [],
         "calendar_version": 1,
-        "effective_scope": {
-          "basis": "Effective",
-          "end": "2026-11-09",
-          "start": "2026-11-09"
-        },
-        "evidence": [],
+        "due_date": "2026-11-09",
+        "end": null,
+        "exceptions": [],
         "id": "00000000-0000-0000-0000-000000000001",
-        "schedule": "synthetic",
+        "kind": "Expense",
+        "legs": [],
+        "provenance": {
+          "authority": "Owner",
+          "evidence": [],
+          "kind": "Interpretation",
+          "reason": "synthetic"
+        },
+        "recurrence": {
+          "cadence": "Once",
+          "day": null,
+          "interval": 1,
+          "month": null
+        },
+        "recurrence_version": 1,
+        "settlement": {
+          "kind": "SameDay",
+          "value": {}
+        },
+        "start": "2026-11-09",
         "timezone": "synthetic",
         "timezone_data_version": "synthetic",
         "version": 1
@@ -345,17 +373,21 @@
     "operation": {
       "kind": "SetOccurrenceMatch",
       "value": {
-        "allocated": {
+        "allocation_version": 1,
+        "amount": {
           "coefficient": "1",
           "scale": 1,
           "unit_id": "00000000-0000-0000-0000-000000000001"
         },
-        "commitment_id": "00000000-0000-0000-0000-000000000001",
-        "id": "00000000-0000-0000-0000-000000000001",
-        "kind": "Manual",
-        "legs": [],
-        "occurrence_id": "00000000-0000-0000-0000-000000000001",
-        "reason": "synthetic"
+        "economic_leg": "00000000-0000-0000-0000-000000000001",
+        "inclusion": "IncludedInStartingBalance",
+        "occurrence": {
+          "commitment_id": "00000000-0000-0000-0000-000000000001",
+          "ordinal": "1",
+          "series_generation": 1
+        },
+        "pending": false,
+        "planned_leg": "00000000-0000-0000-0000-000000000001"
       }
     },
     "protocol_version": 1
@@ -367,26 +399,47 @@
     "operation": {
       "kind": "SaveForecast",
       "value": {
-        "assumptions": [],
-        "basis": {
-          "dataset_id": "00000000-0000-0000-0000-000000000001",
-          "effective_scope": {
-            "basis": "Effective",
-            "end": "2026-11-09",
-            "start": "2026-11-09"
+        "algorithm_version": 1,
+        "calendar_data": {
+          "calendar_version": 1,
+          "holidays": [],
+          "timezone": "synthetic",
+          "timezone_data": {
+            "byte_count": "1",
+            "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+            "media_type": "synthetic"
           },
-          "evaluation_instant": "2026-11-09T12:00:00Z",
-          "query_semantics_version": 1,
-          "selection_policy_version": 1,
-          "through_commit": "1",
-          "unit_catalog_version": 1
+          "timezone_data_version": "synthetic"
+        },
+        "expanded_inputs": {
+          "assumptions": [],
+          "commitments": [],
+          "matches": [],
+          "occurrences": [],
+          "starting_positions": []
         },
         "id": "00000000-0000-0000-0000-000000000001",
-        "input_digest": "0000000000000000000000000000000000000000000000000000000000000000",
-        "inputs": [],
         "outputs": [],
-        "scenario": "00000000-0000-0000-0000-000000000001",
-        "semantics_version": 1
+        "request": {
+          "assumption_versions": [],
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "effective_scope": {
+              "basis": "Effective",
+              "end": "2026-11-09",
+              "start": "2026-11-09"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "through_commit": "1",
+            "unit_catalog_version": 1
+          },
+          "commitment_versions": [],
+          "months": 1,
+          "scenario": "00000000-0000-0000-0000-000000000001",
+          "start": "2026-11-09"
+        }
       }
     },
     "protocol_version": 1
