@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Rust · accounting · cryptographic audit</p>
+    <h1>Bookkeeping you can <em>prove</em>.</h1>
+    <p class="lede">
+      An immutable, tamper-evident double-entry bookkeeping engine. One rule core
+      decides every write, money is exact integer arithmetic, and every sealed
+      period commits to balances a third party can verify without seeing your
+      books.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="{{ get_url(path='@/docs/start/getting-started.md') }}">Get started</a>
+      <a class="btn" href="{{ config.extra.api_docs }}" rel="noopener">API reference</a>
+    </div>
+    <p class="install"><code>cargo add doubleentry</code></p>
+  </div>
+</section>
+
+<section class="wrap band">
+  <h2 class="section-title">What it guarantees</h2>
+  <div class="grid">
+    <article class="card">
+      <h3>Balanced at the write</h3>
+      <p>
+        One rule core decides every entry — over a database, inside the store's
+        write transaction under the ledger's lock. Every entry balances per
+        currency and layer, and <code>audit()</code> decides each one again.
+        A payment and its assignment to open invoices commit as one batch.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Exact</h3>
+      <p>
+        Money is an <code>i128</code> at a compile-time scale, each currency
+        declared with its exponent. No floats, no operators, explicit rounding,
+        and every overflow a <code>Result</code>.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Deterministic</h3>
+      <p>
+        An entry's id is derived from its idempotency key, so a retry replays
+        instead of booking twice. The rule core reads no clock and no
+        randomness.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Verifiable</h3>
+      <p>
+        Every record is a leaf of one RFC 6962 SHA-256 log. An auditor holding a
+        tree head gets <code>O(log n)</code> proofs that an entry is included and
+        that the log only grew.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Witnessable</h3>
+      <p>
+        The log head is a C2SP signed checkpoint that stock witnesses — somebody
+        else's — cosign. The crate ships no witness and no HTTP client:
+        requests and replies are bytes.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Audited by replay</h3>
+      <p>
+        <code>audit()</code> replays every record through the rule core and
+        compares every table a store keeps, byte for byte. A superuser's edit is
+        detected, not prevented.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Gross-preserving</h3>
+      <p>
+        Balances keep debit <em>and</em> credit totals, so a zero balance after
+        heavy turnover is told apart from no activity.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Hierarchical</h3>
+      <p>
+        Accounts are a tree of paths and only leaves take postings. A rollup
+        folds a trial balance up the tree and infers the grouping nodes.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Yours to shape</h3>
+      <p>
+        No chart of accounts and no opinion about your domain: paths, classes
+        and reporting axes are yours. In memory, or over SQLite and PostgreSQL.
+      </p>
+    </article>
+  </div>
+</section>
+
+<section class="wrap band prose">
+  {{ section.content | safe }}
+</section>
+
+<section class="wrap band">
+  <h2 class="section-title">The question an auditor actually asks</h2>
+  <p class="band-lede">
+    Not <em>“does this balance?”</em> — most systems manage that — but
+    <em>“how do I know this record wasn't changed after the fact?”</em>
+  </p>
+  <div class="grid grid-3">
+    <article class="card">
+      <h3>Inclusion</h3>
+      <p>This entry sits at this index under this root, in <code>O(log n)</code> hashes, revealing nothing else.</p>
+    </article>
+    <article class="card">
+      <h3>Consistency</h3>
+      <p>The earlier log is a <em>prefix</em> of the later one. Not merely linked — provably append-only.</p>
+    </article>
+    <article class="card">
+      <h3>Balance</h3>
+      <p>This account held this balance when the period closed, proven against a tree head and named — without disclosing any other account.</p>
+    </article>
+  </div>
+  <p class="band-lede band-lede-sub">
+    And the one no proof answers alone — <em>“is this the history you showed
+    everybody else?”</em> — is answered by independent witnesses, who refuse
+    to cosign a second history at a size they already vouched for.
+  </p>
+  <p class="band-note">
+    <a href="{{ get_url(path='@/docs/assurance/proofs.md') }}">How the proofs work →</a>
+    &nbsp;·&nbsp;
+    <a href="{{ get_url(path='@/docs/assurance/transparency.md') }}">Transparency →</a>
+  </p>
+</section>
+
+<section class="wrap band band-last">
+  <h2 class="section-title">Where to go next</h2>
+  <div class="grid grid-3">
+    <a class="card card-link" href="{{ get_url(path='@/docs/start/getting-started.md') }}">
+      <h3>Getting started</h3>
+      <p>Install the crate, record your first entry, and prove it was recorded.</p>
+    </a>
+    <a class="card card-link" href="{{ get_url(path='@/docs/concepts/periods-and-seals.md') }}">
+      <h3>Periods and seals</h3>
+      <p>Define a contiguous calendar, seal a period, and prove one closing balance to an auditor.</p>
+    </a>
+    <a class="card card-link" href="{{ get_url(path='@/docs/assurance/transparency.md') }}">
+      <h3>Transparency</h3>
+      <p>The split-view attack proofs cannot see, the witnesses that refuse to take part in it, and offline proofs for auditors.</p>
+    </a>
+  </div>
+</section>
+{% endblock %}

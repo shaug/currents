@@ -1,0 +1,482 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -825,6 +825,7 @@
+  "document-features",
+  "ed25519-dalek",
+  "getrandom 0.3.4",
++ "libsqlite3-sys",
+  "proptest",
+  "serde",
+  "serde_json",
+@@ -1662,11 +1663,11 @@
+ [[package]]
+ name = "libsqlite3-sys"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
+ dependencies = [
+  "cc",
++ "openssl-sys",
+  "pkg-config",
++ "sqlcipher-src",
+  "vcpkg",
+ ]
+ 
+@@ -1837,6 +1838,28 @@
+ version = "0.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
++
++[[package]]
++name = "openssl-src"
++version = "300.6.1+3.6.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
++dependencies = [
++ "cc",
++]
++
++[[package]]
++name = "openssl-sys"
++version = "0.9.118"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "19c413d6ec9ebaf5e1c829d355cb3e9f783778d700f135be0921d52fce3c60ae"
++dependencies = [
++ "cc",
++ "libc",
++ "openssl-src",
++ "pkg-config",
++ "vcpkg",
++]
+ 
+ [[package]]
+ name = "page_size"
+@@ -2597,6 +2620,12 @@
+  "base64ct",
+  "der",
+ ]
++
++[[package]]
++name = "sqlcipher-src"
++version = "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe"
+ 
+ [[package]]
+ name = "sqlx"
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -221,3 +221,13 @@
+ 
+ [profile.dev.package.ed25519-dalek]
+ opt-level = 3
++
++# Currents qualification uses the same reviewed SQLCipher source as its workspace.
++[patch.crates-io]
++libsqlite3-sys = { path = "../libsqlite3-sys" }
++
++[target.'cfg(target_os = "macos")'.dev-dependencies]
++libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["bundled-sqlcipher"] }
++
++[target.'cfg(target_os = "linux")'.dev-dependencies]
++libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+--- a/src/store/sql/write.rs
++++ b/src/store/sql/write.rs
+@@ -1053,3 +1053,6 @@
+         }
+     }
+ }
++
++#[cfg(feature = "sqlite")]
++mod currents;
+--- /dev/null
++++ b/src/store/sql/write/currents.rs
+@@ -0,0 +1,165 @@
++//! Currents-only named record composition. No callback or caller-provided SQL.
++use super::*;
++use crate::store::Sqlite;
++
++impl SqlStore<Sqlite, 18> {
++    /// Initialize the private composition table after native metadata is established.
++    /// This is not the Currents authoritative history schema or an encrypted opener.
++    ///
++    /// # Errors
++    /// Refuses uninitialized or mismatched native metadata before any Currents DDL.
++    pub async fn currents_initialize(&self) -> Result<(), StoreError> {
++        let mut session = self.session(Mode::Write, "currents_initialize").await?;
++        existing::<Sqlite, 18>(&mut session).await?;
++        session.script(String::from(
++            "CREATE TABLE IF NOT EXISTS currents_atomic_records (command_id BLOB PRIMARY KEY CHECK(length(command_id)=16), record BLOB NOT NULL CHECK(length(record)>0 AND length(record)<=1048576)) STRICT;"
++        )).await?;
++        session.commit().await
++    }
++
++    /// Compose one validated native operation with one already-canonical Currents record.
++    /// Only the private accounting adapter may call this maintained seam. It grants no
++    /// client/import authority and accepts neither SQL nor executable callbacks.
++    /// Native validation, leaf encoding and result types are unchanged.
++    ///
++    /// # Errors
++    /// Precommit errors roll back both writes. A COMMIT error remains outcome-unknown.
++    pub async fn currents_write(
++        &self,
++        op: &Op<18>,
++        command_id: &[u8; 16],
++        record: &[u8],
++    ) -> Result<Result<Done<18>, Rejection>, StoreError> {
++        self.currents_write_inner(op, command_id, record, CommitMode::Normal)
++            .await
++    }
++
++    async fn currents_write_inner(
++        &self,
++        op: &Op<18>,
++        command_id: &[u8; 16],
++        record: &[u8],
++        mode: CommitMode,
++    ) -> Result<Result<Done<18>, Rejection>, StoreError> {
++        let mut session = self.session(Mode::Write, "currents_write").await?;
++        let result = self
++            .currents_prepare(&mut session, op, command_id, record)
++            .await;
++        match result {
++            Ok(Ok(done)) if !matches!(done, Done::BatchRejected { .. }) => {
++                commit(session, mode).await?;
++                Ok(Ok(done))
++            }
++            other => {
++                // Await rollback before asserting definite failure. A rollback error
++                // is conservatively unknown, never a false definite-noncommit claim.
++                session
++                    .rollback()
++                    .await
++                    .map_err(StoreError::outcome_unknown)?;
++                other
++            }
++        }
++    }
++
++    async fn currents_prepare(
++        &self,
++        session: &mut Session<'_, Sqlite>,
++        op: &Op<18>,
++        command_id: &[u8; 16],
++        record: &[u8],
++    ) -> Result<Result<Done<18>, Rejection>, StoreError> {
++        let ledger = self.ledger(session).await?;
++        session
++            .lock(ledger.key)
++            .await
++            .map_err(|e| e.unwrap_or_else(|| StoreError::unavailable("currents_write")))?;
++        let mut header = header::<Sqlite, 18>(session, ledger.id).await?;
++        let initial_size = header.size;
++        let (decision, _, _) = plan_loop::<Sqlite, 18>(session, header.clone(), op).await?;
++        let mut known = Known::default();
++        let done = match decision {
++            Err(rejection) => return Ok(Err(rejection)),
++            Ok(Outcome::Unchanged(done)) => done,
++            Ok(Outcome::Append(write)) => {
++                persist(session, &header, &write, &mut known).await?;
++                write.done
++            }
++            Ok(Outcome::Batch { writes, done }) => {
++                for write in &writes {
++                    persist(session, &header, write, &mut known).await?;
++                    header.size = header.size.saturating_add(1);
++                    if matches!(write.record, Record::Entry(_)) {
++                        header.entries = header.entries.saturating_add(1);
++                    }
++                }
++                done
++            }
++        };
++        if matches!(done, Done::BatchRejected { .. }) {
++            return Ok(Ok(done));
++        }
++        let previous: Option<Vec<u8>> =
++            sqlx::query_scalar("SELECT record FROM currents_atomic_records WHERE command_id = ?")
++                .bind(command_id.as_slice())
++                .fetch_optional(&mut *session.tx)
++                .await
++                .map_err(|e| session.fail(e))?;
++        if let Some(previous) = previous {
++            if previous != record || session.size().await? != initial_size {
++                return Err(StoreError::backend_message(
++                    "currents_write",
++                    "command identity conflict",
++                ));
++            }
++        } else {
++            sqlx::query("INSERT INTO currents_atomic_records(command_id, record) VALUES (?, ?)")
++                .bind(command_id.as_slice())
++                .bind(record)
++                .execute(&mut *session.tx)
++                .await
++                .map_err(|e| session.fail(e))?;
++        }
++        Ok(Ok(done))
++    }
++}
++
++#[derive(Clone, Copy)]
++enum CommitMode {
++    Normal,
++    #[cfg(test)]
++    IoBefore,
++    #[cfg(test)]
++    IoAfter,
++}
++async fn commit(session: Session<'_, Sqlite>, mode: CommitMode) -> Result<(), StoreError> {
++    #[cfg(test)]
++    if matches!(mode, CommitMode::IoBefore) {
++        // COMMIT transport cannot establish whether the database applied it.
++        drop(session);
++        return Err(super::super::failure::<Sqlite>(
++            "currents_write",
++            &sqlx::Error::Io(std::io::Error::other("synthetic COMMIT I/O")),
++            true,
++        ));
++    }
++    session
++        .commit()
++        .await
++        .map_err(StoreError::outcome_unknown)?;
++    #[cfg(test)]
++    if matches!(mode, CommitMode::IoAfter) {
++        return Err(super::super::failure::<Sqlite>(
++            "currents_write",
++            &sqlx::Error::Io(std::io::Error::other(
++                "synthetic COMMIT acknowledgement I/O",
++            )),
++            true,
++        ));
++    }
++    let _ = mode;
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests;
+--- /dev/null
++++ b/src/store/sql/write/currents/tests.rs
+@@ -0,0 +1,220 @@
++#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
++use super::*;
++use crate::store::Store;
++use crate::{AccountKind, Amount, Entry, Ledger, LedgerId, currency::USD, date};
++use sqlx::Connection;
++
++async fn setup() -> (
++    tempfile::TempDir,
++    String,
++    SqlStore<Sqlite, 18>,
++    Ledger<SqlStore<Sqlite, 18>, 18>,
++) {
++    let dir = tempfile::tempdir().unwrap();
++    let url = format!("sqlite://{}", dir.path().join("synthetic.db").display());
++    let store = SqlStore::<Sqlite, 18>::sqlite(&url).await.unwrap();
++    let books = Ledger::<_, 18>::with_precision(
++        store.clone(),
++        LedgerId::new("synthetic.currents/atomic").unwrap(),
++    )
++    .await
++    .unwrap();
++    books
++        .declare_currency(USD, 2, date!("0001-01-01"))
++        .await
++        .unwrap();
++    books
++        .open("Assets:Checking", AccountKind::Asset, date!("0001-01-01"))
++        .await
++        .unwrap();
++    books
++        .open(
++            "Expenses:Purchase",
++            AccountKind::Expense,
++            date!("0001-01-01"),
++        )
++        .await
++        .unwrap();
++    books
++        .define_period("all", date!("0001-01-01"), date!("9999-12-31"))
++        .await
++        .unwrap();
++    store.currents_initialize().await.unwrap();
++    (dir, url, store, books)
++}
++fn entry(key: &str, credit: &str) -> Op<18> {
++    Op::Record(Box::new(
++        Entry::new(key, date!("2026-11-09"))
++            .debit(
++                "Expenses:Purchase",
++                "96.00".parse::<Amount<18>>().unwrap(),
++                USD,
++            )
++            .credit(
++                "Assets:Checking",
++                credit.parse::<Amount<18>>().unwrap(),
++                USD,
++            ),
++    ))
++}
++async fn count(url: &str) -> i64 {
++    let mut connection = sqlx::SqliteConnection::connect(url).await.unwrap();
++    let count = sqlx::query_scalar("SELECT count(*) FROM currents_atomic_records")
++        .fetch_one(&mut connection)
++        .await
++        .unwrap();
++    connection.close().await.unwrap();
++    count
++}
++#[tokio::test]
++async fn atomic_rollback() {
++    let (_dir, url, store, books) = setup().await;
++    let before = books.head().await.unwrap();
++    // Native persistence precedes this real SQL CHECK failure.
++    let error = store
++        .currents_write(&entry("write-failure", "96.00"), &[1; 16], b"")
++        .await
++        .unwrap_err();
++    assert!(!error.may_have_applied());
++    assert_eq!(count(&url).await, 0);
++    assert_eq!(books.head().await.unwrap(), before);
++    assert!(
++        store
++            .currents_write(
++                &entry("native-failure", "95.00"),
++                &[2; 16],
++                b"synthetic record"
++            )
++            .await
++            .unwrap()
++            .is_err()
++    );
++    assert_eq!(count(&url).await, 0);
++    assert_eq!(books.head().await.unwrap(), before);
++    let Op::Record(invalid) = entry("batch-invalid", "95.00") else {
++        unreachable!()
++    };
++    let rejected = store
++        .currents_write(
++            &Op::Batch(vec![crate::core::BatchItem::Record(*invalid)]),
++            &[9; 16],
++            b"synthetic rejected batch",
++        )
++        .await
++        .unwrap()
++        .unwrap();
++    assert!(matches!(rejected, Done::BatchRejected { .. }));
++    assert_eq!(count(&url).await, 0);
++    assert_eq!(books.head().await.unwrap(), before);
++    let op = entry("success", "96.00");
++    let first = store
++        .currents_write(&op, &[3; 16], b"synthetic record")
++        .await
++        .unwrap()
++        .unwrap();
++    assert!(matches!(first, Done::Entry(_)));
++    let head = books.head().await.unwrap();
++    assert!(
++        matches!(store.currents_write(&op,&[3;16],b"synthetic record").await.unwrap().unwrap(),Done::Entry(r) if r.replayed)
++    );
++    assert_eq!(books.head().await.unwrap(), head);
++    assert_eq!(count(&url).await, 1);
++    assert!(
++        store
++            .currents_write(&entry("other", "96.00"), &[3; 16], b"synthetic record")
++            .await
++            .is_err()
++    );
++    assert!(
++        store
++            .currents_write(&op, &[3; 16], b"changed record")
++            .await
++            .is_err()
++    );
++    assert_eq!(books.head().await.unwrap(), head);
++    assert_eq!(count(&url).await, 1);
++    books.audit().await.unwrap();
++    store.close().await;
++}
++#[tokio::test]
++async fn commit_uncertainty() {
++    for (mode, expected) in [(CommitMode::IoBefore, 0), (CommitMode::IoAfter, 1)] {
++        let (_dir, url, store, books) = setup().await;
++        let before = books.head().await.unwrap();
++        let error = store
++            .currents_write_inner(
++                &entry("uncertain", "96.00"),
++                &[4; 16],
++                b"synthetic record",
++                mode,
++            )
++            .await
++            .unwrap_err();
++        assert!(
++            error.may_have_applied(),
++            "COMMIT I/O must not imply rollback"
++        );
++        // No retry or success classification on the uncertain live handle.
++        store.close().await;
++        let reopened = SqlStore::<Sqlite, 18>::sqlite(&url).await.unwrap();
++        reopened.open().await.unwrap();
++        let audited = Ledger::<_, 18>::with_precision(
++            reopened.clone(),
++            LedgerId::new("synthetic.currents/atomic").unwrap(),
++        )
++        .await
++        .unwrap();
++        audited.audit().await.unwrap();
++        assert_eq!(count(&url).await, expected);
++        assert_eq!(
++            audited.head().await.unwrap().size,
++            before.size + u64::try_from(expected).unwrap()
++        );
++        reopened.close().await;
++    }
++}
++#[tokio::test]
++async fn upstream_conformance() {
++    // The unchanged complete upstream suite is invoked separately by cur_005_3.
++    let (_dir, _url, store, books) = setup().await;
++    let op = entry("canonical", "96.00");
++    store
++        .currents_write(&op, &[5; 16], b"synthetic record")
++        .await
++        .unwrap()
++        .unwrap();
++    books.audit().await.unwrap();
++    store.close().await;
++}
++#[tokio::test]
++async fn schema_guard() {
++    let dir = tempfile::tempdir().unwrap();
++    let url = format!("sqlite://{}", dir.path().join("foreign.db").display());
++    let store = SqlStore::<Sqlite, 18>::sqlite(&url).await.unwrap();
++    let mut connection = sqlx::SqliteConnection::connect(&url).await.unwrap();
++    sqlx::query("CREATE TABLE foreign_data(value TEXT)")
++        .execute(&mut connection)
++        .await
++        .unwrap();
++    let genesis = crate::record::Genesis {
++        ledger: LedgerId::new("synthetic.currents/foreign").unwrap(),
++    };
++    assert!(matches!(
++        store.create(&genesis).await.unwrap_err().kind(),
++        crate::store::StoreErrorKind::ForeignSchema { .. }
++    ));
++    assert!(store.currents_initialize().await.is_err());
++    let names: Vec<String> =
++        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table'")
++            .fetch_all(&mut connection)
++            .await
++            .unwrap();
++    assert_eq!(names, vec!["foreign_data"]);
++    connection.close().await.unwrap();
++    store.close().await;
++    let (_dir, _url, store, books) = setup().await;
++    store.open().await.unwrap();
++    store.currents_initialize().await.unwrap();
++    books.audit().await.unwrap();
++    store.close().await;
++}
