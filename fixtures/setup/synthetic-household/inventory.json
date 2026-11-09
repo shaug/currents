@@ -1,0 +1,323 @@
+{
+  "schema_version": 1,
+  "profile": "synthetic",
+  "inventory_manifest": [
+    "component-0",
+    "component-1",
+    "component-2",
+    "component-3",
+    "component-4",
+    "component-5",
+    "component-6",
+    "component-7"
+  ],
+  "components": [
+    {
+      "id": "component-0",
+      "kind": "cash",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-1",
+      "kind": "card",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-2",
+      "kind": "debt",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-3",
+      "kind": "investment",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-4",
+      "kind": "manual_asset",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-5",
+      "kind": "manual_liability",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-6",
+      "kind": "apple_card",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    },
+    {
+      "id": "component-7",
+      "kind": "unknown",
+      "institution": {
+        "status": "unknown"
+      },
+      "account": {
+        "status": "unknown"
+      },
+      "currencies": {
+        "status": "unknown"
+      },
+      "ownership": {
+        "status": "unknown"
+      },
+      "overlaps": {
+        "status": "unknown"
+      },
+      "exports": {
+        "status": "unknown"
+      },
+      "automatic_required": {
+        "status": "unknown"
+      },
+      "opening": {
+        "status": "unknown"
+      },
+      "inclusion": {
+        "status": "unknown"
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "component_id": "component-0",
+      "route": "automatic",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-1",
+      "route": "file",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-2",
+      "route": "manual",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-3",
+      "route": "unknown",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-4",
+      "route": "automatic",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-5",
+      "route": "file",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-6",
+      "route": "manual",
+      "limitation": {
+        "status": "unassessed"
+      }
+    },
+    {
+      "component_id": "component-7",
+      "route": "unknown",
+      "limitation": {
+        "status": "unassessed"
+      }
+    }
+  ],
+  "meaning": {}
+}

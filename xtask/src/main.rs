@@ -1,4 +1,5 @@
 mod checks;
+mod readiness;
 mod report;
 
 fn main() {
