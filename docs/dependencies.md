@@ -30,6 +30,11 @@ The checked-in alias always runs xtask with `--locked`. `check core` builds all
 workspace targets and runs the workspace tests; `check msrv` does the same with
 the explicitly verified 1.94.0 compiler. The probe used by `cur_001_3` verifies
 compiler identity only; the separate MSRV lane is mandatory acceptance evidence.
+The same `qualify msrv --manifest-path <fixture/Cargo.toml>` build/report path
+accepts a synthetic fixture manifest. `cur_001_3` generates an offline lockfile
+for a local dependency requiring Rust 1.99, then requires Rust 1.94 qualification
+to exit nonzero with `Blocked` and the exact package/compiler diagnostic. This
+counterexample does not replace the positive full selected-feature MSRV lane.
 No `rust-version` promise is made merely because dependency resolution succeeds.
 No indiscriminate `--all-features` invocation enables PostgreSQL/MySQL.
 
@@ -97,62 +102,46 @@ bundled SQLCipher with system Apple crypto; Linux builds select bundled SQLCiphe
 with vendored OpenSSL. Build lanes reject known SQLite/OpenSSL provider environment
 overrides instead of silently accepting a different native library. The selected
 SQLCipher amalgamation hash is
-`de78ef087cbc26e8fe584de05f1790f3e34897db8731e8154dc674d3f2df28cb`.
+`8cd2347d18886fee4651153fabeeeffb7cec008700987dab1c00261febc4220f`.
 Final runtime link/key-profile qualification remains CUR-006.
 
-## Qualification status, 2026-11-09
+## Qualification evidence, 2026-11-09
 
-The initial public command-contract assertions were executed against documentation
-base c34aa3d5ab463652dbf14d8864b8e60911213974: four failures because xtask did not
-exist. These are separate from environment prerequisites. On the implementation
-worktree, the four assertions, macOS arm64 quality checks and full Rust 1.94.0
-workspace build/tests subsequently passed. These preliminary dirty-tree runs do
-not substitute for final-candidate evidence or Linux execution.
+The four public command-contract assertions fail against documentation-only base
+c34aa3d5ab463652dbf14d8864b8e60911213974 because xtask is absent. Actual macOS arm64
+and Linux x86_64 current-toolchain/core and Rust 1.94 build/test executions are
+recorded for the source-refreshed candidate. Reports bind each execution to its
+exact Git head; earlier-head or dirty-tree reports do not certify later commits.
+Re-run the required checks after every change, including the incompatible-package
+counterexample. Source-cache, frozen/offline build, advisory/license inventory,
+secret scan and unsigned reproducibility evidence are retained separately.
+Independent review and exact final-head acceptance remain publication gates.
 
-Still required before claiming complete qualification: final-candidate Mac/Linux
-runs, source-cache verification, independent review, cache-free and source-vendored
-frozen/offline builds, and a measured unsigned reproducibility comparison. Security
-and license review must retain exact findings rather than infer safety from a
-successful resolver. No unresolved native, advisory, license, reproducibility or
-external requirement is silently labeled PASS.
+### Historical vulnerability and reviewed-source candidate
 
-### Blocking security finding
-
-**BLOCKED as of 2026-11-09.** RUSTSEC-2026-0459 (CVE-2026-119375)
-reports uninitialized page-cache memory disclosure for SQLite before 3.54.0 when
-opening an attacker-controlled database together with a sibling WAL whose page
-size differs. The selected SQLCipher source embeds SQLite 3.50.4. This is a
-source/version applicability assessment; an encrypted-path exploit has not been
-reproduced here. No real data is used by this scaffold.
-
-The advisory explicitly notes that even libsqlite3-sys 0.39.0/0.39.1's
-bundled-sqlcipher path embeds affected SQLite 3.53.4. Upgrading only the sys
-package therefore does not establish a fix; SQLx 0.9.0 also constrains sys below
-0.38.0. Do not treat Cargo build success or a future package-range-only audit as
-proof that the encrypted source is safe.
+Initial snapshot 2ca9bec used SQLCipher with SQLite 3.50.4, affected by
+RUSTSEC-2026-0459 (CVE-2026-119375). An attacker-controlled database and sibling
+WAL with different page sizes could disclose uninitialized page-cache bytes.
+An encrypted-path exploit was not reproduced; the source-level missing tail
+clearing still blocked that snapshot. The advisory also identifies affected
+SQLite 3.53.4 inside libsqlite3-sys 0.39.0/0.39.1, so changing only the Rust
+package version would not establish remediation.
 
 Evidence: [RustSec advisory at immutable database revision](https://github.com/RustSec/advisory-db/blob/d9cb059f3217db87aeccd190b81eaffe8cc29cb9/crates/libsqlite3-sys/RUSTSEC-2026-0459.md).
 
-Qualification and publication are withheld pending a reviewed patched SQLCipher
-source/dependency composition, or an explicitly owner-reviewed scoped and expiring
-exception supported by concrete mitigation evidence under the dependency policy.
-No exception, advisory suppression or design amendment is included in this change.
-The lockfile is a reproducible candidate, not a production-qualified dependency set.
+The current candidate uses official SQLCipher 4.20.0/SQLite 3.54.1, source commit
+355d4db92d3404e71faa8088d071a71d767807f4, with the upstream WAL tail-clearing fix.
+The private sys 0.37 build consumes exact registry sqlcipher-src 420.0.0 without
+modifying its native implementation or changing the SQLx Rust API. See
+`vendor/libsqlite3-sys/CURRENTS-PATCH.md` and complete file provenance.
+`cargo xtask qualify native-source` verifies selected amalgamation/header bytes;
+the synthetic runtime test verifies linked SQLite/SQLCipher versions on both
+hosts/toolchains. This is not full encryption/key-profile qualification.
 
-### Official-source refresh under review
-
-The preceding blocked snapshot is preserved at commit2ca9bec. Subsequent official
-source research found SQLCipher4.20.0/SQLite3.54.1, commit
-355d4db92d3404e71faa8088d071a71d767807f4, containing the upstream fix. Current
-candidate work adapts the private sys0.37 build to exact registry
-sqlcipher-src420.0.0, without modifying its native implementation or changing the
-SQLx Rust API. See vendor/libsqlite3-sys/CURRENTS-PATCH.md and its complete file
-provenance. `cargo xtask qualify native-source` verifies the actual selected
-amalgamation/header bytes; a separate synthetic runtime test checks both versions.
-Mac current/MSRV builds and runtime smoke tests passed for this composition.
-
-The raw advisory scanner still reports the unchanged package version. It has not
-been suppressed. Final source-specific applicability review and Linux target
-requalification remain required before publication. Source verification is not
-an exception for unresolved vulnerable code. All other advisories still require
-normal independent qualification.
+The observed cargo-deny advisory scan passes without an ignore rule, but does
+not flag the local path sys package despite its unchanged version falling in
+the advisory range. Scanner green alone is therefore insufficient: the exact
+source hashes, inspected upstream fix, independent applicability review and
+executed native composition evidence must accompany it. No advisory waiver or
+suppression is included. License inventory identifies the selected licenses;
+it does not choose a final application license or authorize distribution.

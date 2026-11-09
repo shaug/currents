@@ -285,7 +285,7 @@ fn check_native_environment() -> Result<()> {
     }
     Ok(())
 }
-fn core(msrv: bool) -> Result<Value> {
+fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     check_native_environment()?;
     let (program, rustc, version) = if msrv {
         let (c, r, v) = msrv_tools()?;
@@ -300,12 +300,20 @@ fn core(msrv: bool) -> Result<Value> {
     if !msrv && !version.starts_with("rustc 1.99.0 ") {
         return Err(format!("wrong release compiler: {version}"));
     }
+    let manifest = manifest
+        .map(|path| path.to_str().ok_or("invalid manifest path"))
+        .transpose()?;
+    let mut build = vec!["build", "--locked", "--workspace", "--all-targets"];
+    let mut test = vec!["test", "--locked", "--workspace"];
+    for args in [&mut build, &mut test] {
+        if let Some(path) = manifest {
+            args.extend(["--manifest-path", path]);
+        }
+    }
+    test.extend(["--", "--test-threads=1"]);
     let mut evidence = vec![];
-    for args in [
-        &["build", "--locked", "--workspace", "--all-targets"][..],
-        &["test", "--locked", "--workspace", "--", "--test-threads=1"][..],
-    ] {
-        let text = checked(&program, args, &root(), rustc.as_deref())?;
+    for args in [build, test] {
+        let text = checked(&program, &args, &root(), rustc.as_deref())?;
         evidence.push(json!({"command":args,"stdout_sha256":sha(text.as_bytes())}));
     }
     Ok(
@@ -407,7 +415,7 @@ fn quality() -> Result<Value> {
     ])?;
     cargo(&["doc", "--locked", "--workspace", "--no-deps"])?;
     let tests = ticket("CUR-001")?;
-    Ok(json!({"tests":tests,"core":core(false)?}))
+    Ok(json!({"tests":tests,"core":core(false, None)?}))
 }
 fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
     let Some(i) = args.iter().position(|a| a == name) else {
@@ -431,13 +439,13 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let result = (|| {
         match (command,gate) {
         ("ticket",name)=>ticket(name),
-        ("check","quality")=>quality(), ("check","core")=>core(false), ("check","msrv")=>core(true),
+        ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
         ("qualify","workspace")=>workspace(),
         ("qualify","native-source")=>native_source(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
         ("qualify","pin-inventory")=>inventory(&option(&args,"--inventory")?.unwrap_or(root().join("tools/versions.lock.json")), option(&args,"--artifact-root")?.as_deref()),
         ("qualify","msrv") if args.iter().any(|s|s=="--probe")=>msrv_tools().map(|(_,_,v)|json!({"compiler":v.trim(),"scope":"compiler identity only; not a production feature qualification"})),
-        ("qualify","msrv")=>core(true),
+        ("qualify","msrv")=>core(true, option(&args,"--manifest-path")?.as_deref()),
         ("check","native"|"security"|"deep"|"release"|"all") | ("gates",_)=>Err(format!("BLOCKED: {command} {gate} requires suites registered by later owning tickets")),
         _=>Err(format!("BLOCKED: unregistered command: {}",args.join(" "))),
     }

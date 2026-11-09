@@ -98,6 +98,43 @@ fn cur_001_3() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("rustc 1.94.0"));
+    let dir = env::temp_dir().join(format!("currents-msrv-incompatible-{}", std::process::id()));
+    fs::create_dir_all(dir.join("src")).unwrap();
+    fs::create_dir_all(dir.join("new-rust/src")).unwrap();
+    fs::write(dir.join("src/lib.rs"), "").unwrap();
+    fs::write(dir.join("new-rust/src/lib.rs"), "").unwrap();
+    fs::write(dir.join("Cargo.toml"), "[package]\nname=\"msrv-fixture\"\nversion=\"0.0.0\"\nedition=\"2024\"\npublish=false\n[workspace]\nresolver=\"3\"\n[dependencies]\nrequires-new-rust={path=\"new-rust\"}\n").unwrap();
+    fs::write(dir.join("new-rust/Cargo.toml"), "[package]\nname=\"requires-new-rust\"\nversion=\"0.0.0\"\nedition=\"2024\"\nrust-version=\"1.99\"\npublish=false\n").unwrap();
+    let manifest = dir.join("Cargo.toml");
+    let locked = Command::new("cargo")
+        .current_dir(root())
+        .args(["generate-lockfile", "--offline", "--manifest-path"])
+        .arg(&manifest)
+        .output()
+        .unwrap();
+    assert!(
+        locked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&locked.stderr)
+    );
+    assert!(dir.join("Cargo.lock").is_file());
+    let incompatible = xtask(&[
+        "qualify",
+        "msrv",
+        "--manifest-path",
+        manifest.to_str().unwrap(),
+    ]);
+    assert!(!incompatible.status.success());
+    for diagnostic in ["requires-new-rust", "requires rustc 1.99"] {
+        assert!(
+            String::from_utf8_lossy(&incompatible.stderr).contains(diagnostic),
+            "{}",
+            String::from_utf8_lossy(&incompatible.stderr)
+        );
+        assert!(String::from_utf8_lossy(&incompatible.stdout).contains(diagnostic));
+    }
+    assert!(String::from_utf8_lossy(&incompatible.stdout).contains("\"status\": \"Blocked\""));
+    fs::remove_dir_all(dir).unwrap();
 }
 #[test]
 fn cur_001_4() {

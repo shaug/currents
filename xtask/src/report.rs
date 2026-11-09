@@ -60,6 +60,9 @@ pub fn build(
             && let Some(path) = args.get(i + 1)
         {
             paths.push(path.into());
+            if flag == "--manifest-path" {
+                paths.push(Path::new(path).with_file_name("Cargo.lock"));
+            }
         }
     }
     let inputs: Vec<_> = paths
