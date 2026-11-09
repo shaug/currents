@@ -115,6 +115,25 @@ fn cur_047_2() {
 fn cur_047_3() {
     // Manifest and coverage must be complete/bijective; a fallback cannot waive automation.
     let input = fixture();
+    // Reordering coverage must not make actionable paths identify another row.
+    let mut reordered = fixture();
+    reordered["coverage"][0]["limitation"] =
+        json!({"status":"owner_accepted","detail":"Synthetic complete route"});
+    reordered["coverage"].as_array_mut().unwrap().swap(0, 3);
+    let (_, report, _) = inspect(&reordered);
+    let fields = report["unresolved"].as_array().unwrap();
+    assert!(fields.iter().any(|v| v["field"] == "coverage[0].route"));
+    assert!(
+        fields
+            .iter()
+            .any(|v| v["field"] == "coverage[0].limitation")
+    );
+    assert!(!fields.iter().any(|v| v["field"] == "coverage[3].route"));
+    assert!(
+        !fields
+            .iter()
+            .any(|v| v["field"] == "coverage[3].limitation")
+    );
     let (_, r, _) = inspect(&input);
     for (i, route) in [
         "automatic",

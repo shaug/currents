@@ -218,18 +218,19 @@ fn assess(bytes: &[u8]) -> Result<(bool, Value), &'static str> {
         {
             return Err("automatic_required confirmed value must be yes or no.");
         }
-        let coverage = data
+        let (coverage_index, coverage) = data
             .coverage
             .iter()
-            .find(|r| r.component_id == c.id)
+            .enumerate()
+            .find(|(_, r)| r.component_id == c.id)
             .ok_or("Missing coverage component.")?;
         match &coverage.limitation {
             Limitation::OwnerAccepted{detail} if detail.trim().is_empty() || detail.len()>4096 => return Err("An owner-accepted limitation requires nonblank scope/evidence text of at most 4096 bytes."),
-            Limitation::Unassessed => unresolved_fields.push(issue(format!("coverage[{i}].limitation"),"unassessed","Product owner: explicitly assess and accept any route limitation; file/manual does not establish required automation.")),
+            Limitation::Unassessed => unresolved_fields.push(issue(format!("coverage[{coverage_index}].limitation"),"unassessed","Product owner: explicitly assess and accept any route limitation; file/manual does not establish required automation.")),
             _=>{}
         }
         if coverage.route == Route::Unknown {
-            unresolved_fields.push(issue(format!("coverage[{i}].route"),"unknown","Choose automatic, file, or manual acquisition after verifying feasibility; keep this component visible meanwhile."));
+            unresolved_fields.push(issue(format!("coverage[{coverage_index}].route"),"unknown","Choose automatic, file, or manual acquisition after verifying feasibility; keep this component visible meanwhile."));
         }
         components.push(json!({"index":i,"kind":c.kind,"position":"unknown","route":coverage.route,"limitation":coverage.limitation.state()}));
     }
