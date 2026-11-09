@@ -1,0 +1,128 @@
+{
+  "classes": [
+    "unauthorized",
+    "locked",
+    "unsupported_version",
+    "stale_basis",
+    "invalid_reference",
+    "duplicate_recognition",
+    "allocation_conflict",
+    "unbalanced",
+    "precision_or_overflow",
+    "incomplete_basis",
+    "integrity_failure",
+    "storage_failure",
+    "canceled",
+    "result_unknown"
+  ],
+  "next_actions": [
+    "authenticate",
+    "unlock",
+    "upgrade",
+    "refresh_basis",
+    "correct_input",
+    "inspect_evidence",
+    "retry_same_command",
+    "recover"
+  ],
+  "errors": [
+    {
+      "class": "unauthorized",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "authenticate"
+    },
+    {
+      "class": "locked",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "unlock"
+    },
+    {
+      "class": "unsupported_version",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "upgrade"
+    },
+    {
+      "class": "stale_basis",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "refresh_basis"
+    },
+    {
+      "class": "invalid_reference",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "correct_input"
+    },
+    {
+      "class": "duplicate_recognition",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "inspect_evidence"
+    },
+    {
+      "class": "allocation_conflict",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "inspect_evidence"
+    },
+    {
+      "class": "unbalanced",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "correct_input"
+    },
+    {
+      "class": "precision_or_overflow",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "correct_input"
+    },
+    {
+      "class": "incomplete_basis",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "inspect_evidence"
+    },
+    {
+      "class": "integrity_failure",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "recover"
+    },
+    {
+      "class": "storage_failure",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "recover"
+    },
+    {
+      "class": "canceled",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "correct_input"
+    },
+    {
+      "class": "result_unknown",
+      "affected_scope": [
+        "00000000-0000-0000-0000-000000000001"
+      ],
+      "next_action": "retry_same_command"
+    }
+  ]
+}

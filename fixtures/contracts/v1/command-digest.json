@@ -1,0 +1,4 @@
+{
+  "canonical_utf8": "{\"command_id\":\"00000000-0000-0000-0000-000000000001\",\"dataset_id\":\"00000000-0000-0000-0000-000000000001\",\"expected_head\":\"1\",\"operation\":{\"kind\":\"SetAccountCatalog\",\"value\":{\"account_class\":\"Asset\",\"account_id\":\"00000000-0000-0000-0000-000000000001\",\"aliases\":[],\"component_id\":\"00000000-0000-0000-0000-000000000001\",\"display_name\":\"synthetic\",\"lifecycle\":\"Open\",\"normal_sign\":\"Debit\",\"unit_id\":\"00000000-0000-0000-0000-000000000001\"}},\"protocol_version\":1}",
+  "sha256": "63f9672ca4b186551dbcb1eb2e86d3b9cf61916aeeae1684b609f9c2d70fecc1"
+}

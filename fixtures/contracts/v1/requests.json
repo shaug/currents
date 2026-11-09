@@ -1,0 +1,88 @@
+[
+  {
+    "kind": "Preview",
+    "value": {
+      "command_id": "00000000-0000-0000-0000-000000000001",
+      "dataset_id": "00000000-0000-0000-0000-000000000001",
+      "expected_head": "1",
+      "operation": {
+        "kind": "SetAccountCatalog",
+        "value": {
+          "account_class": "Asset",
+          "account_id": "00000000-0000-0000-0000-000000000001",
+          "aliases": [],
+          "component_id": "00000000-0000-0000-0000-000000000001",
+          "display_name": "synthetic",
+          "lifecycle": "Open",
+          "normal_sign": "Debit",
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        }
+      },
+      "protocol_version": 1
+    }
+  },
+  {
+    "kind": "Submit",
+    "value": {
+      "authorization": {
+        "approval": null,
+        "capability": "synthetic",
+        "session": "00000000-0000-0000-0000-000000000001"
+      },
+      "body": {
+        "command_id": "00000000-0000-0000-0000-000000000001",
+        "dataset_id": "00000000-0000-0000-0000-000000000001",
+        "expected_head": "1",
+        "operation": {
+          "kind": "SetAccountCatalog",
+          "value": {
+            "account_class": "Asset",
+            "account_id": "00000000-0000-0000-0000-000000000001",
+            "aliases": [],
+            "component_id": "00000000-0000-0000-0000-000000000001",
+            "display_name": "synthetic",
+            "lifecycle": "Open",
+            "normal_sign": "Debit",
+            "unit_id": "00000000-0000-0000-0000-000000000001"
+          }
+        },
+        "protocol_version": 1
+      }
+    }
+  },
+  {
+    "kind": "Query",
+    "value": {
+      "accounts": [],
+      "basis": {
+        "dataset_id": "00000000-0000-0000-0000-000000000001",
+        "effective_scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        },
+        "evaluation_instant": "2026-11-09T12:00:00Z",
+        "query_semantics_version": 1,
+        "selection_policy_version": 1,
+        "through_commit": "1",
+        "unit_catalog_version": 1
+      },
+      "kind": "QueryPosition",
+      "records": []
+    }
+  },
+  {
+    "kind": "GetCommandResult",
+    "value": {
+      "command_id": "00000000-0000-0000-0000-000000000001",
+      "dataset_id": "00000000-0000-0000-0000-000000000001",
+      "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  {
+    "kind": "Cancel",
+    "value": {
+      "command_id": "00000000-0000-0000-0000-000000000001"
+    }
+  }
+]
