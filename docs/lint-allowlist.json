@@ -1,0 +1,14 @@
+[
+  {
+    "path": "crates/currents-types/src/amount.rs",
+    "function": "checked_rescale",
+    "attribute": "#[expect(clippy::arithmetic_side_effects, reason = \"CUR-003: bounded BigInt arithmetic; reviewed in docs/lint-allowlist.json\")]",
+    "justification": "Scale 0..18, bounded i128 input widened to BigInt; divisors are nonzero powers of ten and narrowing is checked."
+  },
+  {
+    "path": "crates/currents-types/src/amount.rs",
+    "function": "checked_ratio",
+    "attribute": "#[expect(clippy::arithmetic_side_effects, reason = \"CUR-003: bounded BigInt arithmetic; reviewed in docs/lint-allowlist.json\")]",
+    "justification": "At most three i128 factors and 10^18; zero denominator rejected before exact BigInt division and narrowing checked."
+  }
+]

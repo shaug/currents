@@ -41,11 +41,15 @@ impl Amount {
         } else {
             while v.scale > 0 && v.coefficient % 10 == 0 {
                 v.coefficient /= 10;
-                v.scale -= 1;
+                v.scale = v.scale.checked_sub(1).ok_or_else(EngineError::precision)?;
             }
         }
         Ok(v)
     }
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "CUR-003: bounded BigInt arithmetic; reviewed in docs/lint-allowlist.json"
+    )]
     pub fn checked_rescale(&self, scale: u8) -> Result<Self, EngineError> {
         self.validate()?;
         if scale > 18 {
@@ -69,7 +73,13 @@ impl Amount {
     }
     pub fn checked_neg(&self) -> Result<Self, EngineError> {
         self.validate()?;
-        Self::new(-self.coefficient, self.scale, self.unit_id)
+        Self::new(
+            self.coefficient
+                .checked_neg()
+                .ok_or_else(EngineError::precision)?,
+            self.scale,
+            self.unit_id,
+        )
     }
     pub fn checked_add(&self, other: &Self) -> Result<Self, EngineError> {
         if self.unit_id != other.unit_id {
@@ -88,6 +98,10 @@ impl Amount {
     }
     /// Multiply by an exact bounded rational; a nonintegral result is rejected.
     /// At most three i128-sized factors and 10^18 are materialized, never arbitrary input integers.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "CUR-003: bounded BigInt arithmetic; reviewed in docs/lint-allowlist.json"
+    )]
     pub fn checked_ratio(
         &self,
         numerator: i128,
@@ -119,7 +133,10 @@ impl Amount {
             return Ok(format!("{neg}{digits}"));
         }
         let padded = format!("{:0>width$}", digits, width = v.scale as usize + 1);
-        let p = padded.len() - v.scale as usize;
+        let p = padded
+            .len()
+            .checked_sub(v.scale as usize)
+            .ok_or_else(EngineError::precision)?;
         Ok(format!("{neg}{}.{}", &padded[..p], &padded[p..]))
     }
 }

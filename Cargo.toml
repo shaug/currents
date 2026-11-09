@@ -59,6 +59,7 @@ all = "warn"
 
 [profile.release]
 panic = "unwind"
+overflow-checks = true
 
 [patch.crates-io]
 libsqlite3-sys = { path = "vendor/libsqlite3-sys" }

@@ -29,7 +29,7 @@ const MEMBERS: &[&str] = &[
 ];
 const ASSERTIONS: &[&str] = &["cur_001_1", "cur_001_2", "cur_001_3", "cur_001_4"];
 
-fn root() -> PathBuf {
+pub(crate) fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -39,13 +39,20 @@ fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Re
     let mut command = Command::new(program);
     command.args(args).current_dir(cwd);
     if let Some(rustc) = rustc {
-        command.env("RUSTC", rustc);
+        command
+            .env("RUSTC", rustc)
+            .env("RUSTDOC", rustc.with_file_name("rustdoc"));
     }
     command
         .output()
         .map_err(|e| format!("BLOCKED: {}: {e}", program.display()))
 }
-fn checked(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Result<String> {
+pub(crate) fn checked(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    rustc: Option<&Path>,
+) -> Result<String> {
     let out = output(program, args, cwd, rustc)?;
     crate::report::record(program, args, cwd, rustc, &out);
     let evidence_dir = root().join("target/qualification");
@@ -69,7 +76,7 @@ fn checked(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> R
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
-fn cargo(args: &[&str]) -> Result<String> {
+pub(crate) fn cargo(args: &[&str]) -> Result<String> {
     checked(Path::new("cargo"), args, &root(), None)
 }
 fn read_json(path: &Path) -> Result<Value> {
@@ -321,6 +328,9 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-003" {
+        return crate::quality::ticket();
+    }
     if name == "CUR-002" {
         let assertions = ["cur_002_1", "cur_002_2", "cur_002_3", "cur_002_4"];
         let list = cargo(&[
@@ -447,7 +457,7 @@ fn quality() -> Result<Value> {
         "-D",
         "warnings",
     ])?;
-    cargo(&["doc", "--locked", "--workspace", "--no-deps"])?;
+    crate::quality::all()?;
     let tests = ticket("CUR-001")?;
     Ok(json!({"tests":tests,"core":core(false, None)?}))
 }
@@ -474,6 +484,9 @@ pub fn run(args: Vec<String>) -> Result<()> {
         match (command,gate) {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
+        ("check","docs")=>crate::quality::docs(None),
+        ("check","privacy")=>crate::quality::privacy(&root()),
+        ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
         ("qualify","native-source")=>native_source(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),

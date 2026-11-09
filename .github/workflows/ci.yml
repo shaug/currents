@@ -1,0 +1,183 @@
+{
+  "name": "PR checks",
+  "on": {
+    "pull_request": {},
+    "push": {
+      "branches": [
+        "main"
+      ]
+    },
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "pr-checks-${{ github.ref }}",
+    "cancel-in-progress": true
+  },
+  "jobs": {
+    "quality": {
+      "name": "quality",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 40,
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Install exact Rust toolchain",
+          "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
+        },
+        {
+          "name": "Install checksum-pinned policy tools",
+          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Install exact candidate MSRV",
+          "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Run quality gate",
+          "run": "cargo xtask check quality"
+        },
+        {
+          "name": "Qualify policy counterexamples",
+          "run": "cargo xtask ticket CUR-003"
+        }
+      ]
+    },
+    "core": {
+      "name": "core (${{ matrix.os }})",
+      "runs-on": "${{ matrix.os }}",
+      "timeout-minutes": 40,
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Install exact Rust toolchain",
+          "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
+        },
+        {
+          "name": "Install checksum-pinned policy tools",
+          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Install exact candidate MSRV",
+          "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Run core gate",
+          "run": "cargo xtask check core"
+        }
+      ],
+      "strategy": {
+        "matrix": {
+          "os": [
+            "ubuntu-24.04",
+            "macos-15"
+          ]
+        }
+      }
+    },
+    "msrv": {
+      "name": "msrv",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 40,
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Install exact Rust toolchain",
+          "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
+        },
+        {
+          "name": "Install checksum-pinned policy tools",
+          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Install exact candidate MSRV",
+          "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Run msrv gate",
+          "run": "cargo xtask check msrv"
+        }
+      ]
+    },
+    "docs": {
+      "name": "docs",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 40,
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Install exact Rust toolchain",
+          "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
+        },
+        {
+          "name": "Install checksum-pinned policy tools",
+          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Install exact candidate MSRV",
+          "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Run docs gate",
+          "run": "cargo xtask check docs"
+        }
+      ]
+    },
+    "privacy": {
+      "name": "privacy",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 40,
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Install exact Rust toolchain",
+          "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
+        },
+        {
+          "name": "Install checksum-pinned policy tools",
+          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Install exact candidate MSRV",
+          "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Run privacy gate",
+          "run": "cargo xtask check privacy"
+        }
+      ]
+    }
+  }
+}

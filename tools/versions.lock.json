@@ -1044,8 +1044,16 @@
       }
     }
   ],
-  "actions": [],
-  "actions_scope": "No workflow actions authored in CUR-001; CUR-003 owns workflow selection and full-commit pins.",
+  "actions": [
+    {
+      "repository": "actions/checkout",
+      "tag": "v7.0.1",
+      "commit": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "source": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    }
+  ],
+  "actions_scope": "CUR-003: checkout only; immutable upstream release commit verified on 2026-11-09.",
   "test_oracles": [
     {
       "name": "ledger",

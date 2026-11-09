@@ -1,4 +1,5 @@
 mod checks;
+mod quality;
 mod report;
 
 fn main() {

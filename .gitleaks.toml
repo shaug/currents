@@ -1,0 +1,7 @@
+title = "Currents public synthetic-only sources"
+[extend]
+useDefault = true
+[[rules]]
+id = "currents-account-canary"
+description = "Private-account marker, including synthetic qualification canary"
+regex = 'CURRENTS_PRIVATE_ACCOUNT=[0-9]{8,}'
