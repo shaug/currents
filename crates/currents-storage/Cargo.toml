@@ -1,0 +1,13 @@
+[package]
+name = "currents-storage"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+currents-types.workspace = true
+currents-accounting.workspace = true
+currents-cipher.workspace = true

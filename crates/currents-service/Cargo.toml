@@ -1,0 +1,16 @@
+[package]
+name = "currents-service"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+currents-types.workspace = true
+currents-domain.workspace = true
+currents-planning.workspace = true
+currents-storage.workspace = true
+tokio.workspace = true
+tracing.workspace = true
