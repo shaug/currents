@@ -1,2 +1,2 @@
-# Preserve byte-identical upstream vendored files, including their whitespace.
-/vendor/libsqlite3-sys/** -whitespace linguist-vendored
+# Preserve opaque vendored fuzz bytes and represent them as binary in review diffs.
+vendor/doubleentry/fuzz/corpus/** binary

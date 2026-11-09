@@ -379,8 +379,13 @@ dependencies = [
 name = "currents-accounting"
 version = "0.0.0"
 dependencies = [
+ "currents-cipher",
  "currents-types",
  "doubleentry",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -571,7 +576,6 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 [[package]]
 name = "doubleentry"
 version = "0.9.0"
-source = "git+https://github.com/hupe1980/doubleentry?rev=3c514c97169a98d96f0668e6addfd92e1e8f6f69#3c514c97169a98d96f0668e6addfd92e1e8f6f69"
 dependencies = [
  "document-features",
  "getrandom 0.3.4",
