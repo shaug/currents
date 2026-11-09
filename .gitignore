@@ -1,0 +1,21 @@
+# Local operating-system/editor noise
+.DS_Store
+
+# Private financial state must live outside this repository.
+# These patterns are only a backstop against accidental inclusion.
+/private/
+/data/
+/backups/
+/exports/
+/logs/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.key
+*.pem
