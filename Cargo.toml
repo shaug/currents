@@ -1,0 +1,64 @@
+[workspace]
+members = ["crates/currents-types", "crates/currents-protocol", "crates/currents-cipher", "crates/currents-transfer", "crates/currents-domain", "crates/currents-accounting", "crates/currents-storage", "crates/currents-service", "crates/currents-planning", "crates/currents-acquisition", "crates/currents-ffi", "crates/currents-cli", "crates/currents-mcp", "crates/currents-verify", "xtask"]
+resolver = "3"
+exclude = ["vendor/libsqlite3-sys"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+publish = false
+# Candidate MSRV is qualified separately; no rust-version promise yet.
+
+[workspace.dependencies]
+currents-types = { path = "crates/currents-types" }
+currents-protocol = { path = "crates/currents-protocol" }
+currents-cipher = { path = "crates/currents-cipher" }
+currents-transfer = { path = "crates/currents-transfer" }
+currents-domain = { path = "crates/currents-domain" }
+currents-accounting = { path = "crates/currents-accounting" }
+currents-storage = { path = "crates/currents-storage" }
+currents-service = { path = "crates/currents-service" }
+currents-planning = { path = "crates/currents-planning" }
+currents-acquisition = { path = "crates/currents-acquisition" }
+currents-ffi = { path = "crates/currents-ffi" }
+currents-cli = { path = "crates/currents-cli" }
+currents-mcp = { path = "crates/currents-mcp" }
+currents-verify = { path = "crates/currents-verify" }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "sqlite-unlock-notify", "time"] }
+sqlx-core = { version = "=0.9.0", default-features = false }
+sqlx-sqlite = { version = "=0.9.0", default-features = false }
+tokio = { version = "=1.53.3", default-features = false, features = ["rt-multi-thread", "sync", "time", "macros"] }
+serde = { version = "=1.0.229", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+time = { version = "=0.3.55", default-features = false, features = ["serde", "parsing", "formatting"] }
+thiserror = { version = "=2.0.21", default-features = true }
+sha2 = { version = "=0.11.1", default-features = false }
+clap = { version = "=4.6.7", default-features = false, features = ["derive", "std"] }
+tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
+proptest = { version = "=1.12.0", default-features = true }
+tempfile = { version = "=3.27.0", default-features = true }
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "stream"] }
+jiff = { version = "=0.2.41", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff-tzdb = { version = "=0.1.9", default-features = true }
+serde_json_canonicalizer = { version = "=0.4.1", default-features = true }
+num-bigint = { version = "=0.4.8", default-features = false, features = ["std"] }
+num-integer = { version = "=0.1.47", default-features = false, features = ["std"] }
+num-traits = { version = "=0.2.19", default-features = false, features = ["std"] }
+uuid = { version = "=1.29.2", default-features = false, features = ["v4", "serde", "std"] }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+secrecy = { version = "=0.10.3", default-features = false }
+csv = { version = "=1.4.0", default-features = true }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "registry"] }
+doubleentry = { git = "https://github.com/hupe1980/doubleentry", rev = "3c514c97169a98d96f0668e6addfd92e1e8f6f69", default-features = false, features = ["sqlite"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.release]
+panic = "unwind"
+
+[patch.crates-io]
+libsqlite3-sys = { path = "vendor/libsqlite3-sys" }

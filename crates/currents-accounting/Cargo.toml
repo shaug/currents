@@ -1,0 +1,12 @@
+[package]
+name = "currents-accounting"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+currents-types.workspace = true
+doubleentry.workspace = true

@@ -56,3 +56,16 @@ Apple APIs are Swift 6, SwiftUI/AppKit, Foundation/XPC, Security/Keychain, Local
 - [uv release config](https://github.com/astral-sh/uv/blob/3e2f08f8e75624ec942f864cd56b816885b80b7c/dist-workspace.toml): provenance without copying multi-registry complexity; [Zed bundle script](https://github.com/zed-industries/zed/blob/22580c6e6970de1aebf653a012765025fe8bf0f7/script/bundle-mac): explicit nested signing/Xcode inputs.
 - [cargo-deny](https://github.com/EmbarkStudios/cargo-deny), [Gitleaks](https://github.com/gitleaks/gitleaks), [CycloneDX](https://github.com/CycloneDX/cyclonedx-rust-cargo), [git-cliff](https://github.com/orhun/git-cliff), [GitHub attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
 - [FinanceKit](https://developer.apple.com/financekit/), [framework](https://developer.apple.com/documentation/FinanceKit), [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+
+## CUR-001 source refresh, 2026-11-09 (under qualification)
+
+The implementation candidate retains SQLx0.9.0 and the sys0.37 Rust interface,
+but replaces its native build input with unmodified official SQLCipher4.20.0 /
+SQLite3.54.1 from exact sqlcipher-src420.0.0. The historical 4.10.0 amalgamation
+above retains the defect covered by RUSTSEC-2026-0459. This source-only refresh
+uses the existing Apple CommonCrypto and Linux vendored-OpenSSL composition;
+no crypto implementation or private transaction seam is changed. Exact source
+checksums, provenance, runtime smoke tests and remaining qualification are in
+[the implementation dependency record](../dependencies.md). The old checksum is
+historical evidence, not the current build input. This does not qualify CUR-006
+key initialization, ciphertext behavior or runtime recovery.

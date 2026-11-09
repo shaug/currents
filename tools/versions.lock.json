@@ -1,0 +1,1082 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-11-09",
+  "qualification": "Source refresh under qualification: exact official SQLCipher4.20.0/SQLite3.54.1 fixes native WAL source; package-range advisory still blocks until source-specific review and complete target evidence.",
+  "crates": [
+    {
+      "name": "sqlx",
+      "version": "0.9.0",
+      "source": "https://static.crates.io/crates/sqlx/sqlx-0.9.0.crate",
+      "sha256": "378620ccc25c62c89d8be1c819e76a88d59bdcc3304733330788948e619bfd71",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.94.0",
+      "features": [
+        "runtime-tokio",
+        "sqlite-bundled",
+        "sqlite-unlock-notify",
+        "time"
+      ]
+    },
+    {
+      "name": "sqlx-core",
+      "version": "0.9.0",
+      "source": "https://static.crates.io/crates/sqlx-core/sqlx-core-0.9.0.crate",
+      "sha256": "05b44e85bf579a8eeb4ceaa77a3a523baf2bf0e9bac7e40f405d537b5d2d5ccb",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.94.0",
+      "features": null
+    },
+    {
+      "name": "sqlx-sqlite",
+      "version": "0.9.0",
+      "source": "https://static.crates.io/crates/sqlx-sqlite/sqlx-sqlite-0.9.0.crate",
+      "sha256": "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.94.0",
+      "features": null
+    },
+    {
+      "name": "libsqlite3-sys",
+      "version": "0.37.0",
+      "source": "https://static.crates.io/crates/libsqlite3-sys/libsqlite3-sys-0.37.0.crate",
+      "sha256": "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1",
+      "license": "MIT",
+      "rust_version": null,
+      "features": null
+    },
+    {
+      "name": "tokio",
+      "version": "1.53.3",
+      "source": "https://static.crates.io/crates/tokio/tokio-1.53.3.crate",
+      "sha256": "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e",
+      "license": "MIT",
+      "rust_version": "1.71",
+      "features": [
+        "rt-multi-thread",
+        "sync",
+        "time",
+        "macros"
+      ]
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "source": "https://static.crates.io/crates/serde/serde-1.0.229.crate",
+      "sha256": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.56",
+      "features": [
+        "derive",
+        "std"
+      ]
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "source": "https://static.crates.io/crates/serde_json/serde_json-1.0.154.crate",
+      "sha256": "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.71",
+      "features": [
+        "std"
+      ]
+    },
+    {
+      "name": "time",
+      "version": "0.3.55",
+      "source": "https://static.crates.io/crates/time/time-0.3.55.crate",
+      "sha256": "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.88.0",
+      "features": [
+        "serde",
+        "parsing",
+        "formatting"
+      ]
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.21",
+      "source": "https://static.crates.io/crates/thiserror/thiserror-2.0.21.crate",
+      "sha256": "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.77",
+      "features": null
+    },
+    {
+      "name": "sha2",
+      "version": "0.11.1",
+      "source": "https://static.crates.io/crates/sha2/sha2-0.11.1.crate",
+      "sha256": "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.88",
+      "features": []
+    },
+    {
+      "name": "clap",
+      "version": "4.6.7",
+      "source": "https://static.crates.io/crates/clap/clap-4.6.7.crate",
+      "sha256": "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.85",
+      "features": [
+        "derive",
+        "std"
+      ]
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44",
+      "source": "https://static.crates.io/crates/tracing/tracing-0.1.44.crate",
+      "sha256": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
+      "license": "MIT",
+      "rust_version": "1.65.0",
+      "features": [
+        "std"
+      ]
+    },
+    {
+      "name": "proptest",
+      "version": "1.12.0",
+      "source": "https://static.crates.io/crates/proptest/proptest-1.12.0.crate",
+      "sha256": "b8530004ccb15eae51c7e40009fbe317f341f804db54dc033eec1c50be28cfa0",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.88",
+      "features": null
+    },
+    {
+      "name": "tempfile",
+      "version": "3.27.0",
+      "source": "https://static.crates.io/crates/tempfile/tempfile-3.27.0.crate",
+      "sha256": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.63",
+      "features": null
+    },
+    {
+      "name": "reqwest",
+      "version": "0.13.5",
+      "source": "https://static.crates.io/crates/reqwest/reqwest-0.13.5.crate",
+      "sha256": "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.85.0",
+      "features": [
+        "rustls",
+        "stream"
+      ]
+    },
+    {
+      "name": "jiff",
+      "version": "0.2.41",
+      "source": "https://static.crates.io/crates/jiff/jiff-0.2.41.crate",
+      "sha256": "fcefdcefac59ac8f8401852e3427d55610481fc41e6625c39bac62d2d771623a",
+      "license": "Unlicense OR MIT",
+      "rust_version": "1.70",
+      "features": [
+        "std",
+        "tzdb-bundle-always"
+      ]
+    },
+    {
+      "name": "jiff-tzdb",
+      "version": "0.1.9",
+      "source": "https://static.crates.io/crates/jiff-tzdb/jiff-tzdb-0.1.9.crate",
+      "sha256": "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7",
+      "license": "Unlicense OR MIT",
+      "rust_version": "1.70",
+      "features": null
+    },
+    {
+      "name": "serde_json_canonicalizer",
+      "version": "0.4.1",
+      "source": "https://static.crates.io/crates/serde_json_canonicalizer/serde_json_canonicalizer-0.4.1.crate",
+      "sha256": "87f7bb64f8c7e9f783fdfe883b5fe93a90bee1597c63705baa91842c5f698620",
+      "license": "MIT",
+      "rust_version": null,
+      "features": null
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "source": "https://static.crates.io/crates/num-bigint/num-bigint-0.4.8.crate",
+      "sha256": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.60",
+      "features": [
+        "std"
+      ]
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.47",
+      "source": "https://static.crates.io/crates/num-integer/num-integer-0.1.47.crate",
+      "sha256": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.31",
+      "features": [
+        "std"
+      ]
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "source": "https://static.crates.io/crates/num-traits/num-traits-0.2.19.crate",
+      "sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.60",
+      "features": [
+        "std"
+      ]
+    },
+    {
+      "name": "uuid",
+      "version": "1.29.2",
+      "source": "https://static.crates.io/crates/uuid/uuid-1.29.2.crate",
+      "sha256": "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": "1.89.0",
+      "features": [
+        "v4",
+        "serde",
+        "std"
+      ]
+    },
+    {
+      "name": "zeroize",
+      "version": "1.9.1",
+      "source": "https://static.crates.io/crates/zeroize/zeroize-1.9.1.crate",
+      "sha256": "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": "1.85",
+      "features": [
+        "alloc"
+      ]
+    },
+    {
+      "name": "secrecy",
+      "version": "0.10.3",
+      "source": "https://static.crates.io/crates/secrecy/secrecy-0.10.3.crate",
+      "sha256": "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": "1.60",
+      "features": []
+    },
+    {
+      "name": "csv",
+      "version": "1.4.0",
+      "source": "https://static.crates.io/crates/csv/csv-1.4.0.crate",
+      "sha256": "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938",
+      "license": "Unlicense/MIT",
+      "rust_version": "1.73",
+      "features": null
+    },
+    {
+      "name": "cbindgen",
+      "version": "0.29.4",
+      "source": "https://static.crates.io/crates/cbindgen/cbindgen-0.29.4.crate",
+      "sha256": "2ecb53484c9c167ba674026b656d8a27d7657a58e6066aa902bfb1a4aa00ae20",
+      "license": "MPL-2.0",
+      "rust_version": "1.74",
+      "features": null
+    },
+    {
+      "name": "tracing-subscriber",
+      "version": "0.3.23",
+      "source": "https://static.crates.io/crates/tracing-subscriber/tracing-subscriber-0.3.23.crate",
+      "sha256": "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319",
+      "license": "MIT",
+      "rust_version": "1.65.0",
+      "features": [
+        "fmt",
+        "registry"
+      ]
+    },
+    {
+      "name": "cargo-deny",
+      "version": "0.20.2",
+      "source": "https://static.crates.io/crates/cargo-deny/cargo-deny-0.20.2.crate",
+      "sha256": "e528dfcbe739af7ce37a77d3d6df1b29dd6887b1c701d888820c0f16b864f737",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.88.0",
+      "features": null
+    },
+    {
+      "name": "cargo-nextest",
+      "version": "0.9.151",
+      "source": "https://static.crates.io/crates/cargo-nextest/cargo-nextest-0.9.151.crate",
+      "sha256": "f21c861100d8ee08937edc925583ab006a47e64e4a1ccd454bf37e6cb7b3a624",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": "1.91",
+      "features": null
+    },
+    {
+      "name": "cargo-llvm-cov",
+      "version": "0.9.1",
+      "source": "https://static.crates.io/crates/cargo-llvm-cov/cargo-llvm-cov-0.9.1.crate",
+      "sha256": "5e00647cc92940c4dd82249c480fe08fd3809767e89f056bcec46d8a7962ea5b",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": "1.87",
+      "features": null
+    },
+    {
+      "name": "cargo-fuzz",
+      "version": "0.13.2",
+      "source": "https://static.crates.io/crates/cargo-fuzz/cargo-fuzz-0.13.2.crate",
+      "sha256": "5acfd01930e49823e58c30dd8012d3338a620377d7c7d4cc140ca4b2169400e2",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": null,
+      "features": null
+    },
+    {
+      "name": "cargo-cyclonedx",
+      "version": "0.5.10",
+      "source": "https://static.crates.io/crates/cargo-cyclonedx/cargo-cyclonedx-0.5.10.crate",
+      "sha256": "705522d9b1837be5dfdd3829791140a85cbba18f64b9af577c932bbbe5dbdba7",
+      "license": "Apache-2.0",
+      "rust_version": "1.86.0",
+      "features": null
+    },
+    {
+      "name": "git-cliff",
+      "version": "2.14.2",
+      "source": "https://static.crates.io/crates/git-cliff/git-cliff-2.14.2.crate",
+      "sha256": "3cf0865d861e5b64a73ca527c62c1c566412ec1cc5a4ad5c5692650bfb0e2a79",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": "1.88.0",
+      "features": null
+    },
+    {
+      "name": "sqlcipher-src",
+      "version": "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+      "source": "https://static.crates.io/crates/sqlcipher-src/sqlcipher-src-420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2.crate",
+      "sha256": "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe",
+      "license": "MIT",
+      "rust_version": "1.88",
+      "features": []
+    }
+  ],
+  "github_tools": [
+    {
+      "repository": "gitleaks/gitleaks",
+      "tag": "v8.30.1",
+      "url": "https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1",
+      "assets": [
+        {
+          "name": "gitleaks_8.30.1_checksums.txt",
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt",
+          "digest": "sha256:061476c21adaf5441516f96f185c1a4706a83cd6329b9b38762271b3d4a52fae",
+          "download_verified": true
+        },
+        {
+          "name": "gitleaks_8.30.1_darwin_arm64.tar.gz",
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+          "digest": "sha256:b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+          "download_verified": true
+        },
+        {
+          "name": "gitleaks_8.30.1_linux_x64.tar.gz",
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+          "digest": "sha256:551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+          "download_verified": true
+        }
+      ],
+      "commit": "83d9cd684c87d95d656c1458ef04895a7f1cbd8e",
+      "license": "MIT",
+      "license_source": "https://github.com/gitleaks/gitleaks/blob/83d9cd684c87d95d656c1458ef04895a7f1cbd8e/LICENSE"
+    },
+    {
+      "repository": "rhysd/actionlint",
+      "tag": "v1.7.12",
+      "url": "https://github.com/rhysd/actionlint/releases/tag/v1.7.12",
+      "assets": [
+        {
+          "name": "actionlint_1.7.12_checksums.txt",
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt",
+          "digest": "sha256:433028cf0ba3c42163ea1a668dedce30fcdbe84fe912b1a5e288c006eab8a4f5",
+          "download_verified": true
+        },
+        {
+          "name": "actionlint_1.7.12_darwin_arm64.tar.gz",
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz",
+          "digest": "sha256:aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+          "download_verified": true
+        },
+        {
+          "name": "actionlint_1.7.12_linux_amd64.tar.gz",
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+          "digest": "sha256:8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+          "download_verified": true
+        }
+      ],
+      "commit": "914e7df21a07ef503a81201c76d2b11c789d3fca",
+      "license": "MIT",
+      "license_source": "https://github.com/rhysd/actionlint/blob/914e7df21a07ef503a81201c76d2b11c789d3fca/LICENSE.txt"
+    }
+  ],
+  "kernel": {
+    "source": "https://raw.githubusercontent.com/hupe1980/doubleentry/3c514c97169a98d96f0668e6addfd92e1e8f6f69/Cargo.toml",
+    "commit": "3c514c97169a98d96f0668e6addfd92e1e8f6f69",
+    "manifest_sha256": "0ea037bbdd701554282ef42d80da736d7aebe5b370064799d3a55fecd5427fd8",
+    "package": {
+      "name": "doubleentry",
+      "version": "0.9.0",
+      "edition": "2024",
+      "rust-version": "1.94",
+      "authors": [
+        "hupe1980"
+      ],
+      "description": "An immutable, tamper-evident double-entry bookkeeping engine: one pure rule core, exact integer money, identity derived from the idempotency key, and one append-only RFC 6962 Merkle log with inclusion, consistency and sealed-balance proofs and C2SP checkpoints, in memory (sync) or over SQLite and PostgreSQL (async).",
+      "keywords": [
+        "accounting",
+        "ledger",
+        "double-entry",
+        "bookkeeping",
+        "merkle"
+      ],
+      "categories": [
+        "finance",
+        "data-structures",
+        "cryptography"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/hupe1980/doubleentry",
+      "homepage": "https://hupe1980.github.io/doubleentry",
+      "documentation": "https://docs.rs/doubleentry",
+      "readme": "README.md",
+      "include": [
+        "src/**",
+        "tests/**",
+        "examples/**",
+        "benches/**",
+        "/README.md",
+        "/CHANGELOG.md",
+        "/LICENSE-APACHE",
+        "/LICENSE-MIT"
+      ],
+      "metadata": {
+        "docs": {
+          "rs": {
+            "all-features": true,
+            "rustdoc-args": [
+              "--cfg",
+              "docsrs"
+            ]
+          }
+        }
+      }
+    },
+    "features": {
+      "default": [],
+      "serde": [
+        "dep:serde",
+        "time/serde"
+      ],
+      "postgres": [
+        "dep:sqlx",
+        "sqlx/postgres"
+      ],
+      "postgres-tls": [
+        "postgres",
+        "sqlx/tls-rustls-aws-lc-rs"
+      ],
+      "sqlite": [
+        "dep:sqlx",
+        "sqlx/sqlite-bundled",
+        "sqlx/sqlite-unlock-notify"
+      ],
+      "witness": [
+        "dep:ed25519-dalek"
+      ],
+      "testing": [
+        "dep:tokio"
+      ],
+      "tracing": [
+        "dep:tracing"
+      ]
+    },
+    "dependencies": {
+      "sha2": {
+        "version": "0.11.1",
+        "default-features": false
+      },
+      "thiserror": "2.0.18",
+      "time": {
+        "version": "0.3.47",
+        "features": [
+          "std",
+          "macros"
+        ]
+      },
+      "unicode-normalization": {
+        "version": "0.1.25",
+        "default-features": false
+      },
+      "document-features": "0.2.12",
+      "getrandom": {
+        "version": "0.3.4",
+        "features": [
+          "std"
+        ]
+      },
+      "serde": {
+        "version": "1.0.220",
+        "features": [
+          "derive"
+        ],
+        "optional": true
+      },
+      "sqlx": {
+        "version": "0.9.0",
+        "default-features": false,
+        "features": [
+          "runtime-tokio",
+          "time"
+        ],
+        "optional": true
+      },
+      "ed25519-dalek": {
+        "version": "3.0.0",
+        "default-features": false,
+        "features": [
+          "alloc",
+          "zeroize"
+        ],
+        "optional": true
+      },
+      "tokio": {
+        "version": "1.51.0",
+        "default-features": false,
+        "features": [
+          "rt-multi-thread",
+          "sync",
+          "macros",
+          "time"
+        ],
+        "optional": true
+      },
+      "tracing": {
+        "version": "0.1.37",
+        "default-features": false,
+        "features": [
+          "std",
+          "attributes"
+        ],
+        "optional": true
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "name": "sqlx",
+      "version": "0.9.0",
+      "source": "https://static.crates.io/crates/sqlx/sqlx-0.9.0.crate",
+      "sha256": "378620ccc25c62c89d8be1c819e76a88d59bdcc3304733330788948e619bfd71",
+      "path": "sqlx-0.9.0.crate"
+    },
+    {
+      "name": "sqlx-core",
+      "version": "0.9.0",
+      "source": "https://static.crates.io/crates/sqlx-core/sqlx-core-0.9.0.crate",
+      "sha256": "05b44e85bf579a8eeb4ceaa77a3a523baf2bf0e9bac7e40f405d537b5d2d5ccb",
+      "path": "sqlx-core-0.9.0.crate"
+    },
+    {
+      "name": "sqlx-sqlite",
+      "version": "0.9.0",
+      "source": "https://static.crates.io/crates/sqlx-sqlite/sqlx-sqlite-0.9.0.crate",
+      "sha256": "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c",
+      "path": "sqlx-sqlite-0.9.0.crate"
+    },
+    {
+      "name": "libsqlite3-sys",
+      "version": "0.37.0",
+      "source": "https://static.crates.io/crates/libsqlite3-sys/libsqlite3-sys-0.37.0.crate",
+      "sha256": "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1",
+      "path": "libsqlite3-sys-0.37.0.crate"
+    },
+    {
+      "name": "tokio",
+      "version": "1.53.3",
+      "source": "https://static.crates.io/crates/tokio/tokio-1.53.3.crate",
+      "sha256": "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e",
+      "path": "tokio-1.53.3.crate"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "source": "https://static.crates.io/crates/serde/serde-1.0.229.crate",
+      "sha256": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+      "path": "serde-1.0.229.crate"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "source": "https://static.crates.io/crates/serde_json/serde_json-1.0.154.crate",
+      "sha256": "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6",
+      "path": "serde_json-1.0.154.crate"
+    },
+    {
+      "name": "time",
+      "version": "0.3.55",
+      "source": "https://static.crates.io/crates/time/time-0.3.55.crate",
+      "sha256": "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134",
+      "path": "time-0.3.55.crate"
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.21",
+      "source": "https://static.crates.io/crates/thiserror/thiserror-2.0.21.crate",
+      "sha256": "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e",
+      "path": "thiserror-2.0.21.crate"
+    },
+    {
+      "name": "sha2",
+      "version": "0.11.1",
+      "source": "https://static.crates.io/crates/sha2/sha2-0.11.1.crate",
+      "sha256": "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19",
+      "path": "sha2-0.11.1.crate"
+    },
+    {
+      "name": "clap",
+      "version": "4.6.7",
+      "source": "https://static.crates.io/crates/clap/clap-4.6.7.crate",
+      "sha256": "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946",
+      "path": "clap-4.6.7.crate"
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44",
+      "source": "https://static.crates.io/crates/tracing/tracing-0.1.44.crate",
+      "sha256": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
+      "path": "tracing-0.1.44.crate"
+    },
+    {
+      "name": "proptest",
+      "version": "1.12.0",
+      "source": "https://static.crates.io/crates/proptest/proptest-1.12.0.crate",
+      "sha256": "b8530004ccb15eae51c7e40009fbe317f341f804db54dc033eec1c50be28cfa0",
+      "path": "proptest-1.12.0.crate"
+    },
+    {
+      "name": "tempfile",
+      "version": "3.27.0",
+      "source": "https://static.crates.io/crates/tempfile/tempfile-3.27.0.crate",
+      "sha256": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
+      "path": "tempfile-3.27.0.crate"
+    },
+    {
+      "name": "reqwest",
+      "version": "0.13.5",
+      "source": "https://static.crates.io/crates/reqwest/reqwest-0.13.5.crate",
+      "sha256": "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029",
+      "path": "reqwest-0.13.5.crate"
+    },
+    {
+      "name": "jiff",
+      "version": "0.2.41",
+      "source": "https://static.crates.io/crates/jiff/jiff-0.2.41.crate",
+      "sha256": "fcefdcefac59ac8f8401852e3427d55610481fc41e6625c39bac62d2d771623a",
+      "path": "jiff-0.2.41.crate"
+    },
+    {
+      "name": "jiff-tzdb",
+      "version": "0.1.9",
+      "source": "https://static.crates.io/crates/jiff-tzdb/jiff-tzdb-0.1.9.crate",
+      "sha256": "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7",
+      "path": "jiff-tzdb-0.1.9.crate"
+    },
+    {
+      "name": "serde_json_canonicalizer",
+      "version": "0.4.1",
+      "source": "https://static.crates.io/crates/serde_json_canonicalizer/serde_json_canonicalizer-0.4.1.crate",
+      "sha256": "87f7bb64f8c7e9f783fdfe883b5fe93a90bee1597c63705baa91842c5f698620",
+      "path": "serde_json_canonicalizer-0.4.1.crate"
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "source": "https://static.crates.io/crates/num-bigint/num-bigint-0.4.8.crate",
+      "sha256": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367",
+      "path": "num-bigint-0.4.8.crate"
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.47",
+      "source": "https://static.crates.io/crates/num-integer/num-integer-0.1.47.crate",
+      "sha256": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b",
+      "path": "num-integer-0.1.47.crate"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "source": "https://static.crates.io/crates/num-traits/num-traits-0.2.19.crate",
+      "sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+      "path": "num-traits-0.2.19.crate"
+    },
+    {
+      "name": "uuid",
+      "version": "1.29.2",
+      "source": "https://static.crates.io/crates/uuid/uuid-1.29.2.crate",
+      "sha256": "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c",
+      "path": "uuid-1.29.2.crate"
+    },
+    {
+      "name": "zeroize",
+      "version": "1.9.1",
+      "source": "https://static.crates.io/crates/zeroize/zeroize-1.9.1.crate",
+      "sha256": "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879",
+      "path": "zeroize-1.9.1.crate"
+    },
+    {
+      "name": "secrecy",
+      "version": "0.10.3",
+      "source": "https://static.crates.io/crates/secrecy/secrecy-0.10.3.crate",
+      "sha256": "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a",
+      "path": "secrecy-0.10.3.crate"
+    },
+    {
+      "name": "csv",
+      "version": "1.4.0",
+      "source": "https://static.crates.io/crates/csv/csv-1.4.0.crate",
+      "sha256": "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938",
+      "path": "csv-1.4.0.crate"
+    },
+    {
+      "name": "cbindgen",
+      "version": "0.29.4",
+      "source": "https://static.crates.io/crates/cbindgen/cbindgen-0.29.4.crate",
+      "sha256": "2ecb53484c9c167ba674026b656d8a27d7657a58e6066aa902bfb1a4aa00ae20",
+      "path": "cbindgen-0.29.4.crate"
+    },
+    {
+      "name": "tracing-subscriber",
+      "version": "0.3.23",
+      "source": "https://static.crates.io/crates/tracing-subscriber/tracing-subscriber-0.3.23.crate",
+      "sha256": "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319",
+      "path": "tracing-subscriber-0.3.23.crate"
+    },
+    {
+      "name": "cargo-deny",
+      "version": "0.20.2",
+      "source": "https://static.crates.io/crates/cargo-deny/cargo-deny-0.20.2.crate",
+      "sha256": "e528dfcbe739af7ce37a77d3d6df1b29dd6887b1c701d888820c0f16b864f737",
+      "path": "cargo-deny-0.20.2.crate"
+    },
+    {
+      "name": "cargo-nextest",
+      "version": "0.9.151",
+      "source": "https://static.crates.io/crates/cargo-nextest/cargo-nextest-0.9.151.crate",
+      "sha256": "f21c861100d8ee08937edc925583ab006a47e64e4a1ccd454bf37e6cb7b3a624",
+      "path": "cargo-nextest-0.9.151.crate"
+    },
+    {
+      "name": "cargo-llvm-cov",
+      "version": "0.9.1",
+      "source": "https://static.crates.io/crates/cargo-llvm-cov/cargo-llvm-cov-0.9.1.crate",
+      "sha256": "5e00647cc92940c4dd82249c480fe08fd3809767e89f056bcec46d8a7962ea5b",
+      "path": "cargo-llvm-cov-0.9.1.crate"
+    },
+    {
+      "name": "cargo-fuzz",
+      "version": "0.13.2",
+      "source": "https://static.crates.io/crates/cargo-fuzz/cargo-fuzz-0.13.2.crate",
+      "sha256": "5acfd01930e49823e58c30dd8012d3338a620377d7c7d4cc140ca4b2169400e2",
+      "path": "cargo-fuzz-0.13.2.crate"
+    },
+    {
+      "name": "cargo-cyclonedx",
+      "version": "0.5.10",
+      "source": "https://static.crates.io/crates/cargo-cyclonedx/cargo-cyclonedx-0.5.10.crate",
+      "sha256": "705522d9b1837be5dfdd3829791140a85cbba18f64b9af577c932bbbe5dbdba7",
+      "path": "cargo-cyclonedx-0.5.10.crate"
+    },
+    {
+      "name": "git-cliff",
+      "version": "2.14.2",
+      "source": "https://static.crates.io/crates/git-cliff/git-cliff-2.14.2.crate",
+      "sha256": "3cf0865d861e5b64a73ca527c62c1c566412ec1cc5a4ad5c5692650bfb0e2a79",
+      "path": "git-cliff-2.14.2.crate"
+    },
+    {
+      "name": "gitleaks_8.30.1_darwin_arm64.tar.gz",
+      "version": "8.30.1",
+      "source": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+      "sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+      "path": "gitleaks_8.30.1_darwin_arm64.tar.gz"
+    },
+    {
+      "name": "gitleaks_8.30.1_linux_x64.tar.gz",
+      "version": "8.30.1",
+      "source": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+      "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+      "path": "gitleaks_8.30.1_linux_x64.tar.gz"
+    },
+    {
+      "name": "actionlint_1.7.12_darwin_arm64.tar.gz",
+      "version": "1.7.12",
+      "source": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz",
+      "sha256": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+      "path": "actionlint_1.7.12_darwin_arm64.tar.gz"
+    },
+    {
+      "name": "actionlint_1.7.12_linux_amd64.tar.gz",
+      "version": "1.7.12",
+      "source": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+      "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+      "path": "actionlint_1.7.12_linux_amd64.tar.gz"
+    },
+    {
+      "name": "rust-1.99.0",
+      "version": "1.99.0",
+      "source": "https://static.rust-lang.org/dist/channel-rust-1.99.0.toml",
+      "sha256": "ce6dddc886364f8d786514771212cebe9b731ba82d6b859951c6b0ccc516b6a2",
+      "path": "channel-rust-1.99.0.toml"
+    },
+    {
+      "name": "rust-1.94.0",
+      "version": "1.94.0",
+      "source": "https://static.rust-lang.org/dist/channel-rust-1.94.0.toml",
+      "sha256": "aaa177def36e01d539bee6bde95295230b9ce378f81057845db8d0ebe97898ee",
+      "path": "channel-rust-1.94.0.toml"
+    },
+    {
+      "name": "doubleentry-manifest",
+      "version": "0.9.0",
+      "source": "https://raw.githubusercontent.com/hupe1980/doubleentry/3c514c97169a98d96f0668e6addfd92e1e8f6f69/Cargo.toml",
+      "sha256": "0ea037bbdd701554282ef42d80da736d7aebe5b370064799d3a55fecd5427fd8",
+      "path": "kernel-Cargo.toml"
+    },
+    {
+      "name": "sqlcipher-src",
+      "version": "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+      "source": "https://static.crates.io/crates/sqlcipher-src/sqlcipher-src-420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2.crate",
+      "sha256": "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe",
+      "path": "sqlcipher-src-420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2.crate"
+    },
+    {
+      "name": "ledger",
+      "version": "v3.4.1",
+      "source": "https://codeload.github.com/ledger/ledger/tar.gz/d422d3cdbf16e72d653908a3fda8ffda8dfadaf7",
+      "sha256": "dedc90ea00487ab1af08972157be9b8f97fca462e80b071395464931ff44585a",
+      "path": "ledger-v3.4.1.tar.gz"
+    },
+    {
+      "name": "beancount",
+      "version": "3.2.3",
+      "source": "https://codeload.github.com/beancount/beancount/tar.gz/eeda2aa2a3204ffb980dab11220b2abde5e80b38",
+      "sha256": "08beba2cf466a5abb5ec71b8fc2df9627c982e49e493d77b050d9fc9f5808601",
+      "path": "beancount-3.2.3.tar.gz"
+    }
+  ],
+  "rust": [
+    {
+      "version": "1.99.0",
+      "source": "https://static.rust-lang.org/dist/channel-rust-1.99.0.toml",
+      "sha256": "ce6dddc886364f8d786514771212cebe9b731ba82d6b859951c6b0ccc516b6a2",
+      "components": {
+        "rustc": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/rustc-1.99.0-aarch64-apple-darwin.tar.gz",
+            "hash": "2f6b9c9cdc9c2e87ab2e27335e8bb0c4dbe4daea486e39030b66980058f74353",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/rustc-1.99.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "334a66714ca316d71bbe5efe44f71762d0b276cea73be2987374693a837f7450"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/rustc-1.99.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "238e72b8617f79bc96f27a5bfeb1a208b5755fe1a48f8bc190fe403ef6d54ab8",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/rustc-1.99.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "77171ba2a0345fdf2abc4fedda55d6de078dae7a68527c28be8c77dcc9604bd5"
+          }
+        },
+        "cargo": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/cargo-1.99.0-aarch64-apple-darwin.tar.gz",
+            "hash": "318b85c276b43134102fb49bbb54bfd0757e5cce47a772461149aeab5adea2ab",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/cargo-1.99.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "76abff0ad79a10a3152dff640ea0d8b3c37637d9300bf55da41b95c3ddc069c1"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/cargo-1.99.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "c2b8ba1f59e7a230aa5522684f3f7aa620b98e5ad37683a5e5cf9b41f534fa1e",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/cargo-1.99.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "d7674918d28093097614cd9728b6ca60db9ea3038f640f0bd1e9a4188c7568ce"
+          }
+        },
+        "rust-std": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/rust-std-1.99.0-aarch64-apple-darwin.tar.gz",
+            "hash": "3589b3a6c6470d590aa5aa7fa1a4af0101103847761a5372a7300b0aa85699c6",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/rust-std-1.99.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "a7c6de8aa21e7c31163a7656295b321bb85f5dce55ed8ea95ac9ac561202bb5b"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/rust-std-1.99.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "1dcaa01beb6bc78fdb13815b4f15214719167c58e3d79fbdf214591f8c195ee1",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/rust-std-1.99.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "3e58dff2d0b72196b5ea4e90536e174d400de88564a52694686b81e091169933"
+          }
+        },
+        "clippy-preview": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/clippy-1.99.0-aarch64-apple-darwin.tar.gz",
+            "hash": "d13d16085280bd652d4a77041073264719c9ee92f33702f9dce2ee86777c92b1",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/clippy-1.99.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "c31a0765ed31d98515a09a13b44486048873d90ac75bb1e6690a17fb36a5d4e2"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/clippy-1.99.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "4b3b972738f6b8e0e55065e273a972cc25fccf53629b4308eec67d6a66a8cf4a",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/clippy-1.99.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "982442e32ad8dd3f0bb3a30db74038da5f71fd9bf1a865cc71da8ea5d4ec71ec"
+          }
+        },
+        "rustfmt-preview": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/rustfmt-1.99.0-aarch64-apple-darwin.tar.gz",
+            "hash": "c8d86490e38920ab7783483dc828695a9a678eff541c5fa793f165b374e87312",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/rustfmt-1.99.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "8b1436085c081e5efa88febadf667171a7a107073d168cd32b249a8eb70800da"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-10-01/rustfmt-1.99.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "9fc3a87d3d4f6e5e2bd87e6fb8779b7a95831f533cb8cc8ae1304a797c648733",
+            "xz_url": "https://static.rust-lang.org/dist/2026-10-01/rustfmt-1.99.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "b22c09ab9e258ec5571da170d88bd1624a4ea602e6d70d95720c5b47494cadce"
+          }
+        }
+      }
+    },
+    {
+      "version": "1.94.0",
+      "source": "https://static.rust-lang.org/dist/channel-rust-1.94.0.toml",
+      "sha256": "aaa177def36e01d539bee6bde95295230b9ce378f81057845db8d0ebe97898ee",
+      "components": {
+        "rustc": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/rustc-1.94.0-aarch64-apple-darwin.tar.gz",
+            "hash": "5be5bfd855ceaf741c7d9996940690a0a2958e5e44365bb63122d865ee6a9d2b",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/rustc-1.94.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "6ba00a4f486af11826335cd7fe405592d959f50afb9489176fc1463cbe75dbf2"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/rustc-1.94.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "b8c57ca524c86b2454502628a0d76f2de8cf1ae2c0a098dcdf1216ffaa4747e8",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/rustc-1.94.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "31a0d3ac9383dfdeb4fce86eeed5ade3230131c635264c0eab7252dbf235f28e"
+          }
+        },
+        "cargo": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/cargo-1.94.0-aarch64-apple-darwin.tar.gz",
+            "hash": "8091cb41d6b7fc27478cc0a51266231f41938be53b1cab5da8ab93d07e6f796f",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/cargo-1.94.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "7497ab873993cf38b806548c85bf818ffd71d1c3cf77b5bb4c3d3f1769588a08"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/cargo-1.94.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "6d77b3f9396cc23aa4f3ae2822b1349c4b2cf746dee4228212b5bed94200f421",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/cargo-1.94.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "8e17624f3de39e079845bfb25ed15a042f4b50ceca78e37c56c4b9b15949b9f7"
+          }
+        },
+        "rust-std": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/rust-std-1.94.0-aarch64-apple-darwin.tar.gz",
+            "hash": "5fa2aab3f8b11563fde18acafcb1444ac1a398d333950835dbe328c0335e8636",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/rust-std-1.94.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "d3293668128b0a7838ef2544ae341eadd4437460ca22098af723349885a10ba2"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/rust-std-1.94.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "c07c49819f14578b4a1d010ca77179305d2f2de484a11f18e12d1c3c6aeaf373",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/rust-std-1.94.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "dd33653107c36e040082050d9e547e64dac5b456ba74069430d838c00c189a05"
+          }
+        },
+        "clippy-preview": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/clippy-1.94.0-aarch64-apple-darwin.tar.gz",
+            "hash": "71ac5cdf078bd04e16d70306cb84d7f0f09ba517537460214fcd69d661233283",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/clippy-1.94.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "42a683cbac0b81b96ad3b887cdade36a57ef3a131c203583ca7e3ce0be98f415"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/clippy-1.94.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "c32a2e5ea048c4ec3a0152d6b7a584e9807cc3f1d017d3de79a213ddba8d9211",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/clippy-1.94.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "935529b0b9150084fa9cc1734c6598efe86b6e7d76f31ad3f8d4bb79ebf6031a"
+          }
+        },
+        "rustfmt-preview": {
+          "aarch64-apple-darwin": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/rustfmt-1.94.0-aarch64-apple-darwin.tar.gz",
+            "hash": "cf36d1027ee131e4753f9a8c3513c037836825c30925f32001529be9c51c224e",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/rustfmt-1.94.0-aarch64-apple-darwin.tar.xz",
+            "xz_hash": "0eb716d201dc0d6d24ef8207d3ef27611d9d15d2212e3b27aa11e97286ed02ac"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "available": true,
+            "url": "https://static.rust-lang.org/dist/2026-03-05/rustfmt-1.94.0-x86_64-unknown-linux-gnu.tar.gz",
+            "hash": "2281ee595cbb4fcec56786d401ac1c9f18f23d830a9130ad6e3c9fef8cba053f",
+            "xz_url": "https://static.rust-lang.org/dist/2026-03-05/rustfmt-1.94.0-x86_64-unknown-linux-gnu.tar.xz",
+            "xz_hash": "903e768f7626f78ed2d6cb82c1820b93bd339afec8575102e847fd3a379d33e5"
+          }
+        }
+      }
+    }
+  ],
+  "actions": [],
+  "actions_scope": "No workflow actions authored in CUR-001; CUR-003 owns workflow selection and full-commit pins.",
+  "test_oracles": [
+    {
+      "name": "ledger",
+      "version": "v3.4.1",
+      "repository": "https://github.com/ledger/ledger",
+      "commit": "d422d3cdbf16e72d653908a3fda8ffda8dfadaf7",
+      "source": "https://codeload.github.com/ledger/ledger/tar.gz/d422d3cdbf16e72d653908a3fda8ffda8dfadaf7",
+      "sha256": "dedc90ea00487ab1af08972157be9b8f97fca462e80b071395464931ff44585a",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "beancount",
+      "version": "3.2.3",
+      "repository": "https://github.com/beancount/beancount",
+      "commit": "eeda2aa2a3204ffb980dab11220b2abde5e80b38",
+      "source": "https://codeload.github.com/beancount/beancount/tar.gz/eeda2aa2a3204ffb980dab11220b2abde5e80b38",
+      "sha256": "08beba2cf466a5abb5ec71b8fc2df9627c982e49e493d77b050d9fc9f5808601",
+      "license": "GPL-2.0-only"
+    }
+  ],
+  "native_source": {
+    "package": "sqlcipher-src",
+    "version": "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+    "sqlcipher": "4.20.0",
+    "sqlite": "3.54.1",
+    "upstream_commit": "355d4db92d3404e71faa8088d071a71d767807f4",
+    "advisory": "RUSTSEC-2026-0459",
+    "fixed_upstream_commit": "e5bf119821f25be1d7f10ef0a2edbe175289166e",
+    "files": {
+      "sqlcipher/sqlcipher.c": "8cd2347d18886fee4651153fabeeeffb7cec008700987dab1c00261febc4220f",
+      "sqlcipher/sqlite3.h": "e36eb6ed4de77e56a633866a8f84ed339785662d0cf79cf099f420b638bf28ec"
+    }
+  }
+}

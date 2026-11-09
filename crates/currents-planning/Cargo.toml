@@ -1,0 +1,13 @@
+[package]
+name = "currents-planning"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+currents-types.workspace = true
+jiff.workspace = true
+jiff-tzdb.workspace = true
