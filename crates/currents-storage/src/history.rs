@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 const MAX_COMMIT: usize = 64 * 1_048_576;
 const MAX_ITEMS: usize = 20_000;
+const MAX_OBSERVATIONS: usize = 10_000;
 // Shared with the private schema query-plan regression so it explains the reader SQL.
 pub(crate) const ITEM_REFERENCE_COUNT: &str =
     "SELECT count(*) FROM currents_references WHERE seq=? AND position=?";
@@ -39,6 +40,28 @@ fn atomic(e: AtomicFailure) -> CommitFailure {
 fn failed(e: EngineError) -> CommitFailure {
     CommitFailure::DefinitelyRolledBack(e)
 }
+// The same provenance bindings apply to admission and persisted authority audit.
+fn decision_bindings_match(
+    decision: &DecisionEnvelopeV1,
+    commit: &DomainCommitV1,
+    position: usize,
+) -> bool {
+    decision.commit == commit.seq
+        && decision.item_position as usize == position
+        && decision.command_id == commit.command_result.command_id
+        && decision.command_digest == commit.command_result.digest
+}
+fn item_counts_within_limits(
+    records: &[AuthoritativeRecordV1],
+    decisions: &[DecisionEnvelopeV1],
+) -> bool {
+    records.len().saturating_add(decisions.len()) <= MAX_ITEMS
+        && records
+            .iter()
+            .filter(|r| matches!(r, AuthoritativeRecordV1::ObservationVersion(_)))
+            .count()
+            <= MAX_OBSERVATIONS
+}
 /// Storage-ready typed inputs only. C05 freezing and C03 command lifecycle are separate.
 pub struct HistoryAppend {
     pub prior_head: CommitSeq,
@@ -50,14 +73,7 @@ pub struct HistoryAppend {
 }
 impl Writer {
     pub async fn append(&self, input: HistoryAppend) -> Result<DomainCommitV1, CommitFailure> {
-        if input.records.len().saturating_add(input.decisions.len()) > MAX_ITEMS
-            || input
-                .records
-                .iter()
-                .filter(|r| matches!(r, AuthoritativeRecordV1::ObservationVersion(_)))
-                .count()
-                > 10_000
-        {
+        if !item_counts_within_limits(&input.records, &input.decisions) {
             return Err(failed(EngineError::invalid()));
         }
         for staged in &input.staged {
@@ -94,10 +110,7 @@ impl Writer {
                 digest: Digest::default(),
             };
             for (offset, d) in commit.decisions.iter().enumerate() {
-                if d.commit != next
-                    || d.item_position as usize != commit.records.len().saturating_add(offset)
-                    || d.command_id != commit.command_result.command_id
-                    || d.command_digest != commit.command_result.digest
+                if !decision_bindings_match(d, &commit, commit.records.len().saturating_add(offset))
                 {
                     return Err(EngineError::invalid());
                 }
@@ -135,10 +148,7 @@ impl Writer {
                     return Err(EngineError::invalid());
                 }
                 if let AuthoritativeRecordV1::Decision(d) = item
-                    && (d.commit != next
-                        || d.item_position as usize != position
-                        || d.command_id != commit.command_result.command_id
-                        || d.command_digest != commit.command_result.digest)
+                    && !decision_bindings_match(d, &commit, position)
                 {
                     return Err(EngineError::invalid());
                 }
@@ -351,8 +361,9 @@ impl HistoryStream {
         }
         let mut c: DomainCommitV1 =
             serde_json::from_slice(&bytes).map_err(|_| schema::failure())?;
-        if canonical(&c)? != bytes
-            || seq(c.seq)? != self.next
+        if !item_counts_within_limits(&c.records, &c.decisions)
+            || canonical(&c)? != bytes
+            || seq(c.seq).map_err(|_| schema::failure())? != self.next
             || c.previous_digest != self.previous
             || c.command_result.commit != Some(c.seq)
             || c.command_result.state != CommandState::Committed
@@ -400,6 +411,9 @@ impl HistoryStream {
         let mut verified_content = BTreeMap::new();
         for (position, item) in items.iter().enumerate() {
             let bytes = canonical(item)?;
+            if bytes.len() > staging::CHUNK {
+                return Err(schema::failure());
+            }
             let row = sqlx::query(
                 "SELECT canonical,digest,kind FROM currents_items WHERE seq=? AND position=?",
             )
@@ -412,8 +426,18 @@ impl HistoryStream {
             let actual: Vec<u8> = row.try_get("canonical").map_err(|_| schema::failure())?;
             let digest: Vec<u8> = row.try_get("digest").map_err(|_| schema::failure())?;
             let kind: String = row.try_get("kind").map_err(|_| schema::failure())?;
-            let meta = crate::references::describe(item)?;
+            let meta = crate::references::describe(item).map_err(|error| match error.class {
+                // Supported stored records are authority, not repairable caller input.
+                // Preserve unsupported-version and any other distinct error classes.
+                ErrorClass::InvalidReference => schema::failure(),
+                _ => error,
+            })?;
             if meta.prefixes.iter().any(|p| *p > c.seq.0) {
+                return Err(schema::failure());
+            }
+            if let AuthoritativeRecordV1::Decision(decision) = item
+                && !decision_bindings_match(decision, &c, position)
+            {
                 return Err(schema::failure());
             }
             if actual != bytes || digest != hash(&bytes).0 || kind != meta.kind {
@@ -695,6 +719,10 @@ fn catalog_reference(
     })
 }
 
+#[cfg(test)]
+mod audit_parity_tests;
+#[cfg(test)]
+mod decision_bindings_tests;
 #[cfg(test)]
 mod effects_tests;
 #[cfg(test)]
