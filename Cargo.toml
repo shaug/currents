@@ -41,7 +41,7 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["rustls",
 jiff = { version = "=0.2.41", default-features = false, features = ["std", "tzdb-bundle-always"] }
 jiff-tzdb = { version = "=0.1.9", default-features = true }
 serde_json_canonicalizer = { version = "=0.4.1", default-features = true }
-num-bigint = { version = "=0.4.8", default-features = false, features = ["std"] }
+num-bigint = { version = "=0.5.1", default-features = false, features = ["std"] }
 num-integer = { version = "=0.1.47", default-features = false, features = ["std"] }
 num-traits = { version = "=0.2.19", default-features = false, features = ["std"] }
 uuid = { version = "=1.29.2", default-features = false, features = ["v4", "serde", "std"] }
