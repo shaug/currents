@@ -454,8 +454,56 @@ async fn staging_failure() {
             .any(|v| v == b"CUR008_SYNTHETIC_CANARY")
     );
 }
+async fn assert_domain_chain_continuity() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("domain-chain.db");
+    let store = open(&path).await;
+    let first = append(&store, 1, 0, b"first evidence", true).await;
+    let second = append(&store, 2, 1, b"second evidence", true).await;
+    assert_eq!(second.previous_digest, first.digest);
+    assert_eq!(
+        store.history().read_prefix(second.seq).await.unwrap(),
+        vec![first.clone(), second.clone()]
+    );
+
+    // Break only the link to the prior domain commit. Keep the second commit's
+    // canonical digest and stored columns consistent; its items remain unchanged.
+    let mut unlinked = second;
+    unlinked.previous_digest = Digest::default();
+    assert_ne!(unlinked.previous_digest, first.digest);
+    unlinked.digest = Digest::default();
+    unlinked.digest =
+        Digest(Sha256::digest(serde_json_canonicalizer::to_vec(&unlinked).unwrap()).into());
+    let pool = tamper_pool(&path).await;
+    sqlx::raw_sql("DROP TRIGGER currents_commits_no_update")
+        .execute(pool.pool())
+        .await
+        .unwrap();
+    let updated = sqlx::query(
+        "UPDATE currents_commits SET canonical=?,digest=?,previous_digest=? WHERE seq=2",
+    )
+    .bind(serde_json_canonicalizer::to_vec(&unlinked).unwrap())
+    .bind(unlinked.digest.0.as_slice())
+    .bind(unlinked.previous_digest.0.as_slice())
+    .execute(pool.pool())
+    .await
+    .unwrap();
+    assert_eq!(updated.rows_affected(), 1);
+    pool.close().await;
+
+    let mut stream = store.history().stream_prefix(unlinked.seq).await.unwrap();
+    assert_eq!(stream.next().await.unwrap().unwrap(), first);
+    assert_eq!(
+        stream.next().await.unwrap_err().class,
+        ErrorClass::IntegrityFailure
+    );
+    drop(stream);
+    store.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn chain_tamper() {
+    assert_domain_chain_continuity().await;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("data.db");
     let store = open(&path).await;
