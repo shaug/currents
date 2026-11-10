@@ -7,6 +7,19 @@ use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
 const MAX_COMMIT: usize = 64 * 1_048_576;
 const MAX_ITEMS: usize = 20_000;
+// Shared with the private schema query-plan regression so it explains the reader SQL.
+pub(crate) const ITEM_REFERENCE_COUNT: &str =
+    "SELECT count(*) FROM currents_references WHERE seq=? AND position=?";
+pub(crate) const ITEM_REFERENCE_MEMBERSHIP: &str = "SELECT count(*) FROM currents_references WHERE seq=? AND position=? AND target_kind=? AND target_id=? AND target_version=?";
+pub(crate) const ITEM_REFERENCES: &str = "SELECT target_kind,target_id,target_version FROM currents_references WHERE seq=? AND position=?";
+pub(crate) const ITEM_DEFINITIONS: &str =
+    "SELECT kind,id,version FROM currents_definitions WHERE seq=? AND position=?";
+pub(crate) const ITEM_CONTENT_COUNT: &str =
+    "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
+pub(crate) const ITEM_CONTENTS: &str =
+    "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
+pub(crate) const ITEM_CONTENT_MEMBERSHIP: &str =
+    "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=? AND digest=?";
 fn canonical<T: serde::Serialize>(v: &T) -> Result<Vec<u8>, EngineError> {
     serde_json_canonicalizer::to_vec(v).map_err(|_| EngineError::invalid())
 }
@@ -384,14 +397,12 @@ impl HistoryStream {
             if actual != bytes || digest != hash(&bytes).0 || kind != meta.kind {
                 return Err(schema::failure());
             }
-            let reference_count: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM currents_references WHERE seq=? AND position=?",
-            )
-            .bind(self.next)
-            .bind(position as i64)
-            .fetch_one(&mut *self.tx)
-            .await
-            .map_err(|_| schema::failure())?;
+            let reference_count: i64 = sqlx::query_scalar(ITEM_REFERENCE_COUNT)
+                .bind(self.next)
+                .bind(position as i64)
+                .fetch_one(&mut *self.tx)
+                .await
+                .map_err(|_| schema::failure())?;
             if reference_count != meta.references.len() as i64 {
                 return Err(schema::failure());
             }
@@ -407,7 +418,15 @@ impl HistoryStream {
                 for kind in &reference.kinds {
                     let found:Option<i64>=sqlx::query_scalar("SELECT version FROM currents_definitions WHERE kind=? AND id=? AND seq<=? AND (? IS NULL OR version=?) ORDER BY version LIMIT 1").bind(kind).bind(&reference.id).bind(self.next).bind(reference.version).bind(reference.version).fetch_optional(&mut *self.tx).await.map_err(|_|schema::failure())?;
                     if let Some(version) = found {
-                        let count:i64=sqlx::query_scalar("SELECT count(*) FROM currents_references WHERE seq=? AND position=? AND target_kind=? AND target_id=? AND target_version=?").bind(self.next).bind(position as i64).bind(kind).bind(&reference.id).bind(version).fetch_one(&mut *self.tx).await.map_err(|_|schema::failure())?;
+                        let count: i64 = sqlx::query_scalar(ITEM_REFERENCE_MEMBERSHIP)
+                            .bind(self.next)
+                            .bind(position as i64)
+                            .bind(kind)
+                            .bind(&reference.id)
+                            .bind(version)
+                            .fetch_one(&mut *self.tx)
+                            .await
+                            .map_err(|_| schema::failure())?;
                         if count == 0 {
                             return Err(schema::failure());
                         }
@@ -419,7 +438,12 @@ impl HistoryStream {
                     return Err(schema::failure());
                 }
             }
-            let rows=sqlx::query("SELECT target_kind,target_id,target_version FROM currents_references WHERE seq=? AND position=?").bind(self.next).bind(position as i64).fetch_all(&mut *self.tx).await.map_err(|_|schema::failure())?;
+            let rows = sqlx::query(ITEM_REFERENCES)
+                .bind(self.next)
+                .bind(position as i64)
+                .fetch_all(&mut *self.tx)
+                .await
+                .map_err(|_| schema::failure())?;
             let mut actual_references = rows
                 .iter()
                 .map(|r| {
@@ -454,14 +478,12 @@ impl HistoryStream {
                     return Err(schema::failure());
                 }
             }
-            let rows = sqlx::query(
-                "SELECT kind,id,version FROM currents_definitions WHERE seq=? AND position=?",
-            )
-            .bind(self.next)
-            .bind(position as i64)
-            .fetch_all(&mut *self.tx)
-            .await
-            .map_err(|_| schema::failure())?;
+            let rows = sqlx::query(ITEM_DEFINITIONS)
+                .bind(self.next)
+                .bind(position as i64)
+                .fetch_all(&mut *self.tx)
+                .await
+                .map_err(|_| schema::failure())?;
             let mut actual_definitions = rows
                 .iter()
                 .map(|r| {
@@ -479,34 +501,36 @@ impl HistoryStream {
             if expected_definitions != actual_definitions {
                 return Err(schema::failure());
             }
-            let content_count: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?",
-            )
-            .bind(self.next)
-            .bind(position as i64)
-            .fetch_one(&mut *self.tx)
-            .await
-            .map_err(|_| schema::failure())?;
+            let content_count: i64 = sqlx::query_scalar(ITEM_CONTENT_COUNT)
+                .bind(self.next)
+                .bind(position as i64)
+                .fetch_one(&mut *self.tx)
+                .await
+                .map_err(|_| schema::failure())?;
             if content_count != meta.contents.len() as i64 {
                 return Err(schema::failure());
             }
             let mut expected_content: Vec<Vec<u8>> =
                 meta.contents.iter().map(|c| c.digest.0.to_vec()).collect();
-            let mut actual_content: Vec<Vec<u8>> = sqlx::query_scalar(
-                "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?",
-            )
-            .bind(self.next)
-            .bind(position as i64)
-            .fetch_all(&mut *self.tx)
-            .await
-            .map_err(|_| schema::failure())?;
+            let mut actual_content: Vec<Vec<u8>> = sqlx::query_scalar(ITEM_CONTENTS)
+                .bind(self.next)
+                .bind(position as i64)
+                .fetch_all(&mut *self.tx)
+                .await
+                .map_err(|_| schema::failure())?;
             expected_content.sort();
             actual_content.sort();
             if expected_content != actual_content {
                 return Err(schema::failure());
             }
             for content in meta.contents {
-                let count:i64=sqlx::query_scalar("SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=? AND digest=?").bind(self.next).bind(position as i64).bind(content.digest.0.as_slice()).fetch_one(&mut *self.tx).await.map_err(|_|schema::failure())?;
+                let count: i64 = sqlx::query_scalar(ITEM_CONTENT_MEMBERSHIP)
+                    .bind(self.next)
+                    .bind(position as i64)
+                    .bind(content.digest.0.as_slice())
+                    .fetch_one(&mut *self.tx)
+                    .await
+                    .map_err(|_| schema::failure())?;
                 if count == 0 {
                     return Err(schema::failure());
                 }

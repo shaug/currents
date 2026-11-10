@@ -5,7 +5,7 @@ use sqlx::{Row, SqlitePool};
 
 // Generated from the reviewed native/Currents schema, not from the opened file.
 const EXPECTED_SCHEMA_SHA256: &str =
-    "79456eb8800a743fb343dc80653993c8c55899808b130920cfdfd596d01fa36c";
+    "35f38eef2ff6c2305a1bdd2a936913134df9c6f1e6a4fc7ec7d5e9d3716ce5b5";
 
 pub struct SchemaAttestation {
     pub schema_sha256: String,
@@ -64,3 +64,6 @@ pub(crate) async fn initialize_authority(pool: &SqlitePool) -> Result<(), Engine
         .map_err(|_| failure())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
