@@ -34,8 +34,14 @@ impl EncryptedStore {
             }
             let accounting =
                 AtomicStore::from_initialized_pool(pool.pool().clone(), objects == 0).await?;
+            if objects == 0 {
+                schema::initialize_authority(pool.pool()).await?;
+            }
             let attestation = schema::attest(pool.pool()).await?;
-            Ok::<_, EngineError>((Writer::new(accounting), attestation))
+            crate::HistoryReader::new(pool.pool().clone())
+                .audit()
+                .await?;
+            Ok::<_, EngineError>((Writer::new(accounting, pool.pool().clone()), attestation))
         }
         .await;
         match initialize {
@@ -57,6 +63,12 @@ impl EncryptedStore {
         profile: CipherProfileV1,
     ) -> Result<Self, EngineError> {
         Self::open(path, key?, profile).await
+    }
+    pub fn history(&self) -> crate::HistoryReader {
+        crate::HistoryReader::new(self.pool.pool().clone())
+    }
+    pub async fn stage(&self, bytes: &[u8]) -> Result<crate::StagedBatchHandle, EngineError> {
+        crate::staging::stage(self.pool.pool(), bytes).await
     }
     pub fn writer(&self) -> &Writer {
         &self.writer

@@ -1192,7 +1192,7 @@
     },
     "src/store/mod.rs": {
       "upstream_sha256": "5efed1588c69d7fb5d15e81e8bb71ad63cce8a500804f8a04aa5ade03f05ae77",
-      "patched_sha256": "5efed1588c69d7fb5d15e81e8bb71ad63cce8a500804f8a04aa5ade03f05ae77"
+      "patched_sha256": "c57f1918ae733bc768cd687f0d280b9aa10c48f0dc4c55a7fc99a620966e5320"
     },
     "src/store/projection.rs": {
       "upstream_sha256": "765ffb9729f4b97ad30c8b044183294270c3b78d3d83f8fdada2d11dc97409f3",
@@ -1220,7 +1220,7 @@
     },
     "src/store/sql/mod.rs": {
       "upstream_sha256": "8f18bd537ea8c8292761ae820fd1df384372a027984cc38e792b2e62b5d9a72f",
-      "patched_sha256": "8f18bd537ea8c8292761ae820fd1df384372a027984cc38e792b2e62b5d9a72f"
+      "patched_sha256": "dad73997b6c1f152ae4bffbde3d5bd0513b78fd40b51f308c2ddfa62987ceb7c"
     },
     "src/store/sql/no_replace_sqlite.sql": {
       "upstream_sha256": "ecc158ec77d2a965201906290d1b81ec5cf1112d4f336b725c8609c1e15b41ab",
@@ -1260,7 +1260,7 @@
     },
     "src/store/sql/write.rs": {
       "upstream_sha256": "44ab8aef80030fc9868bc97d3fda8efb1e7a7e6de4ccfcfac95071a67908236a",
-      "patched_sha256": "062272b774ecca10bdf100a763497a10ce43fb0027a1986fa420460520738a61"
+      "patched_sha256": "605d98e88cd3d3d41c60985cb28989a9fad48fb8878078ae44360a0dbe440308"
     },
     "src/store/sql/write/currents.rs": {
       "upstream_sha256": null,
@@ -2001,7 +2001,12 @@
     "tests/write_reads.rs": {
       "upstream_sha256": "cea9bd60021cff82730da1c5b714e3e929c8997a21661a3efb51db77d874f7f9",
       "patched_sha256": "cea9bd60021cff82730da1c5b714e3e929c8997a21661a3efb51db77d874f7f9"
+    },
+    "src/store/sql/write/authority.rs": {
+      "upstream_sha256": null,
+      "patched_sha256": "6d5f74e9aff4fc0241ba2b8259c2d41ff2a68648fbf0ddfdb134a11025ff47a4"
     }
   },
-  "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544"
+  "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544",
+  "authority_patch_sha256": "3c3ce9d852f04e1fdf40c4e7e18f7d72fb834d947729e121720d45c1852b6668"
 }

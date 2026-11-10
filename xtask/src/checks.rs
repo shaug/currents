@@ -83,7 +83,7 @@ fn read_json(path: &Path) -> Result<Value> {
     serde_json::from_slice(&fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?)
         .map_err(|e| format!("{}: {e}", path.display()))
 }
-fn sha(bytes: &[u8]) -> String {
+pub(crate) fn sha(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -354,6 +354,45 @@ fn ticket(name: &str) -> Result<Value> {
     }
     if name == "CUR-047" {
         return crate::readiness::qualify();
+    }
+    if name == "CUR-008" {
+        let assertions = [
+            "chain_tamper",
+            "duplicate_bytes",
+            "prefix_visibility",
+            "staging_failure",
+        ];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_008",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR008 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_008",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR008 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted authority; not C05 financial freeze or C10 lifecycle","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
+        );
     }
     if name == "CUR-005" {
         let assertions = ["cur_005_1", "cur_005_2", "cur_005_3", "cur_005_4"];

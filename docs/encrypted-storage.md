@@ -29,15 +29,38 @@ awaits all connections and clears the callback's retained secret. Callers must
 release acquired connections and await close before runtime teardown.
 
 `EncryptedStore::open(path, key, profile)` creates native metadata through the
-accounting adapter before the namespaced Currents atomic-record table. Existing
-files must match the reviewed 125-object schema fingerprint before native open;
-missing tables/triggers are not silently repaired. The attestation includes a
-length-prefixed hash of ordered object type/name/table/SQL and separate migration
-source hash. `fixtures/storage/schema-v1.json` is generated evidence of those
-objects; changing native schema requires regenerating and reviewing it. The
-separate `key-init.patch` only introduces trusted prepared-pool construction.
-`atomic-write.patch` and original upstream test/source hashes remain preserved;
-`patches/doubleentry/verify.py` reverses both patches to verify provenance.
+accounting adapter, the namespaced Currents atomic-record table, then the CUR008
+authority migration. Existing files must match the reviewed 162-object schema
+fingerprint before native open; missing tables, indexes and triggers are not
+silently repaired. The attestation includes a length-prefixed hash of ordered
+object type/name/table/SQL and a separate migration source hash.
+`fixtures/storage/schema-v1.json` records the complete inventory from a freshly
+initialized SQLCipher file, including native and authority objects. Its schema
+SHA-256 is `35f38eef2ff6c2305a1bdd2a936913134df9c6f1e6a4fc7ec7d5e9d3716ce5b5`.
+Changes to either schema require regenerating and reviewing this evidence.
+
+Authority definitions, references and content references have covering indexes
+beginning with `(seq, position)`. The audit's metadata count, enumeration and
+membership queries that filter on this pair use these indexes rather than
+scanning those tables across the full history. The private query-plan regression
+explains the same SQL constants used by the reader. `cargo xtask qualify generated-drift` executes both
+this regression and the inventory comparison, in addition to `duplicate_bytes`.
+The inventory assertion compares every object and its recomputed fingerprint with
+the checked-in evidence and the runtime attestation, including a full reopen.
+
+To regenerate evidence after an intentional schema change, run
+`CURRENTS_SCHEMA_INVENTORY_OUTPUT=/tmp/currents-schema-v1.json cargo test --locked
+-p currents-storage --lib schema::tests::reviewed_inventory_matches_opened_schema
+-- --exact`. Review the emitted inventory and fingerprint before replacing the
+fixture and expected runtime fingerprint, then rerun without the output variable.
+Generation does not suppress drift failures or update the expected fingerprint.
+The temporary file contains schema definitions only, from a synthetic dataset.
+
+The separate `key-init.patch` introduces trusted prepared-pool construction;
+`authority.patch` adds the named native-owned authority transaction.
+`atomic-write.patch` and original upstream test/source hashes remain preserved.
+`patches/doubleentry/verify.py` reverses authority, key-init and atomic-write
+patches in that order to verify provenance.
 
 C01 reserves key/profile/sys ownership to cipher, not all SQLx use. The private
 storage and accounting adapters now import exact workspace SQLx for schema and

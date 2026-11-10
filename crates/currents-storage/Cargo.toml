@@ -8,6 +8,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_json_canonicalizer.workspace = true
+uuid.workspace = true
 currents-types.workspace = true
 currents-accounting.workspace = true
 currents-cipher.workspace = true
@@ -15,6 +19,7 @@ sqlx.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
+currents-accounting = { workspace = true, features = ["synthetic-test-fixtures"] }
 tokio.workspace = true
 tempfile.workspace = true
 tracing.workspace = true

@@ -1055,4 +1055,6 @@ mod tests {
 }
 
 #[cfg(feature = "sqlite")]
+pub(super) mod authority;
+#[cfg(feature = "sqlite")]
 mod currents;
