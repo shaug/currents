@@ -469,6 +469,7 @@ dependencies = [
  "currents-planning",
  "currents-storage",
  "currents-types",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -2914,6 +2915,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "syn 3.0.10",
 ]
 
 [[package]]

@@ -39,7 +39,9 @@ fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Re
     let mut command = Command::new(program);
     command.args(args).current_dir(cwd);
     if let Some(rustc) = rustc {
-        command.env("RUSTC", rustc);
+        command
+            .env("RUSTC", rustc)
+            .env("RUSTDOC", rustc.with_file_name("rustdoc"));
     }
     command
         .output()
@@ -342,6 +344,12 @@ fn ticket(name: &str) -> Result<Value> {
     if name == "CUR-006" {
         return crate::cipher::qualify();
     }
+    if name == "CUR-003" {
+        return crate::quality::ticket();
+    }
+    if name == "CUR-047" {
+        return crate::readiness::qualify();
+    }
     if name == "CUR-005" {
         let assertions = ["cur_005_1", "cur_005_2", "cur_005_3", "cur_005_4"];
         let list = cargo(&[
@@ -502,7 +510,7 @@ fn quality() -> Result<Value> {
         "-D",
         "warnings",
     ])?;
-    cargo(&["doc", "--locked", "--workspace", "--no-deps"])?;
+    crate::quality::all()?;
     let tests = ticket("CUR-001")?;
     Ok(json!({"tests":tests,"core":core(false, None)?}))
 }
@@ -516,6 +524,9 @@ fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
         .ok_or_else(|| format!("missing {name} value"))
 }
 pub fn run(args: Vec<String>) -> Result<()> {
+    if args == ["household-readiness"] {
+        return crate::readiness::inspect_stdin();
+    }
     let command = args.first().map(String::as_str).unwrap_or("");
     let gate = args.get(1).map(String::as_str).unwrap_or("");
     for (program, version_args) in [
@@ -529,7 +540,11 @@ pub fn run(args: Vec<String>) -> Result<()> {
         match (command,gate) {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
+        ("check","docs")=>crate::quality::docs(None),
+        ("check","privacy")=>crate::quality::privacy(&root()),
+        ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
+        ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),
         ("qualify","cipher")=>crate::cipher::qualify(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
