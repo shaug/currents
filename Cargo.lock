@@ -384,6 +384,7 @@ dependencies = [
  "doubleentry",
  "serde_json",
  "serde_json_canonicalizer",
+ "sqlx",
  "tempfile",
  "tokio",
 ]
@@ -479,6 +480,12 @@ dependencies = [
  "currents-accounting",
  "currents-cipher",
  "currents-types",
+ "sha2 0.11.1",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
