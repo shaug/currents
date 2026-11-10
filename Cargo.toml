@@ -27,7 +27,7 @@ currents-verify = { path = "crates/currents-verify" }
 sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "sqlite-unlock-notify", "time"] }
 sqlx-core = { version = "=0.9.0", default-features = false }
 sqlx-sqlite = { version = "=0.9.0", default-features = false }
-tokio = { version = "=1.53.3", default-features = false, features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "sync", "time", "macros"] }
 serde = { version = "=1.0.229", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 time = { version = "=0.3.55", default-features = false, features = ["serde", "parsing", "formatting"] }

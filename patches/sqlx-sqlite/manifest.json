@@ -9,7 +9,7 @@
     "LICENSE-APACHE": "c8f5453612253e8ea8bad241617fe74c4a6d5d592ba64ff881668c211b50ac99",
     "LICENSE-MIT": "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
   },
-  "patch_sha256": "7408fb3c2a7d2a4adeebddce929690c81b3cb88511733366c55f2099e07a0c7a",
+  "patch_sha256": "73d3450e603b7db9b6b9b204437d6ea23a0468d8062600602a05ac7805d39262",
   "compatibility_hunk": "Only types/time.rs adds a reasoned deprecated expectation around unchanged upstream formats module; path dependency lint exposure, no parser behavior changes.",
   "files": {
     ".cargo_vcs_info.json": {
@@ -18,11 +18,11 @@
     },
     "Cargo.lock": {
       "upstream_sha256": "aa84ca06b7b49982d0242cc5e4154e67bc2608434000da2e750864fbc8ff06f9",
-      "patched_sha256": "1e1cf4903258a6255e4ef331ba98b1fda2b45a6210769ceb5ebfe803347899bd"
+      "patched_sha256": "860d8a30fd7e1789684de821ac6ba8b1297fa109cc3f81f9a860e30882f61307"
     },
     "Cargo.toml": {
       "upstream_sha256": "d659405cf1a18299845d699b4ab681a3d341805556c4a837d70f5f1c3589bb9a",
-      "patched_sha256": "67ce7135e793258df665a49a32e845e6e191e77c266edbd660e032c5972e39ef"
+      "patched_sha256": "a52ea015a3263beba7d5595613d67e61078aeb452fa660e4e7d6e58af92b7088"
     },
     "Cargo.toml.orig": {
       "upstream_sha256": "af4193e1d9d8e9f63c85bf2468cdb24f4e9b7c217bd0745082fecf1a7369b0c6",
