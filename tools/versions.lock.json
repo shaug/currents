@@ -1086,5 +1086,25 @@
       "sqlcipher/sqlcipher.c": "8cd2347d18886fee4651153fabeeeffb7cec008700987dab1c00261febc4220f",
       "sqlcipher/sqlite3.h": "e36eb6ed4de77e56a633866a8f84ed339785662d0cf79cf099f420b638bf28ec"
     }
+  },
+  "native_platform": {
+    "status": "unqualified",
+    "observed": {
+      "xcode_version": "27.2",
+      "xcode_build": "27B52",
+      "macos_sdk": "27.2",
+      "ios_sdk": "27.2",
+      "runner_os": "macOS 27.0.1",
+      "runner_build": "26A434",
+      "runner_arch": "arm64",
+      "source": "xcodebuild -version; xcodebuild -showsdks; sw_vers; uname -m"
+    },
+    "minimum_macos_runner": null,
+    "qualified_ios_destination": null,
+    "limitations": [
+      "Observed tools are not minimum-OS or shipping qualification.",
+      "No iOS simulator runtime or device was available at observation.",
+      "Native production qualification remains blocked."
+    ]
   }
 }

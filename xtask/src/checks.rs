@@ -328,6 +328,9 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-004" {
+        return crate::native::qualify(&root());
+    }
     if name == "CUR-003" {
         return crate::quality::ticket();
     }

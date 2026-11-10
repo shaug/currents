@@ -1,75 +1,18 @@
-# Native platform qualification (CUR-004)
+# Native platform qualification
 
-**Blocked. No native application or shipping target is qualified.**
+CUR-004 remains **Blocked**. Current-host synthetic results do not establish
+minimum-OS, signed installation, FinanceKit entitlement, or production readiness.
+Intel Mac remains unsupported.
 
-This partial fixture separates a working Swift/C command-line toolchain from
-native app qualification. It does not implement the production C14 ABI, owner
-service, signed installation, FinanceKit acquisition, or financial semantics.
-The private `currents_platform_probe_roundtrip` symbol is a synthetic toolchain
-probe, not a substitute for any `currents_*_v1` API.
+## Reproducible current-host checks
 
-## Observed host (2026-11-09)
+`cargo xtask qualify native-platform` (also `cargo xtask ticket CUR-004`) first
+records the selected developer directory, separately discovered full Xcode
+installations, OS/architecture, Swift and SDK versions. A CLT-only selection
+fails with the full-Xcode prerequisite even if Xcode exists elsewhere. It never
+changes developer settings or accepts agreements.
 
-- macOS 27.0.1, build 26A434, arm64.
-- Selected developer directory: `/Library/Developer/CommandLineTools`.
-- Swift 6.4 (`swiftlang-6.4.0.34.1`); selected SDK 27.0.
-- No full Xcode found by a separate search of `/Applications`,
-  `~/Applications`, `/Library/Developer`, and Spotlight's Xcode bundle index.
-  CLT selection alone was **not** used as evidence of Xcode absence. Discovery
-  is bounded and does not prove an installation cannot exist elsewhere.
-- No actual macOS 15.0 arm64 runner, qualified iOS simulator/device destination,
-  or signed production fixture was supplied. Intel Mac is unsupported.
-
-No developer-directory setting, signing enrollment, entitlement request,
-credential, or account access was changed.
-
-## Repeatable local diagnostics
-
-`cargo xtask qualify native-platform` records the observed prerequisite inputs
-in a C16 `QualificationReportV1` and exits nonzero with `Blocked`. Discovery
-checks conventional application directories, the selected developer directory,
-and Spotlight independently. It never treats CLT compilation as app acceptance.
-This partial implementation deliberately cannot return `Passed`: the Xcode
-project/schemes and actual minimum/current-OS evidence are still missing.
-
-`cargo test --locked -p currents-ffi --test cur_004` exercises `cur_004_3`:
-a child process selected to CLT must return `Blocked` with exact full-Xcode and
-macOS 15.0 prerequisites. This is one counterexample, not the entire CUR-004 suite.
-
-The Swift package uses language mode 6 and declares macOS 15/iOS 18 minimums.
-A framework-independent diagnostic can run under CLT:
-
-```sh
-swift run --build-system native --package-path native/CurrentsPlatform \
-  --scratch-path target/swift-native-build currents-platform-probe
-```
-
-It exercises async actor-to-C roundtrips for zero, one and `UInt64.max`, and
-verifies automatic acquisition remains disabled. This was built and launched
-on the observed current OS. It is **not** an app bundle launch on macOS 15.
-The CLT's default `swift test` build failed because TestingMacros was missing;
-the documented native build-system retry failed because module Testing was
-missing. The Swift test suite therefore remains unexecuted, even though the
-standalone diagnostic passes. Native build-system deprecation is an additional
-reason not to adopt this as a shipping qualification route.
-
-## Acceptance ledger and continuation
-
-- `cur_004_1`: unavailable. Requires full Xcode, actual macOS 15.0 arm64 and
-  current-OS app bundle build/launch, exact Xcode build and SDK records.
-- `cur_004_2`: pending actual Linux core build from a frozen candidate with
-  `native/` absent. A Mac core build is not evidence of Linux independence.
-- `cur_004_3`: public CLT counterexample implemented. Its raw output and
-  head-bound qualification report must accompany the candidate.
-- `cur_004_4`: only the synthetic disabled-acquisition policy probe ran. iOS 18
-  guarded FinanceKit compilation and actual entitlement behavior require a
-  qualified Apple SDK/destination; no acquisition API is called by this fixture.
-
-On a capable host, implement and validate `native/Currents.xcodeproj` with schemes
-CurrentsApp, CurrentsOwner, CurrentsCapture and CurrentsPlatformTests, and plans
-CurrentsSynthetic and CurrentsProductionQualification. Preserve the distinction
-between synthetic fixtures and signed installed production targets. The owning
-native runner must execute:
+On an arm64 host with selected full Xcode it runs Debug and Release:
 
 ```sh
 xcodebuild test -project native/Currents.xcodeproj \
@@ -77,8 +20,63 @@ xcodebuild test -project native/Currents.xcodeproj \
   -destination 'platform=macOS,arch=arm64'
 ```
 
-Record the exact iOS simulator/device identifier in `tools/versions.lock.json`
-only after qualification; none is guessed here. Keep production blocked until
-its separately authorized signed-host and entitlement gates pass. Register all
-four exact CUR-004 assertions and reject absent/zero-match tests before allowing
-this gate to pass. Do not close issue #13 on the partial diagnostics above.
+The runner supplies configuration, isolated result-bundle paths, owned derived
+data and `CODE_SIGNING_ALLOWED=NO`. It reads actual `xcresulttool get test-results
+tests` JSON, rejects missing/skipped/failed or duplicate test cases, and requires
+`cur_004_1()` and `cur_004_4()`. Legacy XCTest's zero-test summary is not evidence
+for the separately executed Swift Testing suite. Raw command output is retained
+in `target/qualification/commands.jsonl`; fresh result bundles and a head/dirty
+bound current-host observation live under `target/qualification/native-*`.
+The overall command remains nonzero until the remaining cross-host acceptance
+and its evidence aggregation are completed; it cannot certify shipping today.
+
+## Fixtures and boundaries
+
+The checked-in project exposes CurrentsApp, CurrentsOwner, CurrentsCapture and
+CurrentsPlatformTests schemes. Minimal app/owner fixtures are synthetic `.app`
+bundles whose executables exercise the Swift actor and private C-header
+roundtrip. They do not install/register an owner or implement C14 financial ABI.
+The Swift package uses Swift 6 with strict concurrency, macOS 15.0 and iOS 18.0
+minimums. CurrentsCapture uses the separate capture synthetic plan; no signed
+production or financial acquisition operation is invoked.
+
+`CurrentsProductionQualification` is a distinct plan with an explicit failing
+prerequisite assertion. It is not an empty successful plan and does not substitute
+synthetic applications for signed installed targets. Later production owners
+must replace the blocker with actual authorized installed-target evidence.
+
+CaptureAvailability conditionally imports FinanceKit on iOS and is guarded at
+iOS 18.0. Automatic acquisition always refuses while entitlement/account
+qualification is absent. This proves the disabled policy, not real entitlement
+availability or provider access.
+
+## Observed tools and evidence
+
+After separately approved installation/setup, observed Xcode 27.2 (27B52),
+macOS/iOS SDK 27.2, host macOS 27.0.1 (26A434) arm64. Observations are recorded
+under `native_platform` in `tools/versions.lock.json`; both minimum macOS runner
+and qualified iOS destination remain null. No device identifier is invented.
+
+Working-tree current-host tests executed all three Swift assertions successfully:
+`cur_004_1()`, `cur_004_4()`, and `cur_004_actor_c_roundtrip()`. The first launches
+both bundle executables and checks their actor/C output. Initial absent-project
+red and the test-plan variable-expansion failure are preserved alongside green
+logs. iOS arm64 Simulator SDK build-for-testing succeeded with deployment 18.0;
+no iOS simulator runtime/device was available and no iOS test executed. The
+production plan returned its explicit prerequisite failure. Exact candidate
+qualification must be repeated after freezing the final reviewed candidate.
+
+## Acceptance ledger
+
+- `cur_004_1`: current-host portion measured; actual macOS 15.0 arm64 build/launch
+  remains missing. Setting deployment target 15.0 is not an actual OS run.
+- `cur_004_2`: earlier candidate 907d043 passed a real Linux core build with
+  native unavailable; it is stale for the resumed candidate and must be rerun.
+- `cur_004_3`: public CLT-only counterexample and ticket-dispatch test pass;
+  both require a nonzero blocked result, not an app-pass claim.
+- `cur_004_4`: disabled-acquisition test passes on current macOS and iOS SDK
+  compilation succeeds; actual qualified iOS 18 destination remains unavailable.
+
+No final acceptance, issue closure, production qualification or native shipping
+claim follows from this partial matrix. Preserve raw outputs, fixture hashes,
+exact candidate identity and independent review before any readiness decision.

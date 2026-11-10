@@ -22,3 +22,22 @@ fn cur_004_3() {
     assert!(report.contains("full Xcode"), "{report}");
     assert!(report.contains("macOS 15.0 arm64"), "{report}");
 }
+
+#[test]
+fn cur_004_ticket_dispatches_native_qualification() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let out = Command::new("cargo")
+        .current_dir(root)
+        .env("DEVELOPER_DIR", "/Library/Developer/CommandLineTools")
+        .args(["xtask", "ticket", "CUR-004"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let report = String::from_utf8_lossy(&out.stdout);
+    assert!(report.contains("full Xcode"), "{report}");
+    assert!(!report.contains("no registered test suite"), "{report}");
+}
