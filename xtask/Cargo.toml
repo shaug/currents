@@ -11,3 +11,5 @@ workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+# Rust syntax parsing for reviewed, function-scoped production lint exceptions.
+syn = { version = "=3.0.10", default-features = false, features = ["full", "parsing", "visit"] }

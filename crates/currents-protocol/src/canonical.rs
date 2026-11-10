@@ -57,7 +57,7 @@ fn parse(bytes: &[u8], limits: CanonicalLimits) -> Result<serde_json::Value, Eng
             match b {
                 b'"' => quoted = true,
                 b'{' | b'[' => {
-                    depth += 1;
+                    depth = depth.checked_add(1).ok_or_else(EngineError::invalid)?;
                     if depth > MAX_DEPTH {
                         return Err(EngineError::invalid());
                     }

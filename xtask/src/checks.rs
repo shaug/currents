@@ -39,13 +39,20 @@ fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Re
     let mut command = Command::new(program);
     command.args(args).current_dir(cwd);
     if let Some(rustc) = rustc {
-        command.env("RUSTC", rustc);
+        command
+            .env("RUSTC", rustc)
+            .env("RUSTDOC", rustc.with_file_name("rustdoc"));
     }
     command
         .output()
         .map_err(|e| format!("BLOCKED: {}: {e}", program.display()))
 }
-fn checked(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Result<String> {
+pub(crate) fn checked(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    rustc: Option<&Path>,
+) -> Result<String> {
     let out = output(program, args, cwd, rustc)?;
     crate::report::record(program, args, cwd, rustc, &out);
     let evidence_dir = root().join("target/qualification");
@@ -321,6 +328,9 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-003" {
+        return crate::quality::ticket();
+    }
     if name == "CUR-047" {
         return crate::readiness::qualify();
     }
@@ -484,7 +494,7 @@ fn quality() -> Result<Value> {
         "-D",
         "warnings",
     ])?;
-    cargo(&["doc", "--locked", "--workspace", "--no-deps"])?;
+    crate::quality::all()?;
     let tests = ticket("CUR-001")?;
     Ok(json!({"tests":tests,"core":core(false, None)?}))
 }
@@ -514,6 +524,9 @@ pub fn run(args: Vec<String>) -> Result<()> {
         match (command,gate) {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
+        ("check","docs")=>crate::quality::docs(None),
+        ("check","privacy")=>crate::quality::privacy(&root()),
+        ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
         ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),

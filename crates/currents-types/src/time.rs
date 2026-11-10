@@ -47,9 +47,11 @@ enum Wire {
         original_text: String,
     },
 }
-fn date_format() -> Vec<::time::format_description::BorrowedFormatItem<'static>> {
+fn date_format() -> Result<
+    Vec<::time::format_description::BorrowedFormatItem<'static>>,
+    ::time::error::InvalidFormatDescription,
+> {
     ::time::format_description::parse_borrowed::<2>("[year]-[month]-[day]")
-        .expect("constant date format")
 }
 impl Serialize for TemporalValue {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -59,7 +61,7 @@ impl Serialize for TemporalValue {
                 original_text,
             } => Wire::Date {
                 civil: civil
-                    .format(&date_format())
+                    .format(&date_format().map_err(serde::ser::Error::custom)?)
                     .map_err(serde::ser::Error::custom)?,
                 original_text: original_text.clone(),
             },
@@ -93,7 +95,8 @@ impl<'de> Deserialize<'de> for TemporalValue {
                 civil,
                 original_text,
             } => Self::Date {
-                civil: Date::parse(&civil, &date_format()).map_err(serde::de::Error::custom)?,
+                civil: Date::parse(&civil, &date_format().map_err(serde::de::Error::custom)?)
+                    .map_err(serde::de::Error::custom)?,
                 original_text,
             },
             Wire::Instant {
@@ -166,14 +169,16 @@ pub struct DateScope {
 mod optional_date {
     use super::*;
     pub fn serialize<S: Serializer>(v: &Option<Date>, s: S) -> Result<S::Ok, S::Error> {
-        v.map(|v| v.format(&date_format()))
+        let format = date_format().map_err(serde::ser::Error::custom)?;
+        v.map(|v| v.format(&format))
             .transpose()
             .map_err(serde::ser::Error::custom)?
             .serialize(s)
     }
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Date>, D::Error> {
+        let format = date_format().map_err(serde::de::Error::custom)?;
         Option::<String>::deserialize(d)?
-            .map(|v| Date::parse(&v, &date_format()))
+            .map(|v| Date::parse(&v, &format))
             .transpose()
             .map_err(serde::de::Error::custom)
     }
