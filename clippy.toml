@@ -1,0 +1,4 @@
+# Tests may use assertion panics; production is linted separately without cfg(test).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

@@ -54,8 +54,14 @@ pub fn build(
         root.join("tools/versions.lock.json"),
         root.join("vendor/libsqlite3-sys/CURRENTS-PROVENANCE.json"),
         root.join("vendor/libsqlite3-sys/build.rs"),
+        root.join(".github/workflows/ci.yml"),
+        root.join(".gitleaks.toml"),
+        root.join("deny.toml"),
+        root.join("clippy.toml"),
+        root.join("docs/lint-allowlist.json"),
+        root.join("schemas/v1/contracts.json"),
     ];
-    for flag in ["--manifest-path", "--inventory"] {
+    for flag in ["--manifest-path", "--inventory", "--workflow", "--schema"] {
         if let Some(i) = args.iter().position(|a| a == flag)
             && let Some(path) = args.get(i + 1)
         {

@@ -29,7 +29,7 @@ const MEMBERS: &[&str] = &[
 ];
 const ASSERTIONS: &[&str] = &["cur_001_1", "cur_001_2", "cur_001_3", "cur_001_4"];
 
-fn root() -> PathBuf {
+pub(crate) fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -39,7 +39,9 @@ fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Re
     let mut command = Command::new(program);
     command.args(args).current_dir(cwd);
     if let Some(rustc) = rustc {
-        command.env("RUSTC", rustc);
+        command
+            .env("RUSTC", rustc)
+            .env("RUSTDOC", rustc.with_file_name("rustdoc"));
     }
     command
         .output()
@@ -74,7 +76,7 @@ pub(crate) fn checked(
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
-fn cargo(args: &[&str]) -> Result<String> {
+pub(crate) fn cargo(args: &[&str]) -> Result<String> {
     checked(Path::new("cargo"), args, &root(), None)
 }
 fn read_json(path: &Path) -> Result<Value> {
@@ -326,6 +328,80 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-003" {
+        return crate::quality::ticket();
+    }
+    if name == "CUR-047" {
+        return crate::readiness::qualify();
+    }
+    if name == "CUR-005" {
+        let assertions = ["cur_005_1", "cur_005_2", "cur_005_3", "cur_005_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_005",
+            "--",
+            "--list",
+        ])?;
+        let tests: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if tests != assertions.iter().copied().collect() {
+            return Err(format!("test registry mismatch or zero tests: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_005",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err(format!("incomplete test execution: {text}"));
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes())}),
+        );
+    }
+    if name == "CUR-002" {
+        let assertions = ["cur_002_1", "cur_002_2", "cur_002_3", "cur_002_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-types",
+            "--test",
+            "cur_002",
+            "--",
+            "--list",
+        ])?;
+        let tests: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if tests != assertions.iter().copied().collect() {
+            return Err(format!("test registry mismatch or zero tests: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-types",
+            "--test",
+            "cur_002",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err(format!("incomplete test execution: {text}"));
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes())}),
+        );
+    }
     if name != "CUR-001" {
         return Err(format!("BLOCKED: no registered test suite for {name}"));
     }
@@ -418,7 +494,7 @@ fn quality() -> Result<Value> {
         "-D",
         "warnings",
     ])?;
-    cargo(&["doc", "--locked", "--workspace", "--no-deps"])?;
+    crate::quality::all()?;
     let tests = ticket("CUR-001")?;
     Ok(json!({"tests":tests,"core":core(false, None)?}))
 }
@@ -432,6 +508,9 @@ fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
         .ok_or_else(|| format!("missing {name} value"))
 }
 pub fn run(args: Vec<String>) -> Result<()> {
+    if args == ["household-readiness"] {
+        return crate::readiness::inspect_stdin();
+    }
     let command = args.first().map(String::as_str).unwrap_or("");
     let gate = args.get(1).map(String::as_str).unwrap_or("");
     for (program, version_args) in [
@@ -445,8 +524,12 @@ pub fn run(args: Vec<String>) -> Result<()> {
         match (command,gate) {
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
+        ("check","docs")=>crate::quality::docs(None),
+        ("check","privacy")=>crate::quality::privacy(&root()),
+        ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
         ("qualify","native-platform")=>crate::native::qualify(&root()),
+        ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
         ("qualify","pin-inventory")=>inventory(&option(&args,"--inventory")?.unwrap_or(root().join("tools/versions.lock.json")), option(&args,"--artifact-root")?.as_deref()),

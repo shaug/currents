@@ -1,0 +1,1022 @@
+[
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetAccountCatalog",
+      "value": {
+        "account_id": "00000000-0000-0000-0000-000000000001",
+        "component_id": "00000000-0000-0000-0000-000000000001",
+        "account_class": "Asset",
+        "unit_id": "00000000-0000-0000-0000-000000000001",
+        "normal_sign": "Debit",
+        "aliases": [],
+        "lifecycle": "Open",
+        "display_name": "Synthetic"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetDatasetPolicy",
+      "value": {
+        "policy_id": "00000000-0000-0000-0000-000000000001",
+        "prior_version": 1,
+        "effective_scope": {
+          "start": null,
+          "end": null,
+          "basis": "Effective"
+        },
+        "ownership_perimeter": null,
+        "source_priority": null,
+        "freshness_thresholds": null,
+        "timezone": {
+          "value": {
+            "state": "Unknown"
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        },
+        "reporting_currency": {
+          "value": {
+            "state": "Known",
+            "value": "00000000-0000-0000-0000-000000000001"
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "RecordManualPosition",
+      "value": {
+        "component": "00000000-0000-0000-0000-000000000001",
+        "amount": {
+          "coefficient": "125",
+          "scale": 2,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "as_of": {
+          "kind": "Date",
+          "civil": "2026-11-09",
+          "original_text": "2026-11-09"
+        },
+        "method": "synthetic appraisal",
+        "evidence": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "ownership_share": {
+          "numerator": "1",
+          "denominator": "2"
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "RecordLoanPayment",
+      "value": {
+        "cash": {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "account_id": "00000000-0000-0000-0000-000000000001",
+          "amount": {
+            "coefficient": "125",
+            "scale": 2,
+            "unit_id": "00000000-0000-0000-0000-000000000001"
+          },
+          "effective": {
+            "kind": "Date",
+            "civil": "2026-11-09",
+            "original_text": "2026-11-09"
+          },
+          "posting": {
+            "kind": "Date",
+            "civil": "2026-11-09",
+            "original_text": "2026-11-09"
+          }
+        },
+        "principal": {
+          "state": "Unknown"
+        },
+        "interest": {
+          "state": "Unknown"
+        },
+        "fees": [],
+        "unknown_allocation": {
+          "state": "Known",
+          "value": {
+            "coefficient": "125",
+            "scale": 2,
+            "unit_id": "00000000-0000-0000-0000-000000000001"
+          }
+        },
+        "source": {
+          "source": "synthetic",
+          "connection_id": "00000000-0000-0000-0000-000000000001",
+          "device_id": null
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "EvaluateReconciliation",
+      "value": {
+        "kind": "Balance",
+        "scope": {
+          "accounts": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "components": [
+            "00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "cutoff": {
+          "kind": "Date",
+          "civil": "2026-11-09",
+          "original_text": "2026-11-09"
+        },
+        "evidence": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "exclusions": [],
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "through_commit": "3",
+          "effective_scope": {
+            "start": null,
+            "end": null,
+            "basis": "Effective"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "unit_catalog_version": 1
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "ConfirmReconciliation",
+      "value": {
+        "claim": "00000000-0000-0000-0000-000000000001",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "Recognize",
+      "value": {
+        "leg_ids": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "facet_allocations": [],
+        "postings": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "account_id": "00000000-0000-0000-0000-000000000001",
+            "amount": {
+              "coefficient": "125",
+              "scale": 2,
+              "unit_id": "00000000-0000-0000-0000-000000000001"
+            },
+            "effective": {
+              "kind": "Date",
+              "civil": "2026-11-09",
+              "original_text": "2026-11-09"
+            },
+            "posting": {
+              "kind": "Date",
+              "civil": "2026-11-09",
+              "original_text": "2026-11-09"
+            }
+          }
+        ],
+        "native_dates": [
+          {
+            "kind": "Date",
+            "civil": "2026-11-09",
+            "original_text": "2026-11-09"
+          }
+        ],
+        "interpretation": {
+          "kind": "Recognition",
+          "authority": "Owner",
+          "evidence": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "reason": "synthetic supported allocation"
+        },
+        "authority_basis": {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "version": 1
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "CorrectRecognition",
+      "value": {
+        "active_recognition": "00000000-0000-0000-0000-000000000001",
+        "replacement": [],
+        "remapping": [],
+        "reason": "synthetic correction"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "ReplaceAccountingSegment",
+      "value": {
+        "component": "00000000-0000-0000-0000-000000000001",
+        "prior_segment": null,
+        "opening": "00000000-0000-0000-0000-000000000001",
+        "included_activity": [],
+        "replacement_closure": [],
+        "approved_accounts": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "residual_disposition": {
+          "state": "Unknown"
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "AssociateLegs",
+      "value": {
+        "kind": "Transfer",
+        "legs": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "facets": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "allocations": [],
+        "survivor": null,
+        "corrections": [],
+        "reason": "synthetic association"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetOrganization",
+      "value": {
+        "economic_ids": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "field": "Category",
+        "value": {
+          "state": "Known",
+          "value": {
+            "kind": "Reference",
+            "value": "00000000-0000-0000-0000-000000000001"
+          }
+        },
+        "allocation": [],
+        "provenance": {
+          "kind": "Recognition",
+          "authority": "Owner",
+          "evidence": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "reason": "synthetic supported allocation"
+        },
+        "override_action": "Preserve"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetReviewDisposition",
+      "value": {
+        "targets": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "disposition": "NeedsEvidence",
+        "reason": "synthetic missing evidence"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetDatasetPolicy",
+      "value": {
+        "policy_id": "00000000-0000-0000-0000-000000000001",
+        "prior_version": 1,
+        "effective_scope": {
+          "start": null,
+          "end": null,
+          "basis": "Effective"
+        },
+        "ownership_perimeter": {
+          "value": {
+            "state": "Known",
+            "value": [
+              {
+                "account_id": "00000000-0000-0000-0000-000000000001",
+                "numerator": "1",
+                "denominator": "2"
+              }
+            ]
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        },
+        "source_priority": {
+          "value": {
+            "state": "Known",
+            "value": [
+              "00000000-0000-0000-0000-000000000001"
+            ]
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        },
+        "freshness_thresholds": {
+          "value": {
+            "state": "Known",
+            "value": [
+              {
+                "source": "00000000-0000-0000-0000-000000000001",
+                "seconds": "86400"
+              }
+            ]
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        },
+        "timezone": {
+          "value": {
+            "state": "Known",
+            "value": {
+              "zone": {
+                "state": "Known",
+                "value": "Etc/UTC"
+              },
+              "timezone_data_version": "synthetic-2026",
+              "calendar_version": 1
+            }
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        },
+        "reporting_currency": {
+          "value": {
+            "state": "Known",
+            "value": "00000000-0000-0000-0000-000000000001"
+          },
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          }
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "EvaluateReconciliation",
+      "value": {
+        "kind": "Activity",
+        "scope": {
+          "accounts": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "components": [
+            "00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "cutoff": {
+          "kind": "Date",
+          "civil": "2026-11-09",
+          "original_text": "2026-11-09"
+        },
+        "evidence": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "exclusions": [],
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "through_commit": "3",
+          "effective_scope": {
+            "start": null,
+            "end": null,
+            "basis": "Effective"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "unit_catalog_version": 1
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "EvaluateReconciliation",
+      "value": {
+        "kind": "Relationship",
+        "scope": {
+          "accounts": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "components": [
+            "00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "cutoff": {
+          "kind": "Date",
+          "civil": "2026-11-09",
+          "original_text": "2026-11-09"
+        },
+        "evidence": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "exclusions": [],
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "through_commit": "3",
+          "effective_scope": {
+            "start": null,
+            "end": null,
+            "basis": "Effective"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "unit_catalog_version": 1
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "EvaluateReconciliation",
+      "value": {
+        "kind": "Holdings",
+        "scope": {
+          "accounts": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "components": [
+            "00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "cutoff": {
+          "kind": "Date",
+          "civil": "2026-11-09",
+          "original_text": "2026-11-09"
+        },
+        "evidence": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "exclusions": [],
+        "basis": {
+          "dataset_id": "00000000-0000-0000-0000-000000000001",
+          "through_commit": "3",
+          "effective_scope": {
+            "start": null,
+            "end": null,
+            "basis": "Effective"
+          },
+          "evaluation_instant": "2026-11-09T12:00:00Z",
+          "query_semantics_version": 1,
+          "selection_policy_version": 1,
+          "unit_catalog_version": 1
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetOrganization",
+      "value": {
+        "economic_ids": [
+          "00000000-0000-0000-0000-000000000001"
+        ],
+        "field": "Note",
+        "value": {
+          "state": "Known",
+          "value": {
+            "kind": "Text",
+            "value": "Synthetic review note"
+          }
+        },
+        "allocation": [],
+        "provenance": {
+          "kind": "Recognition",
+          "authority": "Owner",
+          "evidence": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "reason": "synthetic supported allocation"
+        },
+        "override_action": "Preserve"
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetCommitment",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "version": 1,
+        "kind": "Expense",
+        "amounts": {
+          "nominal": {
+            "state": "Known",
+            "value": {
+              "coefficient": "100",
+              "scale": 0,
+              "unit_id": "00000000-0000-0000-0000-000000000001"
+            }
+          },
+          "low": {
+            "state": "Unknown"
+          },
+          "base": {
+            "state": "Unknown"
+          },
+          "high": {
+            "state": "Unknown"
+          }
+        },
+        "legs": [
+          {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "account_id": "00000000-0000-0000-0000-000000000001",
+            "amounts": {
+              "nominal": {
+                "state": "Known",
+                "value": {
+                  "coefficient": "100",
+                  "scale": 0,
+                  "unit_id": "00000000-0000-0000-0000-000000000001"
+                }
+              },
+              "low": {
+                "state": "Unknown"
+              },
+              "base": {
+                "state": "Unknown"
+              },
+              "high": {
+                "state": "Unknown"
+              }
+            },
+            "settlement": {
+              "kind": "SameDay",
+              "value": {}
+            }
+          }
+        ],
+        "due_date": "2026-11-09",
+        "settlement": {
+          "kind": "SameDay",
+          "value": {}
+        },
+        "recurrence": {
+          "cadence": "Monthly",
+          "interval": 1,
+          "month": null,
+          "day": {
+            "kind": "LastDay",
+            "value": {}
+          }
+        },
+        "recurrence_version": 1,
+        "timezone": "Etc/UTC",
+        "timezone_data_version": "synthetic-2026",
+        "calendar_version": 1,
+        "start": "2026-11-09",
+        "end": null,
+        "exceptions": [],
+        "provenance": {
+          "kind": "Planning",
+          "authority": "Owner",
+          "evidence": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "reason": "synthetic commitment"
+        }
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SetOccurrenceMatch",
+      "value": {
+        "occurrence": {
+          "commitment_id": "00000000-0000-0000-0000-000000000001",
+          "series_generation": 1,
+          "ordinal": "1"
+        },
+        "planned_leg": "00000000-0000-0000-0000-000000000001",
+        "economic_leg": "00000000-0000-0000-0000-000000000001",
+        "allocation_version": 1,
+        "amount": {
+          "coefficient": "100",
+          "scale": 0,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "inclusion": "IncludedInStartingBalance",
+        "pending": true
+      }
+    }
+  },
+  {
+    "protocol_version": 1,
+    "dataset_id": "00000000-0000-0000-0000-000000000001",
+    "command_id": "00000000-0000-0000-0000-000000000001",
+    "expected_head": "3",
+    "operation": {
+      "kind": "SaveForecast",
+      "value": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "request": {
+          "basis": {
+            "dataset_id": "00000000-0000-0000-0000-000000000001",
+            "through_commit": "3",
+            "effective_scope": {
+              "start": null,
+              "end": null,
+              "basis": "Effective"
+            },
+            "evaluation_instant": "2026-11-09T12:00:00Z",
+            "query_semantics_version": 1,
+            "selection_policy_version": 1,
+            "unit_catalog_version": 1
+          },
+          "start": "2026-11-09",
+          "months": 1,
+          "commitment_versions": [
+            {
+              "id": "00000000-0000-0000-0000-000000000001",
+              "version": 1
+            }
+          ],
+          "assumption_versions": [],
+          "scenario": "00000000-0000-0000-0000-000000000001"
+        },
+        "expanded_inputs": {
+          "commitments": [
+            {
+              "id": "00000000-0000-0000-0000-000000000001",
+              "version": 1,
+              "kind": "Expense",
+              "amounts": {
+                "nominal": {
+                  "state": "Known",
+                  "value": {
+                    "coefficient": "100",
+                    "scale": 0,
+                    "unit_id": "00000000-0000-0000-0000-000000000001"
+                  }
+                },
+                "low": {
+                  "state": "Unknown"
+                },
+                "base": {
+                  "state": "Unknown"
+                },
+                "high": {
+                  "state": "Unknown"
+                }
+              },
+              "legs": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "account_id": "00000000-0000-0000-0000-000000000001",
+                  "amounts": {
+                    "nominal": {
+                      "state": "Known",
+                      "value": {
+                        "coefficient": "100",
+                        "scale": 0,
+                        "unit_id": "00000000-0000-0000-0000-000000000001"
+                      }
+                    },
+                    "low": {
+                      "state": "Unknown"
+                    },
+                    "base": {
+                      "state": "Unknown"
+                    },
+                    "high": {
+                      "state": "Unknown"
+                    }
+                  },
+                  "settlement": {
+                    "kind": "SameDay",
+                    "value": {}
+                  }
+                }
+              ],
+              "due_date": "2026-11-09",
+              "settlement": {
+                "kind": "SameDay",
+                "value": {}
+              },
+              "recurrence": {
+                "cadence": "Monthly",
+                "interval": 1,
+                "month": null,
+                "day": {
+                  "kind": "LastDay",
+                  "value": {}
+                }
+              },
+              "recurrence_version": 1,
+              "timezone": "Etc/UTC",
+              "timezone_data_version": "synthetic-2026",
+              "calendar_version": 1,
+              "start": "2026-11-09",
+              "end": null,
+              "exceptions": [],
+              "provenance": {
+                "kind": "Planning",
+                "authority": "Owner",
+                "evidence": [
+                  "00000000-0000-0000-0000-000000000001"
+                ],
+                "reason": "synthetic commitment"
+              }
+            }
+          ],
+          "occurrences": [
+            {
+              "key": {
+                "commitment_id": "00000000-0000-0000-0000-000000000001",
+                "series_generation": 1,
+                "ordinal": "1"
+              },
+              "version": 1,
+              "legs": [
+                {
+                  "id": "00000000-0000-0000-0000-000000000001",
+                  "account_id": "00000000-0000-0000-0000-000000000001",
+                  "amounts": {
+                    "nominal": {
+                      "state": "Known",
+                      "value": {
+                        "coefficient": "100",
+                        "scale": 0,
+                        "unit_id": "00000000-0000-0000-0000-000000000001"
+                      }
+                    },
+                    "low": {
+                      "state": "Unknown"
+                    },
+                    "base": {
+                      "state": "Unknown"
+                    },
+                    "high": {
+                      "state": "Unknown"
+                    }
+                  },
+                  "settlement": {
+                    "kind": "SameDay",
+                    "value": {}
+                  }
+                }
+              ],
+              "due_date": "2026-11-30",
+              "settlement_range": {
+                "earliest": "2026-11-30",
+                "latest": "2026-11-30"
+              }
+            }
+          ],
+          "assumptions": [],
+          "starting_positions": [],
+          "matches": [
+            {
+              "occurrence": {
+                "commitment_id": "00000000-0000-0000-0000-000000000001",
+                "series_generation": 1,
+                "ordinal": "1"
+              },
+              "planned_leg": "00000000-0000-0000-0000-000000000001",
+              "economic_leg": "00000000-0000-0000-0000-000000000001",
+              "allocation_version": 1,
+              "amount": {
+                "coefficient": "100",
+                "scale": 0,
+                "unit_id": "00000000-0000-0000-0000-000000000001"
+              },
+              "inclusion": "IncludedInStartingBalance",
+              "pending": true
+            }
+          ]
+        },
+        "calendar_data": {
+          "timezone": "Etc/UTC",
+          "timezone_data_version": "synthetic-2026",
+          "timezone_data": {
+            "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+            "byte_count": "1",
+            "media_type": "application/octet-stream"
+          },
+          "calendar_version": 1,
+          "holidays": []
+        },
+        "algorithm_version": 1,
+        "outputs": [
+          {
+            "variant": "Base",
+            "daily_balances": [],
+            "minimum_balances": [],
+            "coverage": [],
+            "unknown_accounts": [
+              "00000000-0000-0000-0000-000000000001"
+            ],
+            "omitted_accounts": [],
+            "starting_position_uncertainty": [
+              "synthetic missing opening"
+            ],
+            "inclusion_maps": [
+              {
+                "occurrence": {
+                  "commitment_id": "00000000-0000-0000-0000-000000000001",
+                  "series_generation": 1,
+                  "ordinal": "1"
+                },
+                "planned_leg": "00000000-0000-0000-0000-000000000001",
+                "economic_leg": "00000000-0000-0000-0000-000000000001",
+                "allocation_version": 1,
+                "amount": {
+                  "coefficient": "100",
+                  "scale": 0,
+                  "unit_id": "00000000-0000-0000-0000-000000000001"
+                },
+                "inclusion": "IncludedInStartingBalance",
+                "pending": true
+              }
+            ],
+            "assumptions": [
+              "synthetic input"
+            ],
+            "matching_conflicts": []
+          }
+        ]
+      }
+    }
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "source": "RFC 8785 section 3.2.3 UTF16 property sorting and section 3.2.2.2 escaping",
+  "utf16": {
+    "input": {
+      "€": "Euro Sign",
+      "\r": "Carriage Return",
+      "דּ": "Hebrew Letter Dalet With Dagesh",
+      "1": "One",
+      "😀": "Emoji: Grinning Face",
+      "": "Control",
+      "ö": "Latin Small Letter O With Diaeresis"
+    },
+    "expected_keys": [
+      "\r",
+      "1",
+      "",
+      "ö",
+      "€",
+      "😀",
+      "דּ"
+    ]
+  },
+  "escaping": {
+    "input": "\u0000\b\t\n\f\r\"\\/€",
+    "expected": "\"\\u0000\\b\\t\\n\\f\\r\\\"\\\\/€\""
+  }
+}

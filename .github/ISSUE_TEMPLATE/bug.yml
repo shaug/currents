@@ -1,0 +1,12 @@
+name: Synthetic reproduction
+description: Report a defect without private financial state
+body:
+  - type: markdown
+    attributes:
+      value: Never include real accounts, credentials, statements, backups, or raw diagnostics. Use a synthetic reproduction. See SECURITY.md for private reporting.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Synthetic reproduction and expected behavior
+    validations:
+      required: true

@@ -1,0 +1,10 @@
+# Maintainer review of trust-boundary and dependency changes. Repository-rule application is separate.
+/.github/ @shaug
+/xtask/ @shaug
+/tools/ @shaug
+/deny.toml @shaug
+/.gitleaks.toml @shaug
+/clippy.toml @shaug
+/docs/lint-allowlist.json @shaug
+/Cargo.toml @shaug
+/Cargo.lock @shaug

@@ -1,5 +1,7 @@
 mod checks;
 mod native;
+mod quality;
+mod readiness;
 mod report;
 
 fn main() {
