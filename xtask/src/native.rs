@@ -47,10 +47,10 @@ pub fn qualify(root: &Path) -> Result<Value, String> {
     let selected = env::var("DEVELOPER_DIR")
         .ok()
         .or_else(|| checked(Path::new("/usr/bin/xcode-select"), &["-p"], root, None).ok());
-    if let Some(path) = &selected {
-        if let Some(developer) = selected_developer(Path::new(path.trim())) {
-            installations.push(developer);
-        }
+    if let Some(path) = &selected
+        && let Some(developer) = selected_developer(Path::new(path.trim()))
+    {
+        installations.push(developer);
     }
     // Spotlight may find full Xcode outside the conventional application folders.
     let spotlight = checked(
