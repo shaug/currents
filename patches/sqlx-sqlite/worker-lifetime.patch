@@ -1,0 +1,2082 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -4,9 +4,9 @@
+ 
+ [[package]]
+ name = "aho-corasick"
+-version = "1.1.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
++version = "1.1.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
+ dependencies = [
+  "memchr",
+ ]
+@@ -19,9 +19,9 @@
+ 
+ [[package]]
+ name = "android_system_properties"
+-version = "0.1.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
++version = "0.1.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ae221649c9976a6f6c56ae1facf410f3ddb33cc661c4b7b61020a912d4237fbc"
+ dependencies = [
+  "libc",
+ ]
+@@ -37,9 +37,9 @@
+ 
+ [[package]]
+ name = "autocfg"
+-version = "1.5.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
++version = "1.5.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+ 
+ [[package]]
+ name = "base64"
+@@ -61,15 +61,15 @@
+  "quote",
+  "regex",
+  "rustc-hash",
+- "shlex",
+- "syn",
++ "shlex 1.3.0",
++ "syn 2.0.119",
+ ]
+ 
+ [[package]]
+ name = "bitflags"
+-version = "2.11.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
++version = "2.13.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+ 
+ [[package]]
+ name = "block-buffer"
+@@ -82,24 +82,24 @@
+ 
+ [[package]]
+ name = "bumpalo"
+-version = "3.20.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
++version = "3.20.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+ 
+ [[package]]
+ name = "bytes"
++version = "1.12.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
++
++[[package]]
++name = "cc"
+ version = "1.11.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+-
+-[[package]]
+-name = "cc"
+-version = "1.2.61"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
++checksum = "4ff2a8126fff0f8c839080d619675a585e61720bb12d2baceae45769fd66f155"
+ dependencies = [
+  "find-msvc-tools",
+- "shlex",
++ "shlex 2.0.1",
+ ]
+ 
+ [[package]]
+@@ -113,15 +113,15 @@
+ 
+ [[package]]
+ name = "cfg-if"
+-version = "1.0.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
++version = "1.0.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
+ 
+ [[package]]
+ name = "chrono"
+-version = "0.4.44"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
++version = "0.4.45"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+ dependencies = [
+  "iana-time-zone",
+  "num-traits",
+@@ -130,9 +130,9 @@
+ 
+ [[package]]
+ name = "clang-sys"
+-version = "1.8.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
++version = "1.9.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "157a8ba7b480713b56f4c09fd13fc3e0a22a5dfab8097ba61cbc5feef950788a"
+ dependencies = [
+  "glob",
+  "libc",
+@@ -140,15 +140,6 @@
+ ]
+ 
+ [[package]]
+-name = "concurrent-queue"
+-version = "2.5.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
+-dependencies = [
+- "crossbeam-utils",
+-]
+-
+-[[package]]
+ name = "core-foundation-sys"
+ version = "0.8.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -180,24 +171,24 @@
+ 
+ [[package]]
+ name = "crossbeam-queue"
+-version = "0.3.12"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
++version = "0.3.14"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "03e8bd762f7479489c70ed6c768ddca99d7296857de437a68dcb2a94365b3fae"
+ dependencies = [
+  "crossbeam-utils",
+ ]
+ 
+ [[package]]
+ name = "crossbeam-utils"
+-version = "0.8.21"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
++version = "0.8.23"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+ 
+ [[package]]
+ name = "crypto-common"
+-version = "0.1.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
++version = "0.1.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
+ dependencies = [
+  "generic-array",
+  "typenum",
+@@ -205,12 +196,9 @@
+ 
+ [[package]]
+ name = "deranged"
+-version = "0.5.8"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+-dependencies = [
+- "powerfmt",
+-]
++version = "0.5.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
+ 
+ [[package]]
+ name = "digest"
+@@ -224,46 +212,45 @@
+ 
+ [[package]]
+ name = "displaydoc"
+-version = "0.2.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "0.2.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+ ]
+ 
+ [[package]]
+ name = "either"
+-version = "1.15.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
++version = "1.19.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
+ dependencies = [
+  "serde",
+ ]
+ 
+ [[package]]
+ name = "equivalent"
+-version = "1.0.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
++version = "1.0.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
+ 
+ [[package]]
+ name = "event-listener"
+-version = "5.4.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e13b66accf52311f30a0db42147dadea9850cb48cd070028831ae5f5d4b856ab"
+-dependencies = [
+- "concurrent-queue",
++version = "5.4.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
++dependencies = [
+  "parking",
+  "pin-project-lite",
+ ]
+ 
+ [[package]]
+ name = "find-msvc-tools"
+-version = "0.1.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
++version = "0.1.15"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
+ 
+ [[package]]
+ name = "flume"
+@@ -293,9 +280,9 @@
+ 
+ [[package]]
+ name = "futures-channel"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
+ dependencies = [
+  "futures-core",
+  "futures-sink",
+@@ -303,15 +290,15 @@
+ 
+ [[package]]
+ name = "futures-core"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
+ 
+ [[package]]
+ name = "futures-executor"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "baf29c38818342a3b26b5b923639e7b1f4a61fc5e76102d4b1981c6dc7a7579d"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "031b47cf1a3c6cc8bc2fc76cd437f521619387907d469316e7c0bc278f1f5432"
+ dependencies = [
+  "futures-core",
+  "futures-task",
+@@ -331,27 +318,27 @@
+ 
+ [[package]]
+ name = "futures-io"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cecba35d7ad927e23624b22ad55235f2239cfa44fd10428eecbeba6d6a717718"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
+ 
+ [[package]]
+ name = "futures-sink"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
+ 
+ [[package]]
+ name = "futures-task"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
+ 
+ [[package]]
+ name = "futures-util"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
+ dependencies = [
+  "futures-core",
+  "futures-io",
+@@ -364,9 +351,9 @@
+ 
+ [[package]]
+ name = "generic-array"
+-version = "0.14.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
++version = "0.14.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4bb6743198531e02858aeaea5398fcc883e71851fcbcb5a2f773e2fb6cb1edf2"
+ dependencies = [
+  "typenum",
+  "version_check",
+@@ -374,9 +361,9 @@
+ 
+ [[package]]
+ name = "glob"
+-version = "0.3.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
++version = "0.3.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+ 
+ [[package]]
+ name = "hashbrown"
+@@ -391,15 +378,15 @@
+ 
+ [[package]]
+ name = "hashbrown"
+-version = "0.17.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
++version = "0.17.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+ 
+ [[package]]
+ name = "hashlink"
+-version = "0.11.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ea0b22561a9c04a7cb1a302c013e0259cd3b4bb619f145b32f72b8b4bcbed230"
++version = "0.11.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
+ dependencies = [
+  "hashbrown 0.16.1",
+ ]
+@@ -430,9 +417,9 @@
+ 
+ [[package]]
+ name = "icu_collections"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2984d1cd16c883d7935b9e07e44071dca8d917fd52ecc02c04d5fa0b5a3f191c"
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fe090a42a0d3140fed8c63263ed1fecc02422cb2f4bfe55cd8de2de1b8e105dd"
+ dependencies = [
+  "displaydoc",
+  "potential_utf",
+@@ -444,9 +431,9 @@
+ 
+ [[package]]
+ name = "icu_locale_core"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "92219b62b3e2b4d88ac5119f8904c10f8f61bf7e95b640d25ba3075e6cac2c29"
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "25d29b57c17c6528d0dc4c2141cfa2d08200465acb537a3909c8b9b8a4a984c0"
+ dependencies = [
+  "displaydoc",
+  "litemap",
+@@ -457,9 +444,9 @@
+ 
+ [[package]]
+ name = "icu_normalizer"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c56e5ee99d6e3d33bd91c5d85458b6005a22140021cc324cea84dd0e72cff3b4"
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "404a3b8c486f205c87fe7f23ab6894d84a4ad76d6e4671ae1981ba7def87c599"
+ dependencies = [
+  "icu_collections",
+  "icu_normalizer_data",
+@@ -471,16 +458,17 @@
+ 
+ [[package]]
+ name = "icu_normalizer_data"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "da3be0ae77ea334f4da67c12f149704f19f81d1adf7c51cf482943e84a2bad38"
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "20f0088bfb7441f7a37fa0c9e20cb1e9cba1cac6b9ce8cd2a6dc44294f8e8cbc"
+ 
+ [[package]]
+ name = "icu_properties"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bee3b67d0ea5c2cca5003417989af8996f8604e34fb9ddf96208a033901e70de"
+-dependencies = [
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2ea83d991c56158f7cf898bf86436c1dfe7c07ee82fe88951f2695c9f37a379f"
++dependencies = [
++ "displaydoc",
+  "icu_collections",
+  "icu_locale_core",
+  "icu_properties_data",
+@@ -491,15 +479,15 @@
+ 
+ [[package]]
+ name = "icu_properties_data"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8e2bbb201e0c04f7b4b3e14382af113e17ba4f63e2c9d2ee626b720cbce54a14"
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b98f29af82d02b163fe50161388350e743bb3107cc8e8c2f7314cb505faddfcf"
+ 
+ [[package]]
+ name = "icu_provider"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "139c4cf31c8b5f33d7e199446eff9c1e02decfc2f0eec2c8d71f65befa45b421"
++version = "2.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "413099315636c588ee8f011190b329b971a09a8fae9d157e01dcae8379468514"
+ dependencies = [
+  "displaydoc",
+  "icu_locale_core",
+@@ -533,12 +521,12 @@
+ 
+ [[package]]
+ name = "indexmap"
+-version = "2.14.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
++version = "2.14.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
+ dependencies = [
+  "equivalent",
+- "hashbrown 0.17.0",
++ "hashbrown 0.17.1",
+ ]
+ 
+ [[package]]
+@@ -552,27 +540,26 @@
+ 
+ [[package]]
+ name = "itoa"
+-version = "1.0.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
++version = "1.0.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
+ 
+ [[package]]
+ name = "js-sys"
+-version = "0.3.97"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a1840c94c045fbcf8ba2812c95db44499f7c64910a912551aaaa541decebcacf"
++version = "0.3.107"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8dc09d2154098bbf4ef54eab6b117a3c24cbbffe94046b16ee6d6d4510584d3a"
+ dependencies = [
+  "cfg-if",
+  "futures-util",
+- "once_cell",
+  "wasm-bindgen",
+ ]
+ 
+ [[package]]
+ name = "libc"
+-version = "0.2.186"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
++version = "0.2.191"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+ 
+ [[package]]
+ name = "libloading"
+@@ -587,78 +574,111 @@
+ [[package]]
+ name = "libsqlite3-sys"
+ version = "0.37.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
+ dependencies = [
+  "bindgen",
+  "cc",
++ "openssl-sys",
++ "pkg-config",
++ "sqlcipher-src",
++ "vcpkg",
++]
++
++[[package]]
++name = "litemap"
++version = "0.8.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
++
++[[package]]
++name = "lock_api"
++version = "0.4.14"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
++dependencies = [
++ "scopeguard",
++]
++
++[[package]]
++name = "log"
++version = "0.4.35"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
++
++[[package]]
++name = "memchr"
++version = "2.8.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
++
++[[package]]
++name = "minimal-lexical"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
++
++[[package]]
++name = "mio"
++version = "1.2.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
++dependencies = [
++ "libc",
++ "wasi",
++ "windows-sys",
++]
++
++[[package]]
++name = "nom"
++version = "7.1.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
++dependencies = [
++ "memchr",
++ "minimal-lexical",
++]
++
++[[package]]
++name = "num-conv"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
++
++[[package]]
++name = "num-traits"
++version = "0.2.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
++dependencies = [
++ "autocfg",
++]
++
++[[package]]
++name = "once_cell"
++version = "1.21.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
++
++[[package]]
++name = "openssl-src"
++version = "300.6.1+3.6.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
++dependencies = [
++ "cc",
++]
++
++[[package]]
++name = "openssl-sys"
++version = "0.9.118"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "19c413d6ec9ebaf5e1c829d355cb3e9f783778d700f135be0921d52fce3c60ae"
++dependencies = [
++ "cc",
++ "libc",
++ "openssl-src",
+  "pkg-config",
+  "vcpkg",
+ ]
+-
+-[[package]]
+-name = "litemap"
+-version = "0.8.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
+-
+-[[package]]
+-name = "lock_api"
+-version = "0.4.14"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
+-dependencies = [
+- "scopeguard",
+-]
+-
+-[[package]]
+-name = "log"
+-version = "0.4.29"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+-
+-[[package]]
+-name = "memchr"
+-version = "2.8.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
+-
+-[[package]]
+-name = "minimal-lexical"
+-version = "0.2.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+-
+-[[package]]
+-name = "nom"
+-version = "7.1.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+-dependencies = [
+- "memchr",
+- "minimal-lexical",
+-]
+-
+-[[package]]
+-name = "num-conv"
+-version = "0.2.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c6673768db2d862beb9b39a78fdcb1a69439615d5794a1be50caa9bc92c81967"
+-
+-[[package]]
+-name = "num-traits"
+-version = "0.2.19"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+-dependencies = [
+- "autocfg",
+-]
+-
+-[[package]]
+-name = "once_cell"
+-version = "1.21.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+ 
+ [[package]]
+ name = "parking"
+@@ -703,39 +723,39 @@
+ 
+ [[package]]
+ name = "pkg-config"
+-version = "0.3.33"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+ 
+ [[package]]
+ name = "potential_utf"
+-version = "0.1.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0103b1cef7ec0cf76490e969665504990193874ea05c85ff9bab8b911d0a0564"
++version = "0.1.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d83eb9bc6d8e5cf568e7a1101d60ee05e81ed50ea106026f3d18deeb046d7661"
+ dependencies = [
+  "zerovec",
+ ]
+ 
+ [[package]]
+ name = "powerfmt"
+-version = "0.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
+ 
+ [[package]]
+ name = "proc-macro2"
+-version = "1.0.106"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
++version = "1.0.107"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
+ dependencies = [
+  "unicode-ident",
+ ]
+ 
+ [[package]]
+ name = "quote"
+-version = "1.0.45"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
++version = "1.0.47"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
+ dependencies = [
+  "proc-macro2",
+ ]
+@@ -751,9 +771,9 @@
+ 
+ [[package]]
+ name = "regex"
+-version = "1.12.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
++version = "1.13.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+ dependencies = [
+  "aho-corasick",
+  "memchr",
+@@ -763,9 +783,9 @@
+ 
+ [[package]]
+ name = "regex-automata"
+-version = "0.4.14"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
++version = "0.4.18"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+ dependencies = [
+  "aho-corasick",
+  "memchr",
+@@ -774,21 +794,21 @@
+ 
+ [[package]]
+ name = "regex-syntax"
+-version = "0.8.10"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
++version = "0.8.11"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+ 
+ [[package]]
+ name = "rustc-hash"
+-version = "2.1.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "94300abf3f1ae2e2b8ffb7b58043de3d399c73fa6f4b73826402a5c457614dbe"
++version = "2.1.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
+ 
+ [[package]]
+ name = "rustversion"
+-version = "1.0.22"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
++version = "1.0.23"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+ 
+ [[package]]
+ name = "scopeguard"
+@@ -798,9 +818,9 @@
+ 
+ [[package]]
+ name = "serde"
+-version = "1.0.228"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
++version = "1.0.229"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+ dependencies = [
+  "serde_core",
+  "serde_derive",
+@@ -808,29 +828,29 @@
+ 
+ [[package]]
+ name = "serde_core"
+-version = "1.0.228"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
++version = "1.0.229"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
+ dependencies = [
+  "serde_derive",
+ ]
+ 
+ [[package]]
+ name = "serde_derive"
+-version = "1.0.228"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "1.0.229"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+ ]
+ 
+ [[package]]
+ name = "serde_json"
+-version = "1.0.149"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
++version = "1.0.154"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
+ dependencies = [
+  "itoa",
+  "memchr",
+@@ -866,6 +886,12 @@
+ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+ 
+ [[package]]
++name = "shlex"
++version = "2.0.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
++
++[[package]]
+ name = "slab"
+ version = "0.4.12"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -873,18 +899,34 @@
+ 
+ [[package]]
+ name = "smallvec"
+-version = "1.15.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
++version = "1.16.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
++
++[[package]]
++name = "socket2"
++version = "0.6.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
++dependencies = [
++ "libc",
++ "windows-sys",
++]
+ 
+ [[package]]
+ name = "spin"
+-version = "0.9.8"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
++version = "0.9.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
+ dependencies = [
+  "lock_api",
+ ]
++
++[[package]]
++name = "sqlcipher-src"
++version = "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe"
+ 
+ [[package]]
+ name = "sqlx-core"
+@@ -916,6 +958,8 @@
+  "smallvec",
+  "thiserror",
+  "time",
++ "tokio",
++ "tokio-stream",
+  "toml",
+  "tracing",
+  "url",
+@@ -943,6 +987,7 @@
+  "sqlx-core",
+  "thiserror",
+  "time",
++ "tokio",
+  "tracing",
+  "url",
+  "uuid",
+@@ -956,9 +1001,9 @@
+ 
+ [[package]]
+ name = "syn"
+-version = "2.0.117"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
++version = "2.0.119"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -966,44 +1011,54 @@
+ ]
+ 
+ [[package]]
++name = "syn"
++version = "3.0.10"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "unicode-ident",
++]
++
++[[package]]
+ name = "synstructure"
+-version = "0.13.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "0.14.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+ ]
+ 
+ [[package]]
+ name = "thiserror"
+-version = "2.0.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
++version = "2.0.21"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+ dependencies = [
+  "thiserror-impl",
+ ]
+ 
+ [[package]]
+ name = "thiserror-impl"
+-version = "2.0.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "2.0.21"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+ ]
+ 
+ [[package]]
+ name = "time"
+-version = "0.3.47"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
++version = "0.3.55"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
+ dependencies = [
+  "deranged",
+- "itoa",
+  "num-conv",
+  "powerfmt",
+  "serde_core",
+@@ -1013,15 +1068,15 @@
+ 
+ [[package]]
+ name = "time-core"
+-version = "0.1.8"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
+ 
+ [[package]]
+ name = "time-macros"
+-version = "0.2.27"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
++version = "0.2.32"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7e689342a48d2ea927c87ea50cabf8594854bf940e9310208848d680d668ed85"
+ dependencies = [
+  "num-conv",
+  "time-core",
+@@ -1029,12 +1084,49 @@
+ 
+ [[package]]
+ name = "tinystr"
+-version = "0.8.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
++version = "0.8.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "abc840c238154d58f9e86b2792261edfde565a17696e1cda1a449de27979801a"
+ dependencies = [
+  "displaydoc",
+  "zerovec",
++]
++
++[[package]]
++name = "tokio"
++version = "1.53.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e"
++dependencies = [
++ "bytes",
++ "libc",
++ "mio",
++ "pin-project-lite",
++ "socket2",
++ "tokio-macros",
++ "windows-sys",
++]
++
++[[package]]
++name = "tokio-macros"
++version = "2.7.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
++]
++
++[[package]]
++name = "tokio-stream"
++version = "0.1.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
++dependencies = [
++ "futures-core",
++ "pin-project-lite",
++ "tokio",
+ ]
+ 
+ [[package]]
+@@ -1098,7 +1190,7 @@
+ dependencies = [
+  "proc-macro2",
+  "quote",
+- "syn",
++ "syn 2.0.119",
+ ]
+ 
+ [[package]]
+@@ -1112,15 +1204,15 @@
+ 
+ [[package]]
+ name = "typenum"
+-version = "1.20.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
++version = "1.20.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+ 
+ [[package]]
+ name = "unicode-ident"
+-version = "1.0.24"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
++version = "1.0.27"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+ 
+ [[package]]
+ name = "url"
+@@ -1136,15 +1228,24 @@
+ 
+ [[package]]
+ name = "utf8_iter"
+-version = "1.0.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
++version = "1.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "af3bd9d3e571c26fcce9d033b87ea5ab061b8d2ffe9b7a5675d810d68f03edf0"
++dependencies = [
++ "utf_types",
++]
++
++[[package]]
++name = "utf_types"
++version = "1.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3a3b425286980a367278453f3b6d28cdcb134b574e5a35824a6ff5eebad50bb6"
+ 
+ [[package]]
+ name = "uuid"
+-version = "1.23.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
++version = "1.29.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
+ dependencies = [
+  "js-sys",
+  "wasm-bindgen",
+@@ -1163,13 +1264,18 @@
+ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+ 
+ [[package]]
++name = "wasi"
++version = "0.11.1+wasi-snapshot-preview1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
++
++[[package]]
+ name = "wasm-bindgen"
+-version = "0.2.120"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "df52b6d9b87e0c74c9edfa1eb2d9bf85e5d63515474513aa50fa181b3c4f5db1"
++version = "0.2.130"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a0181c14ddd6c7b8b0b0132a5f1ea2f32be0d893cd3ea97b6e3b28886b8a3d1c"
+ dependencies = [
+  "cfg-if",
+- "once_cell",
+  "rustversion",
+  "wasm-bindgen-macro",
+  "wasm-bindgen-shared",
+@@ -1177,9 +1283,9 @@
+ 
+ [[package]]
+ name = "wasm-bindgen-macro"
+-version = "0.2.120"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "78b1041f495fb322e64aca85f5756b2172e35cd459376e67f2a6c9dffcedb103"
++version = "0.2.130"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6e931a02a39abdbf66966fc35902b5ed58344750a70885bed4ebb3d8eaf28ed9"
+ dependencies = [
+  "quote",
+  "wasm-bindgen-macro-support",
+@@ -1187,22 +1293,22 @@
+ 
+ [[package]]
+ name = "wasm-bindgen-macro-support"
+-version = "0.2.120"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9dcd0ff20416988a18ac686d4d4d0f6aae9ebf08a389ff5d29012b05af2a1b41"
++version = "0.2.130"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2ca4b54280e455bd831e33a6b8e734baf432fe63fbc35c42ac14ce67a043a53a"
+ dependencies = [
+  "bumpalo",
+  "proc-macro2",
+  "quote",
+- "syn",
++ "syn 3.0.10",
+  "wasm-bindgen-shared",
+ ]
+ 
+ [[package]]
+ name = "wasm-bindgen-shared"
+-version = "0.2.120"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "49757b3c82ebf16c57d69365a142940b384176c24df52a087fb748e2085359ea"
++version = "0.2.130"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
+ dependencies = [
+  "unicode-ident",
+ ]
+@@ -1228,7 +1334,7 @@
+ dependencies = [
+  "proc-macro2",
+  "quote",
+- "syn",
++ "syn 2.0.119",
+ ]
+ 
+ [[package]]
+@@ -1239,7 +1345,7 @@
+ dependencies = [
+  "proc-macro2",
+  "quote",
+- "syn",
++ "syn 2.0.119",
+ ]
+ 
+ [[package]]
+@@ -1267,6 +1373,15 @@
+ ]
+ 
+ [[package]]
++name = "windows-sys"
++version = "0.61.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
++dependencies = [
++ "windows-link",
++]
++
++[[package]]
+ name = "winnow"
+ version = "0.7.15"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -1277,15 +1392,15 @@
+ 
+ [[package]]
+ name = "writeable"
+-version = "0.6.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
++version = "0.6.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+ 
+ [[package]]
+ name = "yoke"
+-version = "0.8.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "abe8c5fda708d9ca3df187cae8bfb9ceda00dd96231bed36e445a1a48e66f9ca"
++version = "0.8.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "417ef3fcf6c300b7dbd25c85531a746931c02ad536f3cf4786ed1e88223340b3"
+ dependencies = [
+  "stable_deref_trait",
+  "yoke-derive",
+@@ -1294,42 +1409,42 @@
+ 
+ [[package]]
+ name = "yoke-derive"
+-version = "0.8.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "de844c262c8848816172cef550288e7dc6c7b7814b4ee56b3e1553f275f1858e"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "0.8.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+  "synstructure",
+ ]
+ 
+ [[package]]
+ name = "zerofrom"
+-version = "0.1.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "69faa1f2a1ea75661980b013019ed6687ed0e83d069bc1114e2cc74c6c04c4df"
++version = "0.1.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272"
+ dependencies = [
+  "zerofrom-derive",
+ ]
+ 
+ [[package]]
+ name = "zerofrom-derive"
+-version = "0.1.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "11532158c46691caf0f2593ea8358fed6bbf68a0315e80aae9bd41fbade684a1"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "0.1.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f75b4683f6c7f45248d4d64056a24298c6281e0993356d7d1b4a1a962ef10d4a"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+  "synstructure",
+ ]
+ 
+ [[package]]
+ name = "zerotrie"
+-version = "0.2.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0f9152d31db0792fa83f70fb2f83148effb5c1f5b8c7686c3459e361d9bc20bf"
++version = "0.2.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4ea269c3bd32f0a32c321907a2ae912ba6f4649bb0fc764a15627e99a7095a3f"
+ dependencies = [
+  "displaydoc",
+  "yoke",
+@@ -1338,9 +1453,9 @@
+ 
+ [[package]]
+ name = "zerovec"
+-version = "0.11.6"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "90f911cbc359ab6af17377d242225f4d75119aec87ea711a880987b18cd7b239"
++version = "0.11.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f58a2799cfe9a1670c7ea8edbd52ef8edb93cb37a7f83bf31ba9e35d9dae6a40"
+ dependencies = [
+  "yoke",
+  "zerofrom",
+@@ -1349,17 +1464,17 @@
+ 
+ [[package]]
+ name = "zerovec-derive"
+-version = "0.11.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "625dc425cab0dca6dc3c3319506e6593dcb08a9f387ea3b284dbd52a92c40555"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
++version = "0.11.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c3743ddbf47738d929cd1ae2e199d40d0162979dfe31aef8ae646d2bf00bf97a"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.10",
+ ]
+ 
+ [[package]]
+ name = "zmij"
+-version = "1.0.21"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
++version = "1.0.23"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -14,6 +14,7 @@
+ rust-version = "1.94.0"
+ name = "sqlx-sqlite"
+ version = "0.9.0"
++publish = false
+ authors = [
+     "Ryan Leckey <leckey.ryan@gmail.com>",
+     "Austin Bonander <austin.bonander@gmail.com>",
+@@ -189,10 +190,33 @@
+ version = "1.12.1"
+ optional = true
+ 
+-[dev-dependencies]
++[dev-dependencies.tokio]
++version = "=1.53.3"
++features = ["rt", "time", "macros"]
++default-features = false
+ 
+ [lints.clippy]
+ cast_possible_truncation = "deny"
+ cast_possible_wrap = "deny"
+ cast_sign_loss = "deny"
+ disallowed_methods = "deny"
++
++# Standalone driver qualification uses the same reviewed sys source and provider
++# as Currents. These are test-only dependencies, not production feature changes.
++[dev-dependencies.sqlx-core]
++version = "=0.9.0"
++features = ["_rt-tokio"]
++default-features = false
++
++[target.'cfg(target_os = "macos")'.dev-dependencies.libsqlite3-sys]
++version = "=0.37.0"
++features = ["bundled-sqlcipher"]
++default-features = false
++
++[target.'cfg(target_os = "linux")'.dev-dependencies.libsqlite3-sys]
++version = "=0.37.0"
++features = ["bundled-sqlcipher-vendored-openssl"]
++default-features = false
++
++[patch.crates-io]
++libsqlite3-sys = { path = "../libsqlite3-sys" }
+--- a/src/connection/establish.rs
++++ b/src/connection/establish.rs
+@@ -33,6 +33,7 @@
+     extensions: IndexMap<CString, Option<CString>>,
+     pub(crate) thread_name: String,
+     pub(crate) command_channel_size: usize,
++    pub(crate) join_worker_on_drop: bool,
+     #[cfg(feature = "regexp")]
+     register_regexp_function: bool,
+ }
+@@ -151,6 +152,7 @@
+             extensions,
+             thread_name: (options.thread_name)(thread_id as u64),
+             command_channel_size: options.command_channel_size,
++            join_worker_on_drop: options.join_worker_on_drop,
+             #[cfg(feature = "regexp")]
+             register_regexp_function: options.register_regexp_function,
+         })
+--- a/src/connection/mod.rs
++++ b/src/connection/mod.rs
+@@ -227,11 +227,14 @@
+             self.execute(AssertSqlSafe(pragma_string)).await?;
+         }
+         let shutdown = self.worker.shutdown();
++        let join = std::mem::take(&mut self.worker.join);
+         // Drop the statement worker, which should
+         // cover all references to the connection handle outside of the worker thread
+         drop(self);
+         // Ensure the worker thread has terminated
+-        shutdown.await
++        let result = shutdown.await;
++        join.finish()?;
++        result
+     }
+ 
+     async fn close_hard(self) -> Result<(), Error> {
+--- a/src/connection/worker.rs
++++ b/src/connection/worker.rs
+@@ -22,6 +22,9 @@
+ #[cfg(feature = "deserialize")]
+ use crate::connection::deserialize::{deserialize, serialize, SchemaName, SqliteOwnedBuf};
+ 
++#[cfg(test)]
++mod currents_tests;
++
+ // Each SQLite connection has a dedicated thread.
+ 
+ // TODO: Tweak this so that we can use a thread pool per pool of SQLite3 connections to reduce
+@@ -32,6 +35,62 @@
+     command_tx: flume::Sender<(Command, tracing::Span)>,
+     /// Mutex for locking access to the database.
+     pub(crate) shared: Arc<WorkerSharedState>,
++    // LAST: disconnect commands and relinquish shared native state before joining.
++    pub(crate) join: JoinGuard,
++}
++
++/// Opt-in ownership of the native thread. A dropped async initializer/close has
++/// no executor on which it can safely promise future cleanup, so its fallback
++/// synchronously waits. This is intentionally not a wall-clock timeout guarantee.
++#[derive(Default)]
++pub(crate) struct JoinGuard {
++    handle: Option<thread::JoinHandle<()>>,
++    #[cfg(test)]
++    probe: Option<Arc<currents_tests::Probe>>,
++}
++
++impl JoinGuard {
++    fn new(handle: thread::JoinHandle<()>, enabled: bool) -> Self {
++        if !enabled {
++            return Self::default(); // Preserve upstream detached-worker behavior.
++        }
++        Self {
++            #[cfg(test)]
++            probe: handle.thread().name().and_then(currents_tests::lookup),
++            handle: Some(handle),
++        }
++    }
++
++    fn join(&mut self) -> Result<(), Error> {
++        if let Some(handle) = self.handle.take() {
++            #[cfg(test)]
++            currents_tests::joining(&self.probe);
++            let result = handle.join().map_err(|_| Error::WorkerCrashed);
++            #[cfg(test)]
++            currents_tests::joined(&self.probe);
++            result
++        } else {
++            Ok(())
++        }
++    }
++
++    pub(crate) fn finish(mut self) -> Result<(), Error> {
++        self.join()
++    }
++}
++
++impl Drop for JoinGuard {
++    fn drop(&mut self) {
++        // Never panic during unwinding; explicit close can report WorkerCrashed.
++        let _ = self.join();
++    }
++}
++
++struct EstablishReceiver {
++    // FIRST: cancellation drops an undelivered worker/sender before joining.
++    // Await this field by mutable reference, never move it out of this owner.
++    receiver: oneshot::Receiver<Result<ConnectionWorker, Error>>,
++    join: JoinGuard,
+ }
+ 
+ pub(crate) struct WorkerSharedState {
+@@ -105,9 +164,12 @@
+     pub(crate) async fn establish(params: EstablishParams) -> Result<Self, Error> {
+         let (establish_tx, establish_rx) = oneshot::channel();
+ 
+-        thread::Builder::new()
++        let join_worker_on_drop = params.join_worker_on_drop;
++        let handle = thread::Builder::new()
+             .name(params.thread_name.clone())
+             .spawn(move || {
++                #[cfg(test)]
++                let _exit_probe = currents_tests::started(&params.thread_name);
+                 let (command_tx, command_rx) = flume::bounded(params.command_channel_size);
+ 
+                 let conn = match params.establish() {
+@@ -128,10 +190,14 @@
+                 });
+                 let mut conn = shared.conn.try_lock().unwrap();
+ 
++                #[cfg(test)]
++                currents_tests::event(currents_tests::Event::BeforePublish);
+                 if establish_tx
+                     .send(Ok(Self {
+                         command_tx,
+                         shared: Arc::clone(&shared),
++                        // Only the receiver may own this thread's JoinHandle.
++                        join: JoinGuard::default(),
+                     }))
+                     .is_err()
+                 {
+@@ -167,6 +233,10 @@
+                             tx,
+                             limit
+                         } => {
++                            #[cfg(test)]
++                            if query.as_str() == currents_tests::AUTH_SQL {
++                                currents_tests::event(currents_tests::Event::AuthExecute);
++                            }
+                             let iter = match execute::iter(&mut conn, query, arguments, persistent)
+                             {
+                                 Ok(iter) => iter,
+@@ -333,6 +403,8 @@
+                             tx.send(()).ok();
+                         }
+                         Command::Shutdown { tx } => {
++                            #[cfg(test)]
++                            currents_tests::event(currents_tests::Event::BeforeShutdown);
+                             // drop the connection references before sending confirmation
+                             // and ending the command loop
+                             drop(conn);
+@@ -344,7 +416,16 @@
+                 }
+             })?;
+ 
+-        establish_rx.await.map_err(|_| Error::WorkerCrashed)?
++        let mut pending = EstablishReceiver {
++            receiver: establish_rx,
++            join: JoinGuard::new(handle, join_worker_on_drop),
++        };
++        let mut worker = (&mut pending.receiver)
++            .await
++            .map_err(|_| Error::WorkerCrashed)??;
++        // No suspension between receiving the worker and transferring ownership.
++        worker.join = std::mem::take(&mut pending.join);
++        Ok(worker)
+     }
+ 
+     pub(crate) async fn prepare(&mut self, query: SqlStr) -> Result<SqliteStatement, Error> {
+--- /dev/null
++++ b/src/connection/worker/currents_tests.rs
+@@ -0,0 +1,407 @@
++//! Lifecycle probes exist only in this crate's unit-test build. They observe real
++//! workers, SQLCipher authentication and SQLite locking, not fake connections.
++use super::*;
++use crate::{Sqlite, SqliteConnectOptions};
++use futures_util::{FutureExt, StreamExt};
++use sqlx_core::{
++    connection::{ConnectOptions, Connection},
++    executor::Executor,
++    pool::PoolOptions,
++};
++use std::{
++    collections::HashMap,
++    path::{Path, PathBuf},
++    process::{Command, Stdio},
++    sync::{Condvar, Mutex as StdMutex, OnceLock, Weak},
++    time::{Duration, Instant},
++};
++
++pub(super) const AUTH_SQL: &str = "SELECT count(*) FROM sqlite_schema";
++const KEY_SQL: &str =
++    "PRAGMA key = \"x'1111111111111111111111111111111111111111111111111111111111111111'\"";
++const WRONG_KEY_SQL: &str =
++    "PRAGMA key = \"x'2222222222222222222222222222222222222222222222222222222222222222'\"";
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(super) enum Event {
++    Started,
++    BeforePublish,
++    BeforeShutdown,
++    AuthExecute,
++    AtExit,
++    Joining,
++    Joined,
++    Returned,
++}
++#[derive(Default)]
++struct State {
++    events: Vec<Event>,
++    gate: Option<Event>,
++    released: bool,
++}
++#[derive(Default)]
++pub(super) struct Probe {
++    state: StdMutex<State>,
++    changed: Condvar,
++}
++impl Probe {
++    fn record(&self, event: Event) {
++        let mut state = self.state.lock().unwrap();
++        state.events.push(event);
++        self.changed.notify_all();
++        while state.gate == Some(event) && !state.released {
++            state = self.changed.wait(state).unwrap();
++        }
++    }
++    fn wait(&self, predicate: impl Fn(&[Event]) -> bool) {
++        let deadline = Instant::now() + Duration::from_secs(8);
++        let mut state = self.state.lock().unwrap();
++        while !predicate(&state.events) {
++            let remaining = deadline.saturating_duration_since(Instant::now());
++            assert!(
++                !remaining.is_zero(),
++                "worker event watchdog: {:?}",
++                state.events
++            );
++            state = self.changed.wait_timeout(state, remaining).unwrap().0;
++        }
++    }
++    fn release(&self) {
++        self.state.lock().unwrap().released = true;
++        self.changed.notify_all();
++    }
++    fn count(&self, event: Event) -> usize {
++        self.state
++            .lock()
++            .unwrap()
++            .events
++            .iter()
++            .filter(|&&e| e == event)
++            .count()
++    }
++    fn drained(&self) {
++        let events = self.state.lock().unwrap().events.clone();
++        let count = |event| events.iter().filter(|&&e| e == event).count();
++        assert!(count(Event::Started) > 0, "test must create real workers");
++        assert_eq!(
++            count(Event::Joined),
++            count(Event::Started),
++            "worker survived failure/close boundary: {:?}",
++            events
++        );
++        assert_eq!(count(Event::AtExit), count(Event::Started));
++    }
++}
++fn registry() -> &'static StdMutex<HashMap<String, Weak<Probe>>> {
++    static REGISTRY: OnceLock<StdMutex<HashMap<String, Weak<Probe>>>> = OnceLock::new();
++    REGISTRY.get_or_init(Default::default)
++}
++pub(super) fn lookup(name: &str) -> Option<Arc<Probe>> {
++    registry().lock().unwrap().get(name).and_then(Weak::upgrade)
++}
++pub(super) struct ExitProbe(Option<Arc<Probe>>);
++impl Drop for ExitProbe {
++    fn drop(&mut self) {
++        if let Some(probe) = &self.0 {
++            probe.record(Event::AtExit);
++        }
++    }
++}
++pub(super) fn started(name: &str) -> ExitProbe {
++    let probe = lookup(name);
++    if let Some(probe) = &probe {
++        probe.record(Event::Started);
++    }
++    ExitProbe(probe)
++}
++pub(super) fn event(event: Event) {
++    if let Some(probe) = thread::current().name().and_then(lookup) {
++        probe.record(event);
++    }
++}
++pub(super) fn joining(probe: &Option<Arc<Probe>>) {
++    if let Some(probe) = probe {
++        probe.record(Event::Joining);
++    }
++}
++pub(super) fn joined(probe: &Option<Arc<Probe>>) {
++    if let Some(probe) = probe {
++        probe.record(Event::Joined);
++    }
++}
++fn options(path: &Path, probe: &Arc<Probe>) -> SqliteConnectOptions {
++    let probe = Arc::downgrade(probe);
++    SqliteConnectOptions::new()
++        .filename(path)
++        .create_if_missing(true)
++        .disable_statement_logging()
++        .statement_cache_capacity(0)
++        .join_worker_on_drop(true)
++        .busy_timeout(Duration::from_secs(5))
++        .thread_name(move |id| {
++            let name = format!("currents-lifecycle-{}-{id}", std::process::id());
++            registry()
++                .lock()
++                .unwrap()
++                .insert(name.clone(), probe.clone());
++            name
++        })
++}
++fn runtime() -> tokio::runtime::Runtime {
++    tokio::runtime::Builder::new_current_thread()
++        .enable_time()
++        .build()
++        .unwrap()
++}
++fn fixture_path(scenario: &str) -> PathBuf {
++    std::env::temp_dir().join(format!(
++        "currents-worker-{}-{scenario}.db",
++        std::process::id()
++    ))
++}
++async fn authenticate(connection: &mut crate::SqliteConnection, wrong: bool) -> Result<(), Error> {
++    connection
++        .execute(if wrong { WRONG_KEY_SQL } else { KEY_SQL })
++        .await?;
++    let version: String = sqlx_core::query_scalar::query_scalar("PRAGMA cipher_version")
++        .fetch_one(&mut *connection)
++        .await?;
++    assert!(
++        version.starts_with("4.20.0"),
++        "tests must use pinned SQLCipher"
++    );
++    connection.execute(AUTH_SQL).await?;
++    Ok(())
++}
++async fn fixture(path: &Path) {
++    let mut conn = SqliteConnectOptions::new()
++        .filename(path)
++        .create_if_missing(true)
++        .connect()
++        .await
++        .unwrap();
++    authenticate(&mut conn, false).await.unwrap();
++    conn.execute("PRAGMA journal_mode=DELETE; CREATE TABLE payload(value INTEGER); INSERT INTO payload VALUES(7)").await.unwrap();
++    conn.close().await.unwrap();
++    assert_ne!(&std::fs::read(path).unwrap()[..16], b"SQLite format 3\0");
++}
++async fn reopen(path: &Path) {
++    let mut conn = SqliteConnectOptions::new()
++        .filename(path)
++        .connect()
++        .await
++        .unwrap();
++    authenticate(&mut conn, false).await.unwrap();
++    let value: i64 = sqlx_core::query_scalar::query_scalar("SELECT value FROM payload")
++        .fetch_one(&mut conn)
++        .await
++        .unwrap();
++    assert_eq!(value, 7);
++    conn.close().await.unwrap();
++}
++async fn wait_event(probe: &Probe, event: Event) {
++    tokio::time::timeout(Duration::from_secs(5), async {
++        while probe.count(event) == 0 {
++            tokio::task::yield_now().await;
++        }
++    })
++    .await
++    .expect("worker reached expected real operation");
++}
++fn release_on_join(probe: &Arc<Probe>) -> thread::JoinHandle<()> {
++    let probe = probe.clone();
++    thread::spawn(move || {
++        probe.wait(|events| events.contains(&Event::Joining) || events.contains(&Event::Returned));
++        probe.release();
++    })
++}
++fn lock_until_join(path: &Path, probe: &Arc<Probe>) -> thread::JoinHandle<()> {
++    let path = path.to_owned();
++    let probe = probe.clone();
++    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
++    let controller = thread::spawn(move || {
++        runtime().block_on(async {
++            let mut conn = SqliteConnectOptions::new()
++                .filename(path)
++                .connect()
++                .await
++                .unwrap();
++            authenticate(&mut conn, false).await.unwrap();
++            let mode: String = sqlx_core::query_scalar::query_scalar("PRAGMA journal_mode")
++                .fetch_one(&mut conn)
++                .await
++                .unwrap();
++            assert_eq!(mode, "delete", "WAL does not block this schema reader");
++            conn.execute("BEGIN EXCLUSIVE").await.unwrap();
++            ready_tx.send(()).unwrap();
++            probe.wait(|events| {
++                events.contains(&Event::Joining) || events.contains(&Event::Returned)
++            });
++            conn.execute("ROLLBACK").await.unwrap();
++            conn.close().await.unwrap();
++            probe.release();
++        });
++    });
++    ready_rx.recv_timeout(Duration::from_secs(5)).unwrap();
++    controller
++}
++async fn failure(scenario: &str, path: &Path, probe: &Arc<Probe>) {
++    fixture(path).await;
++    let original = std::fs::read(path).unwrap();
++    let wrong = scenario.contains("rejected");
++    let pool = PoolOptions::<Sqlite>::new()
++        .max_connections(1)
++        .min_connections(0)
++        .acquire_timeout(Duration::from_millis(150))
++        .after_connect(move |conn, _| Box::pin(authenticate(conn, wrong)))
++        .connect_lazy_with(options(path, probe));
++    if scenario.contains("replacement") {
++        // Force the next acquisition to establish a replacement, not reuse an idle slot.
++        pool.acquire().await.unwrap().close().await.unwrap();
++        probe.wait(|events| events.contains(&Event::AtExit));
++        probe.state.lock().unwrap().events.clear();
++    }
++    probe.state.lock().unwrap().gate = Some(Event::AtExit);
++    let controller = if wrong {
++        release_on_join(probe)
++    } else {
++        lock_until_join(path, probe)
++    };
++    let start = Instant::now();
++    if scenario.contains("cancel") {
++        let mut acquire = Box::pin(pool.acquire());
++        tokio::select! {
++            result = &mut acquire => panic!("acquire unexpectedly completed: {result:?}"),
++            _ = wait_event(probe, Event::AuthExecute) => {}
++        }
++        drop(acquire);
++    } else {
++        assert!(matches!(pool.acquire().await, Err(Error::PoolTimedOut)));
++        assert!(start.elapsed() >= Duration::from_millis(150));
++    }
++    probe.record(Event::Returned);
++    // Before pool.close, runtime teardown, waiting for the controller, or reopening.
++    probe.drained();
++    pool.close().await;
++    controller.join().unwrap();
++    assert_eq!(std::fs::read(path).unwrap(), original);
++    reopen(path).await;
++}
++async fn startup(probe: &Arc<Probe>) {
++    probe.state.lock().unwrap().gate = Some(Event::BeforePublish);
++    let controller = release_on_join(probe);
++    let opts = options(Path::new(":memory:"), probe);
++    let mut connect = Box::pin(opts.connect());
++    tokio::select! {
++        result = &mut connect => panic!("connect unexpectedly completed: {result:?}"),
++        _ = wait_event(probe, Event::BeforePublish) => {}
++    }
++    drop(connect);
++    probe.record(Event::Returned);
++    probe.drained();
++    controller.join().unwrap();
++}
++async fn backpressure(probe: &Arc<Probe>) {
++    let mut conn = options(Path::new(":memory:"), probe)
++        .row_buffer_size(1)
++        .connect()
++        .await
++        .unwrap();
++    let mut stream = conn.fetch("WITH RECURSIVE seq(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM seq WHERE x<10000) SELECT x FROM seq");
++    stream.next().await.unwrap().unwrap();
++    drop(stream);
++    drop(conn);
++    probe.record(Event::Returned);
++    probe.drained();
++}
++async fn close_cancel(probe: &Arc<Probe>) {
++    let conn = options(Path::new(":memory:"), probe)
++        .connect()
++        .await
++        .unwrap();
++    probe.state.lock().unwrap().gate = Some(Event::BeforeShutdown);
++    let controller = release_on_join(probe);
++    let mut close = Box::pin(conn.close());
++    // Force close to suspend after enqueueing Shutdown but before its native
++    // acknowledgement. Dropping this pending future must retain the JoinHandle.
++    assert!((&mut close).now_or_never().is_none());
++    wait_event(probe, Event::BeforeShutdown).await;
++    drop(close);
++    probe.record(Event::Returned);
++    probe.drained();
++    controller.join().unwrap();
++}
++
++fn run(scenario: &str) {
++    // A native join blocks the Tokio thread. Only an OS-process watchdog can
++    // catch wrong drop order or backpressure deadlocks on a current-thread runtime.
++    if std::env::var("CURRENTS_WORKER_CHILD").ok().as_deref() != Some(scenario) {
++        let name = format!("connection::worker::currents_tests::{scenario}");
++        let mut child = Command::new(std::env::current_exe().unwrap())
++            .args(["--exact", &name, "--nocapture"])
++            .env("CURRENTS_WORKER_CHILD", scenario)
++            .stdout(Stdio::inherit())
++            .stderr(Stdio::inherit())
++            .spawn()
++            .unwrap();
++        let deadline = Instant::now() + Duration::from_secs(15);
++        loop {
++            if let Some(status) = child.try_wait().unwrap() {
++                assert!(status.success(), "{scenario}: child failed");
++                break;
++            }
++            if Instant::now() >= deadline {
++                child.kill().unwrap();
++                child.wait().unwrap();
++                panic!("{scenario}: native shutdown watchdog expired");
++            }
++            thread::sleep(Duration::from_millis(10));
++        }
++        return;
++    }
++    let probe = Arc::new(Probe::default());
++    let path = fixture_path(scenario);
++    let rt = runtime();
++    rt.block_on(async {
++        match scenario {
++            "startup_cancel_joins" => startup(&probe).await,
++            "row_backpressure_drop_joins" => backpressure(&probe).await,
++            "close_cancel_joins" => close_cancel(&probe).await,
++            _ => failure(scenario, &path, &probe).await,
++        }
++    });
++    drop(rt); // Immediate runtime teardown must not own any stranded native worker.
++    probe.drained();
++    if path.exists() {
++        runtime().block_on(reopen(&path));
++        std::fs::remove_file(path).unwrap();
++    }
++}
++#[test]
++fn startup_cancel_joins() {
++    run("startup_cancel_joins");
++}
++#[test]
++fn rejected_key_joins() {
++    run("rejected_key_joins");
++}
++#[test]
++fn locked_initial_timeout_joins() {
++    run("locked_initial_timeout_joins");
++}
++#[test]
++fn locked_replacement_timeout_joins() {
++    run("locked_replacement_timeout_joins");
++}
++#[test]
++fn locked_caller_cancel_joins() {
++    run("locked_caller_cancel_joins");
++}
++#[test]
++fn row_backpressure_drop_joins() {
++    run("row_backpressure_drop_joins");
++}
++#[test]
++fn close_cancel_joins() {
++    run("close_cancel_joins");
++}
+--- a/src/options/mod.rs
++++ b/src/options/mod.rs
+@@ -67,6 +67,7 @@
+     pub(crate) shared_cache: bool,
+     pub(crate) statement_cache_capacity: usize,
+     pub(crate) busy_timeout: Duration,
++    pub(crate) join_worker_on_drop: bool,
+     pub(crate) log_settings: LogSettings,
+     pub(crate) immutable: bool,
+     pub(crate) vfs: Option<Cow<'static, str>>,
+@@ -201,6 +202,7 @@
+             shared_cache: false,
+             statement_cache_capacity: 100,
+             busy_timeout: Duration::from_secs(5),
++            join_worker_on_drop: false,
+             log_settings: Default::default(),
+             immutable: false,
+             vfs: None,
+@@ -216,6 +218,19 @@
+             #[cfg(feature = "regexp")]
+             register_regexp_function: false,
+         }
++    }
++
++    /// Wait for native worker termination when this connection is dropped.
++    ///
++    /// Defaults to false (upstream behavior). When enabled, cancellation and hard
++    /// close synchronously join the native worker; graceful close still awaits
++    /// shutdown first. This can block the dropping thread, including beyond an
++    /// acquisition timeout. Arbitrary callbacks or extensions may block forever.
++    /// Do not enable when worker completion requires work on the dropping thread.
++    /// See the separately inventoried Currents worker-lifetime adaptation.
++    pub fn join_worker_on_drop(mut self, enabled: bool) -> Self {
++        self.join_worker_on_drop = enabled;
++        self
+     }
+ 
+     /// Sets the name of the database file.
+--- a/src/types/time.rs
++++ b/src/types/time.rs
+@@ -192,6 +192,10 @@
+     None
+ }
+ 
++#[expect(
++    deprecated,
++    reason = "Preserve SQLx 0.9.0 parser behavior; local vendoring exposes time 0.3.55 warnings previously capped for registry dependencies"
++)]
+ mod formats {
+     use time::format_description::BorrowedFormatItem::{Component, Literal, Optional};
+     use time::format_description::{modifier, BorrowedFormatItem, Component::*};

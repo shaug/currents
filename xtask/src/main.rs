@@ -1,4 +1,5 @@
 mod checks;
+mod cipher;
 mod quality;
 mod readiness;
 mod report;

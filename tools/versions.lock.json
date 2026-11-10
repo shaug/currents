@@ -1086,5 +1086,14 @@
       "sqlcipher/sqlcipher.c": "8cd2347d18886fee4651153fabeeeffb7cec008700987dab1c00261febc4220f",
       "sqlcipher/sqlite3.h": "e36eb6ed4de77e56a633866a8f84ed339785662d0cf79cf099f420b638bf28ec"
     }
+  },
+  "sqlx_sqlite_adaptation": {
+    "version": "0.9.0",
+    "source": "https://static.crates.io/crates/sqlx-sqlite/sqlx-sqlite-0.9.0.crate",
+    "sha256": "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c",
+    "upstream_commit": "003b698e99e024f3621b8043a2426fde5b741171",
+    "manifest": "patches/sqlx-sqlite/manifest.json",
+    "patch": "patches/sqlx-sqlite/worker-lifetime.patch",
+    "scope": "Default-off native worker ownership; enabled only at the private cipher boundary; no SQLx core or provider changes."
   }
 }
