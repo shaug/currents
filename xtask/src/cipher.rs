@@ -64,6 +64,128 @@ fn symbols(path: &Path) -> Result<Value, String> {
         json!({"path":path,"sha256":sha(&bytes),"definitions":counts,"symbol_output_sha256":sha(text.as_bytes()),"dynamic_links":links}),
     )
 }
+
+/// The standalone driver suite has a separate exact lock and the root sys patch.
+/// Running it from the workspace root does not inherit provider feature choices.
+pub(crate) fn driver(program: &Path, rustc: Option<&Path>) -> Result<Value, String> {
+    check_native_environment()?;
+    checked(
+        Path::new("python3"),
+        &["patches/sqlx-sqlite/verify.py"],
+        &root(),
+        None,
+    )?;
+    let manifest = "vendor/sqlx-sqlite/Cargo.toml";
+    let features = "bundled,unlock-notify,time";
+    let metadata = checked(
+        program,
+        &[
+            "metadata",
+            "--locked",
+            "--manifest-path",
+            manifest,
+            "--features",
+            features,
+            "--format-version",
+            "1",
+        ],
+        &root(),
+        rustc,
+    )?;
+    let metadata: Value = serde_json::from_str(&metadata).map_err(|e| e.to_string())?;
+    let packages = metadata["packages"]
+        .as_array()
+        .ok_or("missing driver packages")?;
+    for (name, version, local) in [
+        ("sqlx-sqlite", "0.9.0", true),
+        ("libsqlite3-sys", "0.37.0", true),
+        ("sqlx-core", "0.9.0", false),
+        (
+            "sqlcipher-src",
+            "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
+            false,
+        ),
+        ("tokio", "1.53.3", false),
+        ("time", "0.3.55", false),
+    ] {
+        let selected: Vec<_> = packages.iter().filter(|p| p["name"] == name).collect();
+        if selected.len() != 1 || selected[0]["version"] != version {
+            return Err(format!(
+                "driver qualification has wrong {name} source/version"
+            ));
+        }
+        if local
+            && (selected[0]["source"] != Value::Null
+                || selected[0]["manifest_path"].as_str()
+                    != root().join("vendor").join(name).join("Cargo.toml").to_str())
+        {
+            return Err(format!(
+                "driver qualification must use the reviewed local {name}"
+            ));
+        }
+    }
+    let tree = checked(
+        program,
+        &[
+            "tree",
+            "--locked",
+            "--manifest-path",
+            manifest,
+            "--features",
+            features,
+            "-e",
+            "features",
+            "-i",
+            "libsqlite3-sys",
+        ],
+        &root(),
+        rustc,
+    )?;
+    let expected = if cfg!(target_os = "macos") {
+        "bundled-sqlcipher"
+    } else {
+        "bundled-sqlcipher-vendored-openssl"
+    };
+    if !tree.contains(expected)
+        || (cfg!(target_os = "macos") && tree.contains("bundled-sqlcipher-vendored-openssl"))
+    {
+        return Err("driver qualification has wrong native provider".into());
+    }
+    // An excluded standalone package otherwise writes vendor/sqlx-sqlite/target.
+    // Keep all build output in the caller-owned workspace target directory.
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root().join("target"));
+    let target = target.to_str().ok_or("invalid driver target directory")?;
+    let run = checked(
+        program,
+        &[
+            "test",
+            "--locked",
+            "--manifest-path",
+            manifest,
+            "--target-dir",
+            target,
+            "--lib",
+            "--features",
+            features,
+            "--",
+            "--test-threads=1",
+        ],
+        &root(),
+        rustc,
+    )?;
+    if !run.contains("14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out") {
+        return Err(
+            "driver qualification did not execute all 7 upstream and 7 lifecycle assertions".into(),
+        );
+    }
+    Ok(
+        json!({"manifest":manifest,"lock":"vendor/sqlx-sqlite/Cargo.lock","upstream_tests":7,
+        "lifecycle_tests":7,"feature_graph_sha256":sha(tree.as_bytes()),"output_sha256":sha(run.as_bytes())}),
+    )
+}
+
 pub fn qualify() -> Result<Value, String> {
     if !matches!(
         (env::consts::OS, env::consts::ARCH),
@@ -75,6 +197,19 @@ pub fn qualify() -> Result<Value, String> {
     }
     check_native_environment()?;
     let source = native_source()?;
+    let driver = driver(Path::new("cargo"), None)?;
+    let boundary = cargo(&[
+        "test",
+        "--locked",
+        "-p",
+        "currents-cipher",
+        "--lib",
+        "--",
+        "--test-threads=1",
+    ])?;
+    if !boundary.contains("1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out") {
+        return Err("private cipher failed-initializer boundary was not qualified".into());
+    }
     let provenance = root().join("patches/doubleentry/verify.py");
     checked(
         Path::new("python3"),
@@ -155,6 +290,6 @@ pub fn qualify() -> Result<Value, String> {
         .unwrap_or_else(|| root().join("target"));
     let library = target.join("debug/libcurrents_transfer.a");
     Ok(
-        json!({"assertions":ASSERTIONS,"host":{"os":env::consts::OS,"arch":env::consts::ARCH},"source":source,"feature_graph_sha256":sha(tree.as_bytes()),"host_artifact":symbols(&executable)?,"shared_library":symbols(&library)?,"production_enabled":false,"limits":["Synthetic host libraries only; not iOS/device or signed production qualification.","Process-exit artifacts are tested; privileged memory dumps and physical power loss are not certified."]}),
+        json!({"assertions":ASSERTIONS,"driver":driver,"private_boundary_output_sha256":sha(boundary.as_bytes()),"host":{"os":env::consts::OS,"arch":env::consts::ARCH},"source":source,"feature_graph_sha256":sha(tree.as_bytes()),"host_artifact":symbols(&executable)?,"shared_library":symbols(&library)?,"production_enabled":false,"limits":["Synthetic host libraries only; not iOS/device or signed production qualification.","Process-exit artifacts are tested; privileged memory dumps and physical power loss are not certified."]}),
     )
 }

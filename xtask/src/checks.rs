@@ -336,8 +336,13 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
         let text = checked(&program, &args, &root(), rustc.as_deref())?;
         evidence.push(json!({"command":args,"stdout_sha256":sha(text.as_bytes())}));
     }
+    let driver = if manifest.is_none() {
+        Some(crate::cipher::driver(&program, rustc.as_deref())?)
+    } else {
+        None
+    };
     Ok(
-        json!({"compiler":version.trim(),"commands":evidence,"host":env::consts::OS,"arch":env::consts::ARCH}),
+        json!({"compiler":version.trim(),"commands":evidence,"driver":driver,"host":env::consts::OS,"arch":env::consts::ARCH}),
     )
 }
 fn ticket(name: &str) -> Result<Value> {

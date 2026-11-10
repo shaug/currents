@@ -55,6 +55,7 @@ pub fn connection_options(path: &Path) -> SqliteConnectOptions {
     SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)
+        .join_worker_on_drop(true)
         .disable_statement_logging()
         .statement_cache_capacity(0)
 }
@@ -174,3 +175,6 @@ pub async fn open_pool(
     }
     Ok(CipherPool { pool, key })
 }
+
+#[cfg(test)]
+mod tests;

@@ -17,7 +17,14 @@ replacement pool connection verifies the cipher, applies key/profile before its
 first schema access, authenticates existing contents, and enforces WAL/FULL,
 foreign keys, recursive triggers and memory-only temp storage. Missing cipher,
 wrong key, unsupported provider and rejected initialization fail closed. A failed
-initial acquisition explicitly awaits pool close. `CipherPool::close(self)`
+initial acquisition explicitly awaits pool close. The separately inventoried,
+default-off SQLx worker-lifetime adaptation is enabled by this private boundary:
+rejected, timed-out and cancelled raw initializers retain native thread ownership
+and synchronously join on drop, including replacements and startup cancellation.
+Normal close awaits Shutdown before joining. Acquisition timeout is not a strict
+wall-clock bound: drop can wait for native work beyond that deadline. Currents
+uses finite busy waits and no user callbacks/extensions/shared cache; arbitrary
+external callbacks can still prevent shutdown. See `patches/sqlx-sqlite/README.md`. `CipherPool::close(self)`
 awaits all connections and clears the callback's retained secret. Callers must
 release acquired connections and await close before runtime teardown.
 
@@ -41,7 +48,8 @@ a client-facing API.
 
 Run `cargo test --locked -p currents-storage --test cur_006` for four behavioral
 assertions. `cargo xtask qualify cipher` additionally verifies source/features,
-exact assertion execution and one SQLite/codec definition in the actual host
+exact assertion execution, all seven lifecycle regressions plus seven unchanged
+upstream driver tests, and one SQLite/codec definition in the actual host
 test executable and transfer static library. Independently run on macOS arm64
 (CommonCrypto) and Linux x86_64 (vendored OpenSSL). Gate reports bind the current
 host and exact artifact digests; neither cross compilation nor a report from
