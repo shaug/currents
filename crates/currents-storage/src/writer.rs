@@ -16,6 +16,9 @@ pub struct Writer {
     accounting: AtomicStore,
 }
 impl Writer {
+    pub(crate) fn new(accounting: AtomicStore) -> Self {
+        Self { accounting }
+    }
     /// The single-record seam, not the future aggregate `commit(PreparedCommit)` API.
     pub async fn write_record(
         &self,

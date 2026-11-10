@@ -1264,7 +1264,7 @@
     },
     "src/store/sql/write/currents.rs": {
       "upstream_sha256": null,
-      "patched_sha256": "01fdb323946f826f99cc8dc084c0a8b78272b5874eae44db3e12319b24057cdb"
+      "patched_sha256": "33a5e76ce698d83f0f2d6fd4d98e88f13537e886be99b48a1863e1b4535040a6"
     },
     "src/store/sql/write/currents/tests.rs": {
       "upstream_sha256": null,
@@ -2002,5 +2002,6 @@
       "upstream_sha256": "cea9bd60021cff82730da1c5b714e3e929c8997a21661a3efb51db77d874f7f9",
       "patched_sha256": "cea9bd60021cff82730da1c5b714e3e929c8997a21661a3efb51db77d874f7f9"
     }
-  }
+  },
+  "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544"
 }

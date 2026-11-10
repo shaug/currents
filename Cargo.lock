@@ -384,6 +384,7 @@ dependencies = [
  "doubleentry",
  "serde_json",
  "serde_json_canonicalizer",
+ "sqlx",
  "tempfile",
  "tokio",
 ]
@@ -480,6 +481,12 @@ dependencies = [
  "currents-accounting",
  "currents-cipher",
  "currents-types",
+ "sha2 0.11.1",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2182,8 +2189,6 @@ dependencies = [
 [[package]]
 name = "sqlx-sqlite"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c"
 dependencies = [
  "atoi",
  "flume",

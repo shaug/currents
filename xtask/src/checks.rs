@@ -156,6 +156,20 @@ fn allowed_internal(name: &str) -> &'static [&'static str] {
         _ => &[],
     }
 }
+// C01 gives cipher exclusive key/profile/sys ownership, not exclusive SQLx use.
+// Trusted storage/accounting need SQLx for the C04 native-pool/schema bridge.
+fn sqlite_dependency_allowed(name: &str, dependency: &str) -> bool {
+    if dependency == "libsqlite3-sys" {
+        return name == "currents-cipher";
+    }
+    if dependency.starts_with("sqlx") {
+        return name == "currents-cipher"
+            || (dependency == "sqlx"
+                && matches!(name, "currents-storage" | "currents-accounting"));
+    }
+    true
+}
+
 fn direction(manifest: &Path) -> Result<Value> {
     let meta = metadata(manifest)?;
     for p in packages(&meta)? {
@@ -190,8 +204,7 @@ fn direction(manifest: &Path) -> Result<Value> {
             let forbidden = (d.starts_with("currents-") && !allowed_internal(name).contains(&d))
                 || (pure && !d.starts_with("currents-") && !safe)
                 || (d == "doubleentry" && name != "currents-accounting")
-                || (d.starts_with("sqlx") || d == "libsqlite3-sys")
-                    && !matches!(name, "currents-cipher")
+                || !sqlite_dependency_allowed(name, d)
                 || (name == "currents-cipher"
                     && !matches!(
                         d,
@@ -274,7 +287,7 @@ fn msrv_tools() -> Result<(PathBuf, PathBuf, String)> {
     checked(&cargo, &["--version"], &root(), None)?;
     Ok((cargo, rustc, version))
 }
-fn check_native_environment() -> Result<()> {
+pub(crate) fn check_native_environment() -> Result<()> {
     for (key, _) in env::vars_os() {
         let key = key.to_string_lossy();
         if key.ends_with("OPENSSL_DIR")
@@ -323,11 +336,19 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
         let text = checked(&program, &args, &root(), rustc.as_deref())?;
         evidence.push(json!({"command":args,"stdout_sha256":sha(text.as_bytes())}));
     }
+    let driver = if manifest.is_none() {
+        Some(crate::cipher::driver(&program, rustc.as_deref())?)
+    } else {
+        None
+    };
     Ok(
-        json!({"compiler":version.trim(),"commands":evidence,"host":env::consts::OS,"arch":env::consts::ARCH}),
+        json!({"compiler":version.trim(),"commands":evidence,"driver":driver,"host":env::consts::OS,"arch":env::consts::ARCH}),
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-006" {
+        return crate::cipher::qualify();
+    }
     if name == "CUR-003" {
         return crate::quality::ticket();
     }
@@ -438,7 +459,7 @@ fn ticket(name: &str) -> Result<Value> {
     }
     Ok(json!({"ticket":name,"assertions":ASSERTIONS,"output_sha256":sha(text.as_bytes())}))
 }
-fn native_source() -> Result<Value> {
+pub(crate) fn native_source() -> Result<Value> {
     let text = cargo(&["metadata", "--locked", "--format-version", "1"])?;
     let meta: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let packages = packages(&meta)?;
@@ -530,6 +551,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("qualify","workspace")=>workspace(),
         ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),
+        ("qualify","cipher")=>crate::cipher::qualify(),
         ("qualify","dependency-direction")=>direction(&option(&args,"--manifest-path")?.unwrap_or(root().join("Cargo.toml"))),
         ("qualify","pin-inventory")=>inventory(&option(&args,"--inventory")?.unwrap_or(root().join("tools/versions.lock.json")), option(&args,"--artifact-root")?.as_deref()),
         ("qualify","msrv") if args.iter().any(|s|s=="--probe")=>msrv_tools().map(|(_,_,v)|json!({"compiler":v.trim(),"scope":"compiler identity only; not a production feature qualification"})),
@@ -561,4 +583,29 @@ pub fn run(args: Vec<String>) -> Result<()> {
         serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
     );
     result.map(|_| ())
+}
+
+#[cfg(test)]
+mod cipher_direction_tests {
+    use super::sqlite_dependency_allowed;
+    #[test]
+    fn private_adapter_sqlx_edges_only() {
+        for name in ["currents-storage", "currents-accounting"] {
+            assert!(sqlite_dependency_allowed(name, "sqlx"));
+            assert!(!sqlite_dependency_allowed(name, "libsqlite3-sys"));
+            assert!(!sqlite_dependency_allowed(name, "sqlx-sqlite"));
+        }
+        for name in [
+            "currents-types",
+            "currents-domain",
+            "currents-service",
+            "currents-transfer",
+        ] {
+            assert!(!sqlite_dependency_allowed(name, "sqlx"));
+            assert!(!sqlite_dependency_allowed(name, "libsqlite3-sys"));
+        }
+        for dependency in ["sqlx", "sqlx-core", "sqlx-sqlite", "libsqlite3-sys"] {
+            assert!(sqlite_dependency_allowed("currents-cipher", dependency));
+        }
+    }
 }

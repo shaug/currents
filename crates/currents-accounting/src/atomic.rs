@@ -26,6 +26,35 @@ pub enum AtomicFailure {
     Unknown(CommandId),
 }
 impl AtomicStore {
+    /// Trusted storage construction only. Receives an already keyed private pool;
+    /// no URL, key, SQL, native handle or callback is exposed to clients.
+    pub async fn from_initialized_pool(
+        pool: sqlx::SqlitePool,
+        new_dataset: bool,
+    ) -> Result<Self, EngineError> {
+        let store = SqlStore::<Sqlite, 18>::currents_from_initialized_pool(pool);
+        let initialize = async {
+            let id = doubleentry::LedgerId::new("currents/dataset-v1")
+                .map_err(|_| EngineError::invalid())?;
+            let _ledger = doubleentry::Ledger::<_, 18>::with_precision(store.clone(), id)
+                .await
+                .map_err(|_| EngineError::invalid())?;
+            if new_dataset {
+                store
+                    .currents_initialize()
+                    .await
+                    .map_err(|_| EngineError::invalid())?;
+            }
+            Ok::<(), EngineError>(())
+        }
+        .await;
+        if let Err(error) = initialize {
+            store.close().await;
+            return Err(error);
+        }
+        Ok(Self { store })
+    }
+
     /// Append a typed record and one native operation atomically. Not the aggregate
     /// C04 commit API: ordering, frozen batches and full history remain their owners' work.
     pub async fn write_record(
