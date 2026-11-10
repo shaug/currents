@@ -62,6 +62,16 @@ async fn append(
     data: &[u8],
     complete: bool,
 ) -> DomainCommitV1 {
+    append_with_native(store, n, prior, data, complete, None).await
+}
+async fn append_with_native(
+    store: &EncryptedStore,
+    n: u128,
+    prior: u64,
+    data: &[u8],
+    complete: bool,
+    native: Option<currents_accounting::PreparedNativeOperation>,
+) -> DomainCommitV1 {
     let staged = store.stage(data).await.unwrap();
     let record = receipt(n, staged.digest(), data.len(), complete);
     let policy = AuthoritativeRecordV1::DatasetPolicy(DatasetPolicyV1 {
@@ -130,13 +140,44 @@ async fn append(
             decisions: vec![decision],
             result: command(n),
             staged: vec![staged],
-            native: None,
+            native,
         })
         .await
         .unwrap()
 }
+async fn assert_native_prefix_visibility() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = open(&dir.path().join("native-prefix.db")).await;
+    let first = append(&store, 1, 0, b"first", true).await;
+    let mut pinned = store.history().stream_prefix(first.seq).await.unwrap();
+    let second = append_with_native(
+        &store,
+        2,
+        1,
+        b"second",
+        true,
+        Some(currents_accounting::test_fixtures::currency_declaration()),
+    )
+    .await;
+    assert_ne!(first.native_head_after, second.native_head_after);
+
+    // C was pinned before the native-changing publication of C+1.
+    assert_eq!(pinned.next().await.unwrap().unwrap(), first);
+    assert!(pinned.next().await.unwrap().is_none());
+    assert_eq!(
+        store.history().read_prefix(first.seq).await.unwrap(),
+        vec![first.clone()]
+    );
+    assert_eq!(
+        store.history().read_prefix(second.seq).await.unwrap(),
+        vec![first, second]
+    );
+    drop(pinned);
+    store.close().await.unwrap();
+}
 #[tokio::test]
 async fn prefix_visibility() {
+    assert_native_prefix_visibility().await;
     let output = std::process::Command::new("cargo")
         .args([
             "test",

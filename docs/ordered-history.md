@@ -36,6 +36,12 @@ one bounded commit, rather than a whole archive. Convenience `read_prefix` rejec
 materialization beyond 64 MiB. Structured items are limited to 1 MiB, commits to
 64 MiB and 20,000 items, and normalized observations to 10,000 per commit. These
 are storage bounds, not C05's future native operation/closure qualification.
+Content chunk and whole-file hashes are verified once per distinct digest per
+commit. The reader retains only digest/verified-byte-count pairs bounded by that
+commit's serialized references, then discards them before the next commit. Every
+reference still checks its index membership, expected byte count and blob
+visibility in the same pinned snapshot. No verification is reused across commits,
+readers, content streams or reopen audits; payloads remain chunk-streamed.
 
 ## Native checkpoint codec v1
 

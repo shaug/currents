@@ -4,6 +4,7 @@ use currents_accounting::{AtomicFailure, PreparedNativeOperation, verify_native_
 use currents_types::*;
 use sha2::{Digest as _, Sha256};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
+use std::collections::BTreeMap;
 
 const MAX_COMMIT: usize = 64 * 1_048_576;
 const MAX_ITEMS: usize = 20_000;
@@ -299,7 +300,7 @@ impl HistoryReader {
     ) -> Result<ContentStream, EngineError> {
         let prefix = self.stream_prefix(through).await?;
         let mut tx = prefix.tx;
-        verify_blob(&mut tx, digest, seq(through)?, None).await?;
+        verify_blob(&mut tx, digest, seq(through)?, None, None).await?;
         Ok(ContentStream {
             tx,
             digest,
@@ -376,6 +377,10 @@ impl HistoryStream {
         if count != items.len() as i64 {
             return Err(schema::failure());
         }
+        // Keep only verified byte counts, never payloads. Entries are bounded by
+        // content references in this size-bounded commit, and are discarded on
+        // every return (including failure), not retained for the whole archive.
+        let mut verified_content = BTreeMap::new();
         for (position, item) in items.iter().enumerate() {
             let bytes = canonical(item)?;
             let row = sqlx::query(
@@ -534,7 +539,15 @@ impl HistoryStream {
                 if count == 0 {
                     return Err(schema::failure());
                 }
-                verify_blob(&mut self.tx, content.digest, self.next, content.size).await?;
+                let size = verify_blob(
+                    &mut self.tx,
+                    content.digest,
+                    self.next,
+                    content.size,
+                    verified_content.get(&content.digest).copied(),
+                )
+                .await?;
+                verified_content.insert(content.digest, size);
             }
         }
         self.previous = stored;
@@ -547,7 +560,9 @@ async fn verify_blob(
     digest: Digest,
     through: i64,
     expected: Option<i64>,
-) -> Result<(), EngineError> {
+    // A successful full verification in this commit and this pinned transaction.
+    verified_byte_count: Option<i64>,
+) -> Result<i64, EngineError> {
     let size: Option<i64> =
         sqlx::query_scalar("SELECT byte_count FROM currents_blobs WHERE digest=? AND first_seq<=?")
             .bind(digest.0.as_slice())
@@ -558,6 +573,15 @@ async fn verify_blob(
     let size = size.ok_or_else(schema::failure)?;
     if expected.is_some_and(|v| v != size) {
         return Err(schema::failure());
+    }
+    // Visibility and the current reference's expected size must be checked even
+    // when an earlier reference already verified all chunks for this digest.
+    if let Some(verified) = verified_byte_count {
+        return if verified == size {
+            Ok(verified)
+        } else {
+            Err(schema::failure())
+        };
     }
     let mut total = 0usize;
     let mut index = 0i64;
@@ -574,6 +598,8 @@ async fn verify_blob(
         let Some(row) = row else { break };
         let bytes: Vec<u8> = row.try_get("bytes").map_err(|_| schema::failure())?;
         let chunk: Vec<u8> = row.try_get("chunk_digest").map_err(|_| schema::failure())?;
+        #[cfg(test)]
+        tests::record_chunk_verification();
         if bytes.len() > staging::CHUNK || Sha256::digest(&bytes).as_slice() != chunk {
             return Err(schema::failure());
         }
@@ -592,7 +618,7 @@ async fn verify_blob(
     if count != index || total as i64 != size || <[u8; 32]>::from(hash.finalize()) != digest.0 {
         return Err(schema::failure());
     }
-    Ok(())
+    Ok(total as i64)
 }
 
 /// Streaming bytes from an already verified immutable content object and snapshot.
@@ -631,3 +657,6 @@ fn catalog_reference(
         version: reference.version,
     })
 }
+
+#[cfg(test)]
+mod tests;

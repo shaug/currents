@@ -19,6 +19,7 @@ sqlx.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
+currents-accounting = { workspace = true, features = ["synthetic-test-fixtures"] }
 tokio.workspace = true
 tempfile.workspace = true
 tracing.workspace = true

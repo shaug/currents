@@ -4,3 +4,7 @@ pub use atomic::{AtomicFailure, AtomicReceipt, AtomicStore, PreparedNativeOperat
 
 mod authority;
 pub use authority::{AuthorityTransaction, verify_native_checkpoint};
+
+#[cfg(feature = "synthetic-test-fixtures")]
+#[doc(hidden)]
+pub mod test_fixtures;
