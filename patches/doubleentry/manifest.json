@@ -1244,7 +1244,7 @@
     },
     "src/store/sql/sqlite.rs": {
       "upstream_sha256": "a873c3646eba3e26d98b0d466ae194a4e681c15ff254b57b17a6708aaeed1ad6",
-      "patched_sha256": "8c9a07100d0a8769eb00abbc7e7c4b209ceb553988299833cb55c18783643bf9"
+      "patched_sha256": "a873c3646eba3e26d98b0d466ae194a4e681c15ff254b57b17a6708aaeed1ad6"
     },
     "src/store/sql/statements.rs": {
       "upstream_sha256": "fd104799bb378acff36f8d6a8be16c357e7094e9c80ffd55fdc1d96898c652b6",
@@ -1264,7 +1264,7 @@
     },
     "src/store/sql/write/currents.rs": {
       "upstream_sha256": null,
-      "patched_sha256": "01fdb323946f826f99cc8dc084c0a8b78272b5874eae44db3e12319b24057cdb"
+      "patched_sha256": "33a5e76ce698d83f0f2d6fd4d98e88f13537e886be99b48a1863e1b4535040a6"
     },
     "src/store/sql/write/currents/tests.rs": {
       "upstream_sha256": null,
@@ -2003,5 +2003,5 @@
       "patched_sha256": "cea9bd60021cff82730da1c5b714e3e929c8997a21661a3efb51db77d874f7f9"
     }
   },
-  "key_init_patch_sha256": "c1721a2032d8bb25734f7df9de63c1ffa5a1a853ce3bb9a904f7b0be6046eb7d"
+  "key_init_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544"
 }

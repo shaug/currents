@@ -15,23 +15,6 @@ use crate::store::StoreError;
 pub struct Sqlite;
 
 impl<const P: u8> SqlStore<Sqlite, P> {
-    /// Currents-only trusted pool seam. The caller must initialize the codec,
-    /// key and connection profile on every connection before supplying this pool.
-    /// This does not read/create schema or bypass native create/open validation.
-    /// The only application caller is the private accounting adapter.
-    pub fn currents_from_initialized_pool(pool: sqlx::SqlitePool) -> Self {
-        let retries = pool.options().get_max_connections();
-        Self {
-            inner: std::sync::Arc::new(super::Inner {
-                pool,
-                sql: super::Catalogue::new(String::new()),
-                schema: SqlOptions::default().schema,
-                ledger: std::sync::OnceLock::new(),
-                retries,
-            }),
-        }
-    }
-
     /// Connects to the SQLite database at `url` (`sqlite://path/to/books.db`,
     /// created if missing) with the default [`SqlOptions`]. The URL names a
     /// file (or `sqlite::memory:`); there are no network or TLS settings.

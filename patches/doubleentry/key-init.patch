@@ -1,11 +1,11 @@
-diff --git a/src/store/sql/sqlite.rs b/src/store/sql/sqlite.rs
-index 5a794fc..5094d07 100644
---- a/src/store/sql/sqlite.rs
-+++ b/src/store/sql/sqlite.rs
-@@ -15,6 +15,23 @@ use crate::store::StoreError;
- pub struct Sqlite;
+diff --git a/src/store/sql/write/currents.rs b/src/store/sql/write/currents.rs
+index 4704cc4..198d868 100644
+--- a/src/store/sql/write/currents.rs
++++ b/src/store/sql/write/currents.rs
+@@ -3,6 +3,23 @@ use super::*;
+ use crate::store::Sqlite;
  
- impl<const P: u8> SqlStore<Sqlite, P> {
+ impl SqlStore<Sqlite, 18> {
 +    /// Currents-only trusted pool seam. The caller must initialize the codec,
 +    /// key and connection profile on every connection before supplying this pool.
 +    /// This does not read/create schema or bypass native create/open validation.
@@ -13,16 +13,16 @@ index 5a794fc..5094d07 100644
 +    pub fn currents_from_initialized_pool(pool: sqlx::SqlitePool) -> Self {
 +        let retries = pool.options().get_max_connections();
 +        Self {
-+            inner: std::sync::Arc::new(super::Inner {
++            inner: std::sync::Arc::new(super::super::Inner {
 +                pool,
-+                sql: super::Catalogue::new(String::new()),
-+                schema: SqlOptions::default().schema,
++                sql: super::super::Catalogue::new(String::new()),
++                schema: super::super::SqlOptions::default().schema,
 +                ledger: std::sync::OnceLock::new(),
 +                retries,
 +            }),
 +        }
 +    }
 +
-     /// Connects to the SQLite database at `url` (`sqlite://path/to/books.db`,
-     /// created if missing) with the default [`SqlOptions`]. The URL names a
-     /// file (or `sqlite::memory:`); there are no network or TLS settings.
+     /// Initialize the private composition table after native metadata is established.
+     /// This is not the Currents authoritative history schema or an encrypted opener.
+     ///
