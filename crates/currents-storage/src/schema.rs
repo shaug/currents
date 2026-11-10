@@ -5,7 +5,7 @@ use sqlx::{Row, SqlitePool};
 
 // Generated from the reviewed native/Currents schema, not from the opened file.
 const EXPECTED_SCHEMA_SHA256: &str =
-    "eb9cd2fbe4465a038147c959862cbda4c1728f74f94bd7c611bb2c878103a40f";
+    "79456eb8800a743fb343dc80653993c8c55899808b130920cfdfd596d01fa36c";
 
 pub struct SchemaAttestation {
     pub schema_sha256: String,
@@ -38,6 +38,8 @@ pub(crate) async fn attest(pool: &SqlitePool) -> Result<SchemaAttestation, Engin
     }
     let mut migration = Sha256::new();
     for source in [
+        include_bytes!("../migrations/0001_authority.sql").as_slice(),
+        include_bytes!("../../../vendor/doubleentry/src/store/sql/write/authority.rs").as_slice(),
         include_bytes!("../../../vendor/doubleentry/src/store/sql/schema.sql").as_slice(),
         include_bytes!("../../../vendor/doubleentry/src/store/sql/schema.rs").as_slice(),
         include_bytes!("../../../vendor/doubleentry/src/store/sql/sqlite.rs").as_slice(),
@@ -53,4 +55,12 @@ pub(crate) async fn attest(pool: &SqlitePool) -> Result<SchemaAttestation, Engin
         schema_sha256,
         migration_sha256: hex(&migration.finalize()),
     })
+}
+
+pub(crate) async fn initialize_authority(pool: &SqlitePool) -> Result<(), EngineError> {
+    sqlx::raw_sql(include_str!("../migrations/0001_authority.sql"))
+        .execute(pool)
+        .await
+        .map_err(|_| failure())?;
+    Ok(())
 }

@@ -5,7 +5,7 @@ use doubleentry::store::{Done, Op, SqlStore, Sqlite};
 /// Opaque prepared native input; no public raw native constructor or import decoder.
 /// Frozen C05 construction belongs to CUR-009, not this storage seam.
 pub struct PreparedNativeOperation {
-    operation: Op<18>,
+    pub(crate) operation: Op<18>,
 }
 
 /// Native result remains in its upstream type, behind the private adapter boundary.
@@ -16,7 +16,7 @@ pub struct AtomicReceipt {
 /// The one native store used by the private writer. Encrypted construction belongs
 /// to CUR-006; intentionally no plaintext application opener is exported here.
 pub struct AtomicStore {
-    store: SqlStore<Sqlite, 18>,
+    pub(crate) store: SqlStore<Sqlite, 18>,
 }
 
 /// Sanitized failure classification, independent of SQL/native diagnostic strings.
