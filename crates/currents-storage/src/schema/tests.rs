@@ -97,11 +97,6 @@ async fn history_item_queries_use_covering_indexes() {
             "currents_references_by_item",
         ),
         (
-            history::ITEM_REFERENCE_MEMBERSHIP,
-            "currents_references",
-            "currents_references_by_item",
-        ),
-        (
             history::ITEM_REFERENCES,
             "currents_references",
             "currents_references_by_item",
@@ -118,11 +113,6 @@ async fn history_item_queries_use_covering_indexes() {
         ),
         (
             history::ITEM_CONTENTS,
-            "currents_content_refs",
-            "currents_content_refs_by_item",
-        ),
-        (
-            history::ITEM_CONTENT_MEMBERSHIP,
             "currents_content_refs",
             "currents_content_refs_by_item",
         ),

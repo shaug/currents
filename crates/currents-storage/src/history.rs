@@ -12,7 +12,6 @@ const MAX_OBSERVATIONS: usize = 10_000;
 // Shared with the private schema query-plan regression so it explains the reader SQL.
 pub(crate) const ITEM_REFERENCE_COUNT: &str =
     "SELECT count(*) FROM currents_references WHERE seq=? AND position=?";
-pub(crate) const ITEM_REFERENCE_MEMBERSHIP: &str = "SELECT count(*) FROM currents_references WHERE seq=? AND position=? AND target_kind=? AND target_id=? AND target_version=?";
 pub(crate) const ITEM_REFERENCES: &str = "SELECT target_kind,target_id,target_version FROM currents_references WHERE seq=? AND position=?";
 pub(crate) const ITEM_DEFINITIONS: &str =
     "SELECT kind,id,version FROM currents_definitions WHERE seq=? AND position=?";
@@ -20,8 +19,6 @@ pub(crate) const ITEM_CONTENT_COUNT: &str =
     "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
 pub(crate) const ITEM_CONTENTS: &str =
     "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
-pub(crate) const ITEM_CONTENT_MEMBERSHIP: &str =
-    "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=? AND digest=?";
 fn canonical<T: serde::Serialize>(v: &T) -> Result<Vec<u8>, EngineError> {
     serde_json_canonicalizer::to_vec(v).map_err(|_| EngineError::invalid())
 }
@@ -464,18 +461,6 @@ impl HistoryStream {
                 for kind in &reference.kinds {
                     let found:Option<i64>=sqlx::query_scalar("SELECT version FROM currents_definitions WHERE kind=? AND id=? AND seq<=? AND (? IS NULL OR version=?) ORDER BY version LIMIT 1").bind(kind).bind(&reference.id).bind(self.next).bind(reference.version).bind(reference.version).fetch_optional(&mut *self.tx).await.map_err(|_|schema::failure())?;
                     if let Some(version) = found {
-                        let count: i64 = sqlx::query_scalar(ITEM_REFERENCE_MEMBERSHIP)
-                            .bind(self.next)
-                            .bind(position as i64)
-                            .bind(kind)
-                            .bind(&reference.id)
-                            .bind(version)
-                            .fetch_one(&mut *self.tx)
-                            .await
-                            .map_err(|_| schema::failure())?;
-                        if count == 0 {
-                            return Err(schema::failure());
-                        }
                         expected_references.push((kind.clone(), reference.id.clone(), version));
                         matches = matches.saturating_add(1);
                     }
@@ -570,16 +555,6 @@ impl HistoryStream {
                 return Err(schema::failure());
             }
             for content in meta.contents {
-                let count: i64 = sqlx::query_scalar(ITEM_CONTENT_MEMBERSHIP)
-                    .bind(self.next)
-                    .bind(position as i64)
-                    .bind(content.digest.0.as_slice())
-                    .fetch_one(&mut *self.tx)
-                    .await
-                    .map_err(|_| schema::failure())?;
-                if count == 0 {
-                    return Err(schema::failure());
-                }
                 let size = verify_blob(
                     &mut self.tx,
                     content.digest,
