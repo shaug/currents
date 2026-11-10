@@ -20,7 +20,7 @@ patch = root / "patches/doubleentry/atomic-write.patch"
 if hashlib.sha256(patch.read_bytes()).hexdigest() != manifest["patch_sha256"]:
     raise SystemExit("atomic patch checksum mismatch")
 key_patch = root / "patches/doubleentry/key-init.patch"
-if hashlib.sha256(key_patch.read_bytes()).hexdigest() != manifest["key_init_patch_sha256"]:
+if hashlib.sha256(key_patch.read_bytes()).hexdigest() != manifest["initialization_patch_sha256"]:
     raise SystemExit("key-init patch checksum mismatch")
 with tempfile.TemporaryDirectory(prefix="currents-source-") as directory:
     reconstructed = Path(directory)

@@ -2003,5 +2003,5 @@
       "patched_sha256": "cea9bd60021cff82730da1c5b714e3e929c8997a21661a3efb51db77d874f7f9"
     }
   },
-  "key_init_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544"
+  "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544"
 }
