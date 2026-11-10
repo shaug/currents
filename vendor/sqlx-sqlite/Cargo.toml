@@ -191,7 +191,7 @@ version = "1.12.1"
 optional = true
 
 [dev-dependencies.tokio]
-version = "=1.53.3"
+version = "=1.54.1"
 features = ["rt", "time", "macros"]
 default-features = false
 

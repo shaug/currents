@@ -8,7 +8,7 @@
     "MIT",
     "Apache-2.0"
   ],
-  "patch_sha256": "16de2743b3f2ce789305bb621063cb96a0dfb85272e665ef249fdbca1c431b21",
+  "patch_sha256": "3e362965b2730eec7b542485b2128485f9aa9df93d4dda981b69b87b8b090abd",
   "files": {
     ".gitattributes": {
       "upstream_sha256": "5db121d1ff282fd01f21dc612725ac541d7146159ae2b5a339dc77c9cc1fe5cc",
@@ -36,7 +36,7 @@
     },
     "Cargo.lock": {
       "upstream_sha256": "072ce8be2c6a1b605aa029b80524044179f2fe7588cb48e55c8002ae5d350f05",
-      "patched_sha256": "188f91838e15f0a25e737b09c94f7ffdae81165be75f6e11038f93465feff931"
+      "patched_sha256": "4cebdae5c9f1e0df2559493658edeada150bceceeaf37f25946e72a8332cf68e"
     },
     "Cargo.toml": {
       "upstream_sha256": "0ea037bbdd701554282ef42d80da736d7aebe5b370064799d3a55fecd5427fd8",

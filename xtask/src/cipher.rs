@@ -105,7 +105,7 @@ pub(crate) fn driver(program: &Path, rustc: Option<&Path>) -> Result<Value, Stri
             "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2",
             false,
         ),
-        ("tokio", "1.53.3", false),
+        ("tokio", "1.54.1", false),
         ("time", "0.3.55", false),
     ] {
         let selected: Vec<_> = packages.iter().filter(|p| p["name"] == name).collect();
