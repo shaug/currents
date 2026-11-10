@@ -25,6 +25,15 @@ fn discover(directory: &Path, depth: u8, found: &mut Vec<PathBuf>) {
     }
 }
 
+fn selected_developer(path: &Path) -> Option<PathBuf> {
+    // Apple accepts either the application bundle or Contents/Developer.
+    let nested = path.join("Contents/Developer");
+    [path, nested.as_path()]
+        .into_iter()
+        .find(|candidate| candidate.join("usr/bin/xcodebuild").is_file())
+        .map(Path::to_path_buf)
+}
+
 pub fn qualify(root: &Path) -> Result<Value, String> {
     let mut installations = Vec::new();
     discover(Path::new("/Applications"), 3, &mut installations);
@@ -39,9 +48,8 @@ pub fn qualify(root: &Path) -> Result<Value, String> {
         .ok()
         .or_else(|| checked(Path::new("/usr/bin/xcode-select"), &["-p"], root, None).ok());
     if let Some(path) = &selected {
-        let developer = Path::new(path.trim());
-        if developer.join("usr/bin/xcodebuild").is_file() {
-            installations.push(developer.to_path_buf());
+        if let Some(developer) = selected_developer(Path::new(path.trim())) {
+            installations.push(developer);
         }
     }
     // Spotlight may find full Xcode outside the conventional application folders.
@@ -73,7 +81,7 @@ pub fn qualify(root: &Path) -> Result<Value, String> {
     .unwrap_or_default();
     let full_selected = selected
         .as_ref()
-        .is_some_and(|p| Path::new(p.trim()).join("usr/bin/xcodebuild").is_file());
+        .is_some_and(|p| selected_developer(Path::new(p.trim())).is_some());
     let xcode = if full_selected {
         checked(Path::new("/usr/bin/xcodebuild"), &["-version"], root, None).unwrap_or_default()
     } else {
@@ -196,6 +204,23 @@ fn current_host(root: &Path) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn accepts_both_supported_developer_directory_forms() {
+        let root =
+            std::env::temp_dir().join(format!("currents-xcode-selection-{}", std::process::id()));
+        let app = root.join("Xcode.app");
+        let developer = app.join("Contents/Developer");
+        fs::create_dir_all(developer.join("usr/bin")).unwrap();
+        fs::write(developer.join("usr/bin/xcodebuild"), b"synthetic marker").unwrap();
+        let app_result = selected_developer(&app);
+        let developer_result = selected_developer(&developer);
+        let missing_result = selected_developer(&root.join("CLT"));
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(app_result, Some(developer.clone()));
+        assert_eq!(developer_result, Some(developer));
+        assert_eq!(missing_result, None);
+    }
 
     #[test]
     fn native_result_registry_requires_observed_passes() {
