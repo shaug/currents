@@ -49,6 +49,31 @@ const RECORDS: &[&str] = &[
     "ForecastRun",
 ];
 const EVIDENCE: &[&str] = &["ObservationVersion", "ImportReceipt"];
+
+/// Result effects use family existence, not changed-record or latest-version semantics.
+/// The canonical commit carries them directly; they are not synthetic item rows.
+pub(crate) fn command_effects(effects: &EffectsV1) -> impl Iterator<Item = Reference> + '_ {
+    effects
+        .records
+        .iter()
+        .chain(&effects.invalidations)
+        .map(|id| Reference {
+            kinds: RECORDS.iter().map(|kind| (*kind).into()).collect(),
+            id: id.0.to_string(),
+            version: None,
+        })
+        .chain(effects.accounts.iter().map(|id| Reference {
+            kinds: vec!["Account".into()],
+            id: id.0.to_string(),
+            version: None,
+        }))
+        .chain(effects.amounts.iter().map(|amount| Reference {
+            kinds: vec!["Unit".into()],
+            id: amount.unit_id.0.to_string(),
+            version: None,
+        }))
+}
+
 impl Metadata {
     fn define(&mut self, kind: &str, id: &Value, version: i64, family: bool) {
         if let Some(id) = id.as_str() {

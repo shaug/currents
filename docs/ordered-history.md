@@ -1,7 +1,7 @@
 # Ordered authority (CUR008)
 
 This private synthetic storage boundary extends C04. It does not implement C05
-financial freezing, C10 admission/idempotency/restart resolution, C07 parsing,
+financial freezing, C03 (CUR-010) admission/idempotency/restart resolution, C07 parsing,
 semantic replay, archive activation, or a production host. Public clients receive
 neither SQL nor native handles. The old storage `write_record` shortcut is retired;
 its maintained native/accounting regression fixture remains below this boundary.
@@ -100,6 +100,21 @@ parse-product/version references before adoption can distinguish parser reruns
 with shared facet lineage. A fabricated RecordId cannot target an anonymous parse
 product. Storage does not claim that absent provenance contract or semantic
 allocation conservation is implemented.
+
+Committed CommandResultV1 effects receive the same structural checks on append,
+prefix reads and reopen. `records` and `invalidations` resolve to the existing
+addressable authoritative record-family set used by generic record references;
+anonymous values, cache identities, Account and Unit identities are not members
+of that set. `accounts` resolves to Account families defined by
+AccountComponent.account_id, and each `amounts[].unit_id` to Unit families defined
+by catalog units. Exactly one permitted kind must exist in this dataset at the
+same or an earlier commit; multiple versions of that kind are not ambiguous and
+no latest-version meaning is introduced. These result references remain in the
+canonical commit rather than synthetic item/index rows. Validation runs after
+same-commit definitions are available and before publication, so a bad result
+rolls back any native operation. Amount validation remains unchanged. This does
+not validate accounting meaning, require referenced records to have changed,
+execute invalidations, authorize commands, or implement C03 command lifecycle.
 
 ## Integrity and compatibility
 

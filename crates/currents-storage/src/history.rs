@@ -39,7 +39,7 @@ fn atomic(e: AtomicFailure) -> CommitFailure {
 fn failed(e: EngineError) -> CommitFailure {
     CommitFailure::DefinitelyRolledBack(e)
 }
-/// Storage-ready typed inputs only. C05 freezing and C10 command lifecycle are separate.
+/// Storage-ready typed inputs only. C05 freezing and C03 command lifecycle are separate.
 pub struct HistoryAppend {
     pub prior_head: CommitSeq,
     pub records: Vec<AuthoritativeRecordV1>,
@@ -163,6 +163,23 @@ impl Writer {
                     .await?;
                 }
                 metadata.push(meta);
+            }
+            // All same-commit definitions now exist in this dataset's authority
+            // transaction. Invalid result references roll back its native effect too.
+            for reference in crate::references::command_effects(&commit.command_result.effects) {
+                let mut matches = 0usize;
+                for kind in &reference.kinds {
+                    if tx
+                        .definition(kind, &reference.id, reference.version)
+                        .await?
+                        .is_some()
+                    {
+                        matches = matches.saturating_add(1);
+                    }
+                }
+                if matches != 1 {
+                    return Err(EngineError::invalid());
+                }
             }
             for staged in &input.staged {
                 tx.promote_content(
@@ -550,6 +567,26 @@ impl HistoryStream {
                 verified_content.insert(content.digest, size);
             }
         }
+        // Resolve against this commit's prefix, not the requested stream cutoff:
+        // a later definition must never legitimize an earlier command result.
+        for reference in crate::references::command_effects(&c.command_result.effects) {
+            let mut matches = 0usize;
+            for kind in &reference.kinds {
+                let found: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM currents_definitions WHERE kind=? AND id=? AND seq<=?)")
+                    .bind(kind)
+                    .bind(&reference.id)
+                    .bind(self.next)
+                    .fetch_one(&mut *self.tx)
+                    .await
+                    .map_err(|_| schema::failure())?;
+                if found {
+                    matches = matches.saturating_add(1);
+                }
+            }
+            if matches != 1 {
+                return Err(schema::failure());
+            }
+        }
         self.previous = stored;
         self.next = self.next.checked_add(1).ok_or_else(schema::failure)?;
         Ok(Some(c))
@@ -658,5 +695,7 @@ fn catalog_reference(
     })
 }
 
+#[cfg(test)]
+mod effects_tests;
 #[cfg(test)]
 mod tests;

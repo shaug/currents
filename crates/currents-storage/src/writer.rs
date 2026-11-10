@@ -1,5 +1,5 @@
 //! Private C04 ordered authority writer.
-//! Full PreparedCommit/frozen_batch construction remains with C05/C10.
+//! Full PreparedCommit/frozen_batch construction remains with C05/C03.
 use currents_accounting::AtomicStore;
 use currents_types::{CommandId, EngineError};
 
