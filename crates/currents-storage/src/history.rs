@@ -37,11 +37,7 @@ fn atomic(e: AtomicFailure) -> CommitFailure {
 fn failed(e: EngineError) -> CommitFailure {
     CommitFailure::DefinitelyRolledBack(e)
 }
-fn checked_command(
-    bytes: &[u8],
-    command: CommandId,
-    digest: Digest,
-) -> Result<DomainCommitV1, EngineError> {
+fn checked_record(bytes: &[u8], command: CommandId) -> Result<DomainCommitV1, EngineError> {
     let mut value: DomainCommitV1 = serde_json::from_slice(bytes).map_err(|_| schema::failure())?;
     if canonical(&value)? != bytes
         || value.command_result.command_id != command
@@ -56,6 +52,14 @@ fn checked_command(
         return Err(schema::failure());
     }
     value.digest = saved;
+    Ok(value)
+}
+fn checked_command(
+    bytes: &[u8],
+    command: CommandId,
+    digest: Digest,
+) -> Result<DomainCommitV1, EngineError> {
+    let value = checked_record(bytes, command)?;
     if value.command_result.digest != digest {
         return Err(EngineError::invalid());
     }
@@ -141,15 +145,14 @@ impl Writer {
         command: CommandId,
         digest: Digest,
     ) -> Result<Option<DomainCommitV1>, EngineError> {
-        let bytes: Option<Vec<u8>> =
-            sqlx::query_scalar("SELECT canonical FROM currents_commits WHERE command_id=?")
-                .bind(command.0.as_bytes().as_slice())
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(|_| schema::failure())?;
-        bytes
-            .map(|bytes| checked_command(&bytes, command, digest))
-            .transpose()
+        let value = self.command_record(command).await?;
+        if value
+            .as_ref()
+            .is_some_and(|commit| commit.command_result.digest != digest)
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(value)
     }
     /// Trusted service lookup. Authorize the returned scope before comparing the
     /// caller's digest, so an unauthorized caller cannot probe command identity.
@@ -164,11 +167,7 @@ impl Writer {
                 .await
                 .map_err(|_| schema::failure())?;
         bytes
-            .map(|bytes| {
-                let value: DomainCommitV1 =
-                    serde_json::from_slice(&bytes).map_err(|_| schema::failure())?;
-                checked_command(&bytes, command, value.command_result.digest)
-            })
+            .map(|bytes| checked_record(&bytes, command))
             .transpose()
     }
     /// C04 closure execution; C05 supplies the opaque validated instructions.
@@ -904,3 +903,6 @@ mod decision_bindings_tests;
 mod effects_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod lookup_tests;
