@@ -28,9 +28,11 @@ Function-scoped exceptions require an explicit reason and matching reviewed entr
 in docs/lint-allowlist.json; `expect` also fails when no longer needed.
 Release overflow checks are enabled and panic unwinds.
 
-Schema drift compares the generator output byte-for-byte. Headers and migrations
-are currently absent: adding any makes generated-drift BLOCKED until their owner
-registers actual generation/validation. This is not a claim of native qualification.
+Schema drift compares the generator output byte-for-byte. CUR008's authority
+migration is verified by exact opened-schema attestation and its registered
+qualification assertion. Public headers and root migrations remain absent; new
+ones stay BLOCKED until their owner registers actual generation/validation.
+This is not a claim of production native qualification.
 Nextest is not used; cargo test --doc remains explicit even if introduced later.
 
 ## Required checks and repository settings

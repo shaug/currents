@@ -7,9 +7,15 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Fixed synthetic inputs for downstream integration tests; never enabled by default.
+synthetic-test-fixtures = []
+
 [dependencies]
+sha2.workspace = true
 currents-types.workspace = true
 doubleentry.workspace = true
+sqlx.workspace = true
 serde_json_canonicalizer.workspace = true
 
 [dev-dependencies]

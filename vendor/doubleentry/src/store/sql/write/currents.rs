@@ -3,6 +3,23 @@ use super::*;
 use crate::store::Sqlite;
 
 impl SqlStore<Sqlite, 18> {
+    /// Currents-only trusted pool seam. The caller must initialize the codec,
+    /// key and connection profile on every connection before supplying this pool.
+    /// This does not read/create schema or bypass native create/open validation.
+    /// The only application caller is the private accounting adapter.
+    pub fn currents_from_initialized_pool(pool: sqlx::SqlitePool) -> Self {
+        let retries = pool.options().get_max_connections();
+        Self {
+            inner: std::sync::Arc::new(super::super::Inner {
+                pool,
+                sql: super::super::Catalogue::new(String::new()),
+                schema: super::super::SqlOptions::default().schema,
+                ledger: std::sync::OnceLock::new(),
+                retries,
+            }),
+        }
+    }
+
     /// Initialize the private composition table after native metadata is established.
     /// This is not the Currents authoritative history schema or an encrypted opener.
     ///

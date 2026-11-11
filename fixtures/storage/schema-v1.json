@@ -1,0 +1,977 @@
+{
+  "schema_sha256": "35f38eef2ff6c2305a1bdd2a936913134df9c6f1e6a4fc7ec7d5e9d3716ce5b5",
+  "objects": [
+    [
+      "index",
+      "account_versions_in_force",
+      "account_versions",
+      "CREATE INDEX account_versions_in_force ON account_versions (handle, field, effective, position)"
+    ],
+    [
+      "index",
+      "clearing_refs_by_key",
+      "clearing_refs",
+      "CREATE INDEX clearing_refs_by_key ON clearing_refs (handle, currency, layer, position)"
+    ],
+    [
+      "index",
+      "currency_versions_in_force",
+      "currency_versions",
+      "CREATE INDEX currency_versions_in_force ON currency_versions (code, effective, position)"
+    ],
+    [
+      "index",
+      "currents_content_refs_by_item",
+      "currents_content_refs",
+      "CREATE INDEX currents_content_refs_by_item ON currents_content_refs(seq,position,digest)"
+    ],
+    [
+      "index",
+      "currents_definitions_by_item",
+      "currents_definitions",
+      "CREATE INDEX currents_definitions_by_item ON currents_definitions(seq,position,kind,id,version)"
+    ],
+    [
+      "index",
+      "currents_one_dataset",
+      "currents_definitions",
+      "CREATE UNIQUE INDEX currents_one_dataset ON currents_definitions(kind) WHERE kind='Dataset'"
+    ],
+    [
+      "index",
+      "currents_references_by_item",
+      "currents_references",
+      "CREATE INDEX currents_references_by_item ON currents_references(seq,position,target_kind,target_id,target_version)"
+    ],
+    [
+      "index",
+      "holds_open_credit",
+      "holds",
+      "CREATE INDEX holds_open_credit ON holds (credit_handle, position) WHERE resolved_by IS NULL"
+    ],
+    [
+      "index",
+      "holds_open_debit",
+      "holds",
+      "CREATE INDEX holds_open_debit  ON holds (debit_handle, position)  WHERE resolved_by IS NULL"
+    ],
+    [
+      "index",
+      "holds_open_due",
+      "holds",
+      "CREATE INDEX holds_open_due    ON holds (expires, position)       WHERE resolved_by IS NULL AND expires IS NOT NULL"
+    ],
+    [
+      "index",
+      "leaves_by_kind",
+      "leaves",
+      "CREATE INDEX leaves_by_kind ON leaves (kind, position)"
+    ],
+    [
+      "index",
+      "policy_versions_in_force",
+      "policy_versions",
+      "CREATE INDEX policy_versions_in_force ON policy_versions (effective, position)"
+    ],
+    [
+      "index",
+      "posting_dims_by_value",
+      "posting_dims",
+      "CREATE INDEX posting_dims_by_value ON posting_dims (axis, value, position, idx)"
+    ],
+    [
+      "index",
+      "postings_by_day",
+      "postings",
+      "CREATE INDEX postings_by_day     ON postings (booking, position, idx)"
+    ],
+    [
+      "index",
+      "postings_by_key",
+      "postings",
+      "CREATE INDEX postings_by_key     ON postings (handle, currency, layer, position, idx)"
+    ],
+    [
+      "index",
+      "postings_by_key_day",
+      "postings",
+      "CREATE INDEX postings_by_key_day ON postings (handle, currency, layer, booking, position, idx)"
+    ],
+    [
+      "index",
+      "sqlite_autoindex_account_versions_1",
+      "account_versions",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_accounts_1",
+      "accounts",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_accounts_2",
+      "accounts",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_balances_1",
+      "balances",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_cleared_1",
+      "cleared",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_clearing_refs_1",
+      "clearing_refs",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_clearing_resets_1",
+      "clearing_resets",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_clearings_1",
+      "clearings",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currency_versions_1",
+      "currency_versions",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currency_versions_2",
+      "currency_versions",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_atomic_records_1",
+      "currents_atomic_records",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_blobs_1",
+      "currents_blobs",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_chunks_1",
+      "currents_chunks",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_commits_1",
+      "currents_commits",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_commits_2",
+      "currents_commits",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_definitions_1",
+      "currents_definitions",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_items_1",
+      "currents_items",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_staging_1",
+      "currents_staging",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_currents_staging_chunks_1",
+      "currents_staging_chunks",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_entries_1",
+      "entries",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_entries_2",
+      "entries",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_entries_3",
+      "entries",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_entries_4",
+      "entries",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_holds_1",
+      "holds",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_holds_2",
+      "holds",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_outstanding_1",
+      "outstanding",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_periods_1",
+      "periods",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_periods_2",
+      "periods",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_periods_3",
+      "periods",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_periods_4",
+      "periods",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_posting_dims_1",
+      "posting_dims",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_postings_1",
+      "postings",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_seal_leaves_1",
+      "seal_leaves",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_seal_nodes_1",
+      "seal_nodes",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_seals_1",
+      "seals",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_seals_2",
+      "seals",
+      ""
+    ],
+    [
+      "index",
+      "sqlite_autoindex_slices_1",
+      "slices",
+      ""
+    ],
+    [
+      "table",
+      "account_versions",
+      "account_versions",
+      "CREATE TABLE account_versions (\n    handle     INTEGER  NOT NULL REFERENCES accounts (handle),\n    field      INTEGER  NOT NULL CHECK (field IN (0, 1, 2)),\n    effective  INTEGER  NOT NULL,\n    position   INTEGER  NOT NULL REFERENCES leaves (position),\n    open_from  INTEGER,\n    open_to    INTEGER,\n    limit_code INTEGER  CHECK (limit_code IN (0, 1, 2)),\n    class      TEXT,\n    CHECK (field <> 0 OR open_from IS NOT NULL),\n    CHECK (field <> 1 OR limit_code IS NOT NULL),\n    PRIMARY KEY (handle, field, position)\n) STRICT"
+    ],
+    [
+      "table",
+      "accounts",
+      "accounts",
+      "CREATE TABLE accounts (\n    handle   INTEGER  PRIMARY KEY CHECK (handle BETWEEN 0 AND 4294967295),\n    path     TEXT NOT NULL UNIQUE,\n    kind     INTEGER  NOT NULL CHECK (kind BETWEEN 0 AND 4),\n    position INTEGER  NOT NULL UNIQUE REFERENCES leaves (position)\n) STRICT"
+    ],
+    [
+      "table",
+      "balances",
+      "balances",
+      "CREATE TABLE balances (\n    handle   INTEGER   NOT NULL REFERENCES accounts (handle),\n    currency TEXT  NOT NULL,\n    layer    INTEGER   NOT NULL CHECK (layer IN (0, 1)),\n    debit    BLOB NOT NULL CHECK (length(debit) = 16),\n    credit   BLOB NOT NULL CHECK (length(credit) = 16),\n    postings INTEGER   NOT NULL CHECK (postings >= 1),\n    PRIMARY KEY (handle, currency, layer)\n) STRICT"
+    ],
+    [
+      "table",
+      "cleared",
+      "cleared",
+      "CREATE TABLE cleared (\n    position INTEGER   NOT NULL,\n    idx      INTEGER   NOT NULL,\n    applied  BLOB NOT NULL CHECK (length(applied) = 16),\n    PRIMARY KEY (position, idx),\n    FOREIGN KEY (position, idx) REFERENCES postings (position, idx)\n) STRICT"
+    ],
+    [
+      "table",
+      "clearing_refs",
+      "clearing_refs",
+      "CREATE TABLE clearing_refs (\n    position INTEGER  NOT NULL REFERENCES clearings (position),\n    handle   INTEGER  NOT NULL REFERENCES accounts (handle),\n    currency TEXT NOT NULL,\n    layer    INTEGER  NOT NULL CHECK (layer IN (0, 1)),\n    PRIMARY KEY (position, handle, currency, layer)\n) STRICT"
+    ],
+    [
+      "table",
+      "clearing_resets",
+      "clearing_resets",
+      "CREATE TABLE clearing_resets (\n    clearing INTEGER PRIMARY KEY REFERENCES clearings (position),\n    position INTEGER NOT NULL UNIQUE REFERENCES clearings (position)\n) STRICT"
+    ],
+    [
+      "table",
+      "clearings",
+      "clearings",
+      "CREATE TABLE clearings (\n    position INTEGER   PRIMARY KEY REFERENCES leaves (position),\n    idem_key BLOB NOT NULL UNIQUE CHECK (length(idem_key) BETWEEN 1 AND 128)\n) STRICT"
+    ],
+    [
+      "table",
+      "currency_versions",
+      "currency_versions",
+      "CREATE TABLE currency_versions (\n    code      TEXT NOT NULL,\n    exponent  INTEGER  NOT NULL CHECK (exponent BETWEEN 0 AND 18),\n    effective INTEGER  NOT NULL,\n    position  INTEGER  NOT NULL UNIQUE REFERENCES leaves (position),\n    PRIMARY KEY (code, position)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_atomic_records",
+      "currents_atomic_records",
+      "CREATE TABLE currents_atomic_records (command_id BLOB PRIMARY KEY CHECK(length(command_id)=16), record BLOB NOT NULL CHECK(length(record)>0 AND length(record)<=1048576)) STRICT"
+    ],
+    [
+      "table",
+      "currents_blobs",
+      "currents_blobs",
+      "CREATE TABLE currents_blobs (\n digest BLOB PRIMARY KEY CHECK(length(digest)=32), byte_count INTEGER NOT NULL CHECK(byte_count>=0 AND byte_count<=104857600),\n first_seq INTEGER NOT NULL REFERENCES currents_commits(seq)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_chunks",
+      "currents_chunks",
+      "CREATE TABLE currents_chunks (\n digest BLOB NOT NULL REFERENCES currents_blobs(digest), position INTEGER NOT NULL CHECK(position>=0),\n bytes BLOB NOT NULL CHECK(length(bytes)<=1048576), chunk_digest BLOB NOT NULL CHECK(length(chunk_digest)=32), PRIMARY KEY(digest,position)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_commits",
+      "currents_commits",
+      "CREATE TABLE currents_commits (\n seq INTEGER PRIMARY KEY CHECK(seq>0), previous_digest BLOB NOT NULL CHECK(length(previous_digest)=32),\n digest BLOB NOT NULL UNIQUE CHECK(length(digest)=32), canonical BLOB NOT NULL CHECK(length(canonical)<=67108864),\n checkpoint TEXT NOT NULL CHECK(length(checkpoint)<=1024), command_id BLOB NOT NULL UNIQUE CHECK(length(command_id)=16)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_content_refs",
+      "currents_content_refs",
+      "CREATE TABLE currents_content_refs (\n seq INTEGER NOT NULL, position INTEGER NOT NULL, digest BLOB NOT NULL REFERENCES currents_blobs(digest),\n FOREIGN KEY(seq,position) REFERENCES currents_items(seq,position)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_definitions",
+      "currents_definitions",
+      "CREATE TABLE currents_definitions (\n kind TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL CHECK(version>=0), seq INTEGER NOT NULL, position INTEGER NOT NULL,\n PRIMARY KEY(kind,id,version), FOREIGN KEY(seq,position) REFERENCES currents_items(seq,position)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_items",
+      "currents_items",
+      "CREATE TABLE currents_items (\n seq INTEGER NOT NULL REFERENCES currents_commits(seq), position INTEGER NOT NULL CHECK(position>=0),\n kind TEXT NOT NULL, digest BLOB NOT NULL CHECK(length(digest)=32), canonical BLOB NOT NULL CHECK(length(canonical)<=1048576),\n PRIMARY KEY(seq,position)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_references",
+      "currents_references",
+      "CREATE TABLE currents_references (\n seq INTEGER NOT NULL, position INTEGER NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, target_version INTEGER NOT NULL,\n FOREIGN KEY(seq,position) REFERENCES currents_items(seq,position),\n FOREIGN KEY(target_kind,target_id,target_version) REFERENCES currents_definitions(kind,id,version)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_staging",
+      "currents_staging",
+      "CREATE TABLE currents_staging (\n token BLOB PRIMARY KEY CHECK(length(token)=16), digest BLOB NOT NULL CHECK(length(digest)=32), byte_count INTEGER NOT NULL CHECK(byte_count>=0 AND byte_count<=104857600)\n) STRICT"
+    ],
+    [
+      "table",
+      "currents_staging_chunks",
+      "currents_staging_chunks",
+      "CREATE TABLE currents_staging_chunks (\n token BLOB NOT NULL REFERENCES currents_staging(token), position INTEGER NOT NULL CHECK(position>=0), bytes BLOB NOT NULL CHECK(length(bytes)<=1048576),\n chunk_digest BLOB NOT NULL CHECK(length(chunk_digest)=32), PRIMARY KEY(token,position)\n) STRICT"
+    ],
+    [
+      "table",
+      "entries",
+      "entries",
+      "CREATE TABLE entries (\n    position    INTEGER   PRIMARY KEY REFERENCES leaves (position),\n    ordinal     INTEGER   NOT NULL UNIQUE CHECK (ordinal >= 0),\n    entry_id    BLOB NOT NULL UNIQUE CHECK (length(entry_id) = 16),\n    idem_key    BLOB NOT NULL UNIQUE CHECK (length(idem_key) BETWEEN 1 AND 128),\n    fingerprint BLOB CHECK (fingerprint IS NULL OR length(fingerprint) = 32),\n    reverses    BLOB UNIQUE REFERENCES entries (entry_id),\n    kind        TEXT  CHECK (kind IS NULL OR length(kind) BETWEEN 1 AND 256)\n) STRICT"
+    ],
+    [
+      "table",
+      "holds",
+      "holds",
+      "CREATE TABLE holds (\n    position      INTEGER   PRIMARY KEY REFERENCES entries (position),\n    entry_id      BLOB NOT NULL UNIQUE REFERENCES entries (entry_id),\n    booking       INTEGER   NOT NULL,\n    expires       INTEGER,\n    debit_handle  INTEGER   NOT NULL REFERENCES accounts (handle),\n    credit_handle INTEGER   NOT NULL REFERENCES accounts (handle),\n    currency      TEXT  NOT NULL,\n    amount        BLOB NOT NULL CHECK (length(amount) = 16),\n    resolved_by   BLOB UNIQUE REFERENCES entries (entry_id),\n    how           INTEGER   CHECK (how IN (0, 1, 2)),\n    CHECK ((resolved_by IS NULL) = (how IS NULL))\n) STRICT"
+    ],
+    [
+      "table",
+      "leaves",
+      "leaves",
+      "CREATE TABLE leaves (\n    position INTEGER   PRIMARY KEY CHECK (position >= 0),\n    kind     INTEGER   NOT NULL CHECK (kind BETWEEN 1 AND 8),\n    bytes    BLOB NOT NULL CHECK (length(bytes) BETWEEN 1 AND 65535)\n) STRICT"
+    ],
+    [
+      "table",
+      "memos",
+      "memos",
+      "CREATE TABLE memos (\n    position INTEGER   PRIMARY KEY REFERENCES entries (position),\n    salt     BLOB CHECK (salt IS NULL OR length(salt) = 16),\n    text     TEXT,\n    CHECK ((salt IS NULL) = (text IS NULL))\n) STRICT"
+    ],
+    [
+      "table",
+      "meta",
+      "meta",
+      "CREATE TABLE meta (\n    singleton    INTEGER   PRIMARY KEY CHECK (singleton = 1),\n    schema_id    TEXT  NOT NULL,\n    ledger_id    TEXT  NOT NULL,\n    amount_scale INTEGER   NOT NULL CHECK (amount_scale BETWEEN 0 AND 18),\n    genesis      BLOB NOT NULL CHECK (length(genesis) = 32)\n) STRICT"
+    ],
+    [
+      "table",
+      "nodes",
+      "nodes",
+      "CREATE TABLE nodes (\n    id   INTEGER   PRIMARY KEY CHECK (id >= 0),\n    hash BLOB NOT NULL CHECK (length(hash) = 32)\n) STRICT"
+    ],
+    [
+      "table",
+      "outstanding",
+      "outstanding",
+      "CREATE TABLE outstanding (\n    handle   INTEGER   NOT NULL REFERENCES accounts (handle),\n    currency TEXT  NOT NULL,\n    debit    BLOB NOT NULL CHECK (length(debit) = 16),\n    credit   BLOB NOT NULL CHECK (length(credit) = 16),\n    PRIMARY KEY (handle, currency)\n) STRICT"
+    ],
+    [
+      "table",
+      "periods",
+      "periods",
+      "CREATE TABLE periods (\n    period_id TEXT PRIMARY KEY,\n    first_day INTEGER  NOT NULL UNIQUE,\n    last_day  INTEGER  NOT NULL UNIQUE CHECK (last_day >= first_day),\n    position  INTEGER  NOT NULL UNIQUE REFERENCES leaves (position)\n) STRICT"
+    ],
+    [
+      "table",
+      "policy_versions",
+      "policy_versions",
+      "CREATE TABLE policy_versions (\n    position  INTEGER PRIMARY KEY REFERENCES leaves (position),\n    effective INTEGER NOT NULL\n) STRICT"
+    ],
+    [
+      "table",
+      "posting_dims",
+      "posting_dims",
+      "CREATE TABLE posting_dims (\n    position INTEGER  NOT NULL,\n    idx      INTEGER  NOT NULL,\n    axis     TEXT NOT NULL,\n    value    TEXT NOT NULL,\n    PRIMARY KEY (position, idx, axis),\n    FOREIGN KEY (position, idx) REFERENCES postings (position, idx)\n) STRICT"
+    ],
+    [
+      "table",
+      "postings",
+      "postings",
+      "CREATE TABLE postings (\n    position     INTEGER   NOT NULL REFERENCES entries (position),\n    idx          INTEGER   NOT NULL CHECK (idx BETWEEN 0 AND 1023),\n    handle       INTEGER   NOT NULL REFERENCES accounts (handle),\n    currency     TEXT  NOT NULL,\n    layer        INTEGER   NOT NULL CHECK (layer IN (0, 1)),\n    side         INTEGER   NOT NULL CHECK (side IN (0, 1)),\n    amount       BLOB NOT NULL CHECK (length(amount) = 16),\n    booking      INTEGER   NOT NULL,\n    value_date   INTEGER   NOT NULL,\n    dimensions   TEXT  NOT NULL,\n    debit_after  BLOB NOT NULL CHECK (length(debit_after) = 16),\n    credit_after BLOB NOT NULL CHECK (length(credit_after) = 16),\n    count_after  INTEGER   NOT NULL CHECK (count_after >= 1),\n    PRIMARY KEY (position, idx)\n) STRICT"
+    ],
+    [
+      "table",
+      "seal_leaves",
+      "seal_leaves",
+      "CREATE TABLE seal_leaves (\n    period_id TEXT  NOT NULL REFERENCES seals (period_id),\n    currency  TEXT  NOT NULL,\n    layer     INTEGER   NOT NULL CHECK (layer IN (0, 1)),\n    handle    INTEGER   NOT NULL REFERENCES accounts (handle),\n    debit     BLOB NOT NULL CHECK (length(debit) = 16),\n    credit    BLOB NOT NULL CHECK (length(credit) = 16),\n    postings  INTEGER   NOT NULL CHECK (postings >= 1),\n    PRIMARY KEY (period_id, currency, layer, handle)\n) STRICT"
+    ],
+    [
+      "table",
+      "seal_nodes",
+      "seal_nodes",
+      "CREATE TABLE seal_nodes (\n    period_id TEXT  NOT NULL REFERENCES seals (period_id),\n    currency  TEXT  NOT NULL,\n    layer     INTEGER   NOT NULL CHECK (layer IN (0, 1)),\n    level     INTEGER   NOT NULL CHECK (level BETWEEN 0 AND 32),\n    idx       INTEGER   NOT NULL CHECK (idx >= 0),\n    hash      BLOB NOT NULL CHECK (length(hash) = 32),\n    PRIMARY KEY (period_id, currency, layer, level, idx)\n) STRICT"
+    ],
+    [
+      "table",
+      "seals",
+      "seals",
+      "CREATE TABLE seals (\n    period_id TEXT PRIMARY KEY REFERENCES periods (period_id),\n    position  INTEGER  NOT NULL UNIQUE REFERENCES leaves (position)\n) STRICT"
+    ],
+    [
+      "table",
+      "slices",
+      "slices",
+      "CREATE TABLE slices (\n    handle     INTEGER   NOT NULL REFERENCES accounts (handle),\n    currency   TEXT  NOT NULL,\n    dimensions TEXT  NOT NULL,\n    debit      BLOB NOT NULL CHECK (length(debit) = 16),\n    credit     BLOB NOT NULL CHECK (length(credit) = 16),\n    postings   INTEGER   NOT NULL CHECK (postings >= 1),\n    PRIMARY KEY (handle, currency, dimensions)\n) STRICT"
+    ],
+    [
+      "trigger",
+      "account_versions_no_delete",
+      "account_versions",
+      "CREATE TRIGGER account_versions_no_delete BEFORE DELETE ON account_versions BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on account_versions refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "account_versions_no_replace",
+      "account_versions",
+      "CREATE TRIGGER account_versions_no_replace BEFORE INSERT ON account_versions\n  WHEN EXISTS (SELECT 1 FROM account_versions o WHERE (o.handle = NEW.handle AND o.field = NEW.field AND o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on account_versions refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "account_versions_no_update",
+      "account_versions",
+      "CREATE TRIGGER account_versions_no_update BEFORE UPDATE ON account_versions BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on account_versions refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "accounts_no_delete",
+      "accounts",
+      "CREATE TRIGGER accounts_no_delete BEFORE DELETE ON accounts BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on accounts refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "accounts_no_replace",
+      "accounts",
+      "CREATE TRIGGER accounts_no_replace BEFORE INSERT ON accounts\n  WHEN EXISTS (SELECT 1 FROM accounts o WHERE (o.handle = NEW.handle) OR (o.path = NEW.path) OR (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on accounts refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "accounts_no_update",
+      "accounts",
+      "CREATE TRIGGER accounts_no_update BEFORE UPDATE ON accounts BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on accounts refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "balances_no_delete",
+      "balances",
+      "CREATE TRIGGER balances_no_delete BEFORE DELETE ON balances BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on balances refused (maintained)'); END"
+    ],
+    [
+      "trigger",
+      "cleared_no_delete",
+      "cleared",
+      "CREATE TRIGGER cleared_no_delete BEFORE DELETE ON cleared BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on cleared refused (maintained)'); END"
+    ],
+    [
+      "trigger",
+      "clearing_refs_no_delete",
+      "clearing_refs",
+      "CREATE TRIGGER clearing_refs_no_delete BEFORE DELETE ON clearing_refs BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on clearing_refs refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "clearing_refs_no_update",
+      "clearing_refs",
+      "CREATE TRIGGER clearing_refs_no_update BEFORE UPDATE ON clearing_refs BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on clearing_refs refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "clearing_resets_no_delete",
+      "clearing_resets",
+      "CREATE TRIGGER clearing_resets_no_delete BEFORE DELETE ON clearing_resets BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on clearing_resets refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "clearing_resets_no_replace",
+      "clearing_resets",
+      "CREATE TRIGGER clearing_resets_no_replace BEFORE INSERT ON clearing_resets\n  WHEN EXISTS (SELECT 1 FROM clearing_resets o WHERE (o.clearing = NEW.clearing) OR (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on clearing_resets refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "clearing_resets_no_update",
+      "clearing_resets",
+      "CREATE TRIGGER clearing_resets_no_update BEFORE UPDATE ON clearing_resets BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on clearing_resets refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "clearings_no_delete",
+      "clearings",
+      "CREATE TRIGGER clearings_no_delete BEFORE DELETE ON clearings BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on clearings refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "clearings_no_replace",
+      "clearings",
+      "CREATE TRIGGER clearings_no_replace BEFORE INSERT ON clearings\n  WHEN EXISTS (SELECT 1 FROM clearings o WHERE (o.position = NEW.position) OR (o.idem_key = NEW.idem_key))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on clearings refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "clearings_no_update",
+      "clearings",
+      "CREATE TRIGGER clearings_no_update BEFORE UPDATE ON clearings BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on clearings refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "currency_versions_no_delete",
+      "currency_versions",
+      "CREATE TRIGGER currency_versions_no_delete BEFORE DELETE ON currency_versions BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on currency_versions refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "currency_versions_no_replace",
+      "currency_versions",
+      "CREATE TRIGGER currency_versions_no_replace BEFORE INSERT ON currency_versions\n  WHEN EXISTS (SELECT 1 FROM currency_versions o WHERE (o.code = NEW.code AND o.position = NEW.position) OR (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on currency_versions refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "currency_versions_no_update",
+      "currency_versions",
+      "CREATE TRIGGER currency_versions_no_update BEFORE UPDATE ON currency_versions BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on currency_versions refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "currents_blobs_no_delete",
+      "currents_blobs",
+      "CREATE TRIGGER currents_blobs_no_delete BEFORE DELETE ON currents_blobs BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_blobs_no_update",
+      "currents_blobs",
+      "CREATE TRIGGER currents_blobs_no_update BEFORE UPDATE ON currents_blobs BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_chunks_no_delete",
+      "currents_chunks",
+      "CREATE TRIGGER currents_chunks_no_delete BEFORE DELETE ON currents_chunks BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_chunks_no_update",
+      "currents_chunks",
+      "CREATE TRIGGER currents_chunks_no_update BEFORE UPDATE ON currents_chunks BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_commit_order",
+      "currents_commits",
+      "CREATE TRIGGER currents_commit_order BEFORE INSERT ON currents_commits BEGIN\n SELECT CASE WHEN NEW.seq != coalesce((SELECT max(seq)+1 FROM currents_commits),1) THEN RAISE(ABORT,'commit order') END;\n SELECT CASE WHEN NEW.previous_digest != coalesce((SELECT digest FROM currents_commits ORDER BY seq DESC LIMIT 1),zeroblob(32)) THEN RAISE(ABORT,'commit chain') END;\nEND"
+    ],
+    [
+      "trigger",
+      "currents_commits_no_delete",
+      "currents_commits",
+      "CREATE TRIGGER currents_commits_no_delete BEFORE DELETE ON currents_commits BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_commits_no_update",
+      "currents_commits",
+      "CREATE TRIGGER currents_commits_no_update BEFORE UPDATE ON currents_commits BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_content_refs_no_delete",
+      "currents_content_refs",
+      "CREATE TRIGGER currents_content_refs_no_delete BEFORE DELETE ON currents_content_refs BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_content_refs_no_update",
+      "currents_content_refs",
+      "CREATE TRIGGER currents_content_refs_no_update BEFORE UPDATE ON currents_content_refs BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_definitions_no_delete",
+      "currents_definitions",
+      "CREATE TRIGGER currents_definitions_no_delete BEFORE DELETE ON currents_definitions BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_definitions_no_update",
+      "currents_definitions",
+      "CREATE TRIGGER currents_definitions_no_update BEFORE UPDATE ON currents_definitions BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_items_no_delete",
+      "currents_items",
+      "CREATE TRIGGER currents_items_no_delete BEFORE DELETE ON currents_items BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_items_no_update",
+      "currents_items",
+      "CREATE TRIGGER currents_items_no_update BEFORE UPDATE ON currents_items BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_reference_prefix",
+      "currents_references",
+      "CREATE TRIGGER currents_reference_prefix BEFORE INSERT ON currents_references BEGIN\n SELECT CASE WHEN (SELECT seq FROM currents_definitions WHERE kind=NEW.target_kind AND id=NEW.target_id AND version=NEW.target_version)>NEW.seq THEN RAISE(ABORT,'future reference') END;\nEND"
+    ],
+    [
+      "trigger",
+      "currents_references_no_delete",
+      "currents_references",
+      "CREATE TRIGGER currents_references_no_delete BEFORE DELETE ON currents_references BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "currents_references_no_update",
+      "currents_references",
+      "CREATE TRIGGER currents_references_no_update BEFORE UPDATE ON currents_references BEGIN SELECT RAISE(ABORT,'immutable authority'); END"
+    ],
+    [
+      "trigger",
+      "entries_fingerprint_erase_only",
+      "entries",
+      "CREATE TRIGGER entries_fingerprint_erase_only BEFORE UPDATE ON entries\n  WHEN OLD.fingerprint IS NULL OR NEW.fingerprint IS NOT NULL\n    OR NEW.position IS NOT OLD.position OR NEW.ordinal IS NOT OLD.ordinal\n    OR NEW.entry_id IS NOT OLD.entry_id OR NEW.idem_key IS NOT OLD.idem_key\n    OR NEW.reverses IS NOT OLD.reverses\n    OR NOT EXISTS (SELECT 1 FROM memos m WHERE m.position = OLD.position AND m.text IS NULL)\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on entries refused (fingerprint erase only)'); END"
+    ],
+    [
+      "trigger",
+      "entries_no_delete",
+      "entries",
+      "CREATE TRIGGER entries_no_delete BEFORE DELETE ON entries\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on entries refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "entries_no_replace",
+      "entries",
+      "CREATE TRIGGER entries_no_replace BEFORE INSERT ON entries\n  WHEN EXISTS (SELECT 1 FROM entries o WHERE (o.position = NEW.position) OR (o.ordinal = NEW.ordinal) OR (o.entry_id = NEW.entry_id) OR (o.idem_key = NEW.idem_key) OR (o.reverses = NEW.reverses))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on entries refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "holds_no_delete",
+      "holds",
+      "CREATE TRIGGER holds_no_delete BEFORE DELETE ON holds\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on holds refused (resolve once)'); END"
+    ],
+    [
+      "trigger",
+      "holds_no_replace",
+      "holds",
+      "CREATE TRIGGER holds_no_replace BEFORE INSERT ON holds\n  WHEN EXISTS (SELECT 1 FROM holds o WHERE (o.position = NEW.position) OR (o.entry_id = NEW.entry_id) OR (o.resolved_by = NEW.resolved_by))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on holds refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "holds_resolve_once",
+      "holds",
+      "CREATE TRIGGER holds_resolve_once BEFORE UPDATE ON holds\n  WHEN OLD.resolved_by IS NOT NULL OR NEW.resolved_by IS NULL\n    OR NEW.position IS NOT OLD.position OR NEW.entry_id IS NOT OLD.entry_id\n    OR NEW.booking IS NOT OLD.booking OR NEW.expires IS NOT OLD.expires\n    OR NEW.debit_handle IS NOT OLD.debit_handle OR NEW.credit_handle IS NOT OLD.credit_handle\n    OR NEW.currency IS NOT OLD.currency OR NEW.amount IS NOT OLD.amount\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on holds refused (resolve once)'); END"
+    ],
+    [
+      "trigger",
+      "leaves_no_delete",
+      "leaves",
+      "CREATE TRIGGER leaves_no_delete BEFORE DELETE ON leaves BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on leaves refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "leaves_no_replace",
+      "leaves",
+      "CREATE TRIGGER leaves_no_replace BEFORE INSERT ON leaves\n  WHEN EXISTS (SELECT 1 FROM leaves o WHERE (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on leaves refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "leaves_no_update",
+      "leaves",
+      "CREATE TRIGGER leaves_no_update BEFORE UPDATE ON leaves BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on leaves refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "memos_erase_only",
+      "memos",
+      "CREATE TRIGGER memos_erase_only BEFORE UPDATE ON memos\n  WHEN NEW.position IS NOT OLD.position OR NEW.salt IS NOT NULL OR NEW.text IS NOT NULL\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on memos refused (erase only)'); END"
+    ],
+    [
+      "trigger",
+      "memos_no_delete",
+      "memos",
+      "CREATE TRIGGER memos_no_delete BEFORE DELETE ON memos\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on memos refused (erase only)'); END"
+    ],
+    [
+      "trigger",
+      "memos_no_replace",
+      "memos",
+      "CREATE TRIGGER memos_no_replace BEFORE INSERT ON memos\n  WHEN EXISTS (SELECT 1 FROM memos o WHERE (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on memos refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "meta_no_delete",
+      "meta",
+      "CREATE TRIGGER meta_no_delete BEFORE DELETE ON meta BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on meta refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "meta_no_replace",
+      "meta",
+      "CREATE TRIGGER meta_no_replace BEFORE INSERT ON meta\n  WHEN EXISTS (SELECT 1 FROM meta o WHERE (o.singleton = NEW.singleton))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on meta refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "meta_no_update",
+      "meta",
+      "CREATE TRIGGER meta_no_update BEFORE UPDATE ON meta BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on meta refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "nodes_no_delete",
+      "nodes",
+      "CREATE TRIGGER nodes_no_delete BEFORE DELETE ON nodes BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on nodes refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "nodes_no_replace",
+      "nodes",
+      "CREATE TRIGGER nodes_no_replace BEFORE INSERT ON nodes\n  WHEN EXISTS (SELECT 1 FROM nodes o WHERE (o.id = NEW.id))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on nodes refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "nodes_no_update",
+      "nodes",
+      "CREATE TRIGGER nodes_no_update BEFORE UPDATE ON nodes BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on nodes refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "outstanding_no_delete",
+      "outstanding",
+      "CREATE TRIGGER outstanding_no_delete BEFORE DELETE ON outstanding BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on outstanding refused (maintained)'); END"
+    ],
+    [
+      "trigger",
+      "periods_no_delete",
+      "periods",
+      "CREATE TRIGGER periods_no_delete BEFORE DELETE ON periods BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on periods refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "periods_no_replace",
+      "periods",
+      "CREATE TRIGGER periods_no_replace BEFORE INSERT ON periods\n  WHEN EXISTS (SELECT 1 FROM periods o WHERE (o.period_id = NEW.period_id) OR (o.first_day = NEW.first_day) OR (o.last_day = NEW.last_day) OR (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on periods refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "periods_no_update",
+      "periods",
+      "CREATE TRIGGER periods_no_update BEFORE UPDATE ON periods BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on periods refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "policy_versions_no_delete",
+      "policy_versions",
+      "CREATE TRIGGER policy_versions_no_delete BEFORE DELETE ON policy_versions BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on policy_versions refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "policy_versions_no_replace",
+      "policy_versions",
+      "CREATE TRIGGER policy_versions_no_replace BEFORE INSERT ON policy_versions\n  WHEN EXISTS (SELECT 1 FROM policy_versions o WHERE (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on policy_versions refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "policy_versions_no_update",
+      "policy_versions",
+      "CREATE TRIGGER policy_versions_no_update BEFORE UPDATE ON policy_versions BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on policy_versions refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "posting_dims_no_delete",
+      "posting_dims",
+      "CREATE TRIGGER posting_dims_no_delete BEFORE DELETE ON posting_dims BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on posting_dims refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "posting_dims_no_replace",
+      "posting_dims",
+      "CREATE TRIGGER posting_dims_no_replace BEFORE INSERT ON posting_dims\n  WHEN EXISTS (SELECT 1 FROM posting_dims o WHERE (o.position = NEW.position AND o.idx = NEW.idx AND o.axis = NEW.axis))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on posting_dims refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "posting_dims_no_update",
+      "posting_dims",
+      "CREATE TRIGGER posting_dims_no_update BEFORE UPDATE ON posting_dims BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on posting_dims refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "postings_no_delete",
+      "postings",
+      "CREATE TRIGGER postings_no_delete BEFORE DELETE ON postings BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on postings refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "postings_no_replace",
+      "postings",
+      "CREATE TRIGGER postings_no_replace BEFORE INSERT ON postings\n  WHEN EXISTS (SELECT 1 FROM postings o WHERE (o.position = NEW.position AND o.idx = NEW.idx))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on postings refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "postings_no_update",
+      "postings",
+      "CREATE TRIGGER postings_no_update BEFORE UPDATE ON postings BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on postings refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "seal_leaves_no_delete",
+      "seal_leaves",
+      "CREATE TRIGGER seal_leaves_no_delete BEFORE DELETE ON seal_leaves BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on seal_leaves refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "seal_leaves_no_replace",
+      "seal_leaves",
+      "CREATE TRIGGER seal_leaves_no_replace BEFORE INSERT ON seal_leaves\n  WHEN EXISTS (SELECT 1 FROM seal_leaves o WHERE (o.period_id = NEW.period_id AND o.currency = NEW.currency AND o.layer = NEW.layer AND o.handle = NEW.handle))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on seal_leaves refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "seal_leaves_no_update",
+      "seal_leaves",
+      "CREATE TRIGGER seal_leaves_no_update BEFORE UPDATE ON seal_leaves BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on seal_leaves refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "seal_nodes_no_delete",
+      "seal_nodes",
+      "CREATE TRIGGER seal_nodes_no_delete BEFORE DELETE ON seal_nodes BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on seal_nodes refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "seal_nodes_no_replace",
+      "seal_nodes",
+      "CREATE TRIGGER seal_nodes_no_replace BEFORE INSERT ON seal_nodes\n  WHEN EXISTS (SELECT 1 FROM seal_nodes o WHERE (o.period_id = NEW.period_id AND o.currency = NEW.currency AND o.layer = NEW.layer AND o.level = NEW.level AND o.idx = NEW.idx))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on seal_nodes refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "seal_nodes_no_update",
+      "seal_nodes",
+      "CREATE TRIGGER seal_nodes_no_update BEFORE UPDATE ON seal_nodes BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on seal_nodes refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "seals_no_delete",
+      "seals",
+      "CREATE TRIGGER seals_no_delete BEFORE DELETE ON seals BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on seals refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "seals_no_replace",
+      "seals",
+      "CREATE TRIGGER seals_no_replace BEFORE INSERT ON seals\n  WHEN EXISTS (SELECT 1 FROM seals o WHERE (o.period_id = NEW.period_id) OR (o.position = NEW.position))\n  BEGIN SELECT RAISE(ABORT, 'doubleentry: REPLACE on seals refused (a row with its key exists)'); END"
+    ],
+    [
+      "trigger",
+      "seals_no_update",
+      "seals",
+      "CREATE TRIGGER seals_no_update BEFORE UPDATE ON seals BEGIN SELECT RAISE(ABORT, 'doubleentry: UPDATE on seals refused (append-only)'); END"
+    ],
+    [
+      "trigger",
+      "slices_no_delete",
+      "slices",
+      "CREATE TRIGGER slices_no_delete BEFORE DELETE ON slices BEGIN SELECT RAISE(ABORT, 'doubleentry: DELETE on slices refused (maintained)'); END"
+    ]
+  ]
+}

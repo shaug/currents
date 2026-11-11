@@ -415,3 +415,5 @@ pub trait Store<const P: u8 = 2>: Clone + Send + Sync + 'static {
     /// The store's failure.
     fn erase_memo(&self, id: EntryId) -> impl Future<Output = Result<Erasure, StoreError>> + Send;
 }
+#[cfg(feature = "sqlite")]
+pub use sql::CurrentsAuthorityTransaction;

@@ -1,4 +1,5 @@
 mod checks;
+mod cipher;
 mod native;
 mod quality;
 mod readiness;

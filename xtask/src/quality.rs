@@ -1,5 +1,5 @@
 //! Public, local-runnable PR gates. Scanner output never enters diagnostics or artifacts.
-use crate::checks::{cargo, checked, root};
+use crate::checks::{cargo, checked, root, sha};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -285,9 +285,47 @@ fn generated() -> Result<Value> {
     if !found.is_empty() {
         return Err("BLOCKED: header/migration files require their owning ticket to register a reproducible drift command".into());
     }
-    Ok(
-        json!({"header_migration":"No header or migration artifacts exist; first owning ticket must register drift verification."}),
-    )
+    let migration = root().join("crates/currents-storage/migrations/0001_authority.sql");
+    let verification = cargo(&[
+        "test",
+        "--locked",
+        "-p",
+        "currents-storage",
+        "--test",
+        "cur_008",
+        "duplicate_bytes",
+        "--",
+        "--exact",
+    ])?;
+    if !verification.contains("1 passed; 0 failed; 0 ignored") {
+        return Err("authority schema attestation did not execute".into());
+    }
+    let schema_verification = cargo(&[
+        "test",
+        "--locked",
+        "-p",
+        "currents-storage",
+        "--lib",
+        "schema::tests::",
+    ])?;
+    for name in [
+        "reviewed_inventory_matches_opened_schema",
+        "history_item_queries_use_covering_indexes",
+    ] {
+        if !schema_verification.contains(&format!("test schema::tests::{name} ... ok")) {
+            return Err(format!("schema evidence assertion did not execute: {name}"));
+        }
+    }
+    if !schema_verification.contains("2 passed; 0 failed; 0 ignored") {
+        return Err("schema evidence assertions did not both pass".into());
+    }
+    Ok(json!({
+        "header_migration": "No public generated header; CUR008 migration is bound by exact opened schema attestation and the reviewed inventory.",
+        "authority_migration_sha256": sha(&fs::read(&migration).map_err(|e| e.to_string())?),
+        "attestation_test_output_sha256": sha(verification.as_bytes()),
+        "schema_inventory_sha256": sha(&fs::read(root().join("fixtures/storage/schema-v1.json")).map_err(|e| e.to_string())?),
+        "schema_evidence_test_output_sha256": sha(schema_verification.as_bytes()),
+    }))
 }
 fn tool(name: &str, version: &str, arg: &str) -> Result<PathBuf> {
     let path = std::env::var_os("CURRENTS_TOOLS_BIN")

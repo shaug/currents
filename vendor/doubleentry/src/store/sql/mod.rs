@@ -626,3 +626,5 @@ mod tests {
         assert_eq!(a, lock_key("doubleentry/ledger-lock", "example.com/a"));
     }
 }
+#[cfg(feature = "sqlite")]
+pub use write::authority::CurrentsAuthorityTransaction;
