@@ -36,7 +36,7 @@ pub(crate) fn entry(e: &FrozenEntryV1) -> Result<Entry<18>, EngineError> {
         );
         draft = draft.reverses(id);
     }
-    if !draft.build_errors().is_empty() || draft.encoded_len() > 65_535 {
+    if !doubleentry::validate(&draft).is_empty() || draft.encoded_len() > 65_535 {
         return Err(EngineError::invalid());
     }
     Ok(draft)

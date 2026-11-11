@@ -242,6 +242,44 @@ fn cur_009_1() {
         AccountingAdapter::freeze(&AccountingIntent::Recognition(overflow), &securities).is_err()
     );
 
+    // Net zero and every signed prefix fit, but native gross totals overflow.
+    let mut boundary = share.clone();
+    boundary.postings[0].amount.coefficient = i128::MAX;
+    boundary.postings[1].amount.coefficient = -i128::MAX;
+    let mut frozen = AccountingAdapter::freeze(
+        &AccountingIntent::Recognition(boundary.clone()),
+        &securities,
+    )
+    .unwrap();
+    let mut manifest = AccountingAdapter::manifest(id(8800), &frozen).unwrap();
+    let mut extra = boundary.postings.clone();
+    for (i, posting) in extra.iter_mut().enumerate() {
+        posting.id = id(8801 + i as u128);
+    }
+    boundary.postings.extend(extra.clone());
+    assert!(
+        AccountingAdapter::freeze(&AccountingIntent::Recognition(boundary), &securities,).is_err()
+    );
+    let FrozenNativeOperationV1::Entry(entry) = &mut frozen.operations[0] else {
+        panic!("financial entry expected")
+    };
+    let mut frozen_extra = entry.postings.clone();
+    for (posting, original) in frozen_extra.iter_mut().zip(extra) {
+        posting.original = original;
+    }
+    entry.postings.extend(frozen_extra);
+    frozen.decision_digest = AccountingAdapter::prebinding_digest(&frozen).unwrap();
+    let FrozenNativeOperationV1::Entry(entry) = &mut frozen.operations[0] else {
+        panic!("financial entry expected")
+    };
+    entry.generated_document = frozen.decision_digest;
+    let bytes = AccountingAdapter::instruction_bytes(&frozen).unwrap();
+    use sha2::{Digest as _, Sha256};
+    manifest.instructions.digest = Digest(Sha256::digest(&bytes).into());
+    manifest.instructions.byte_count = CommitSeq(bytes.len() as u64);
+    manifest.decision_digest = frozen.decision_digest;
+    assert!(AccountingAdapter::from_manifest(&manifest, &bytes).is_err());
+
     assert_eq!(numbers::half_even(5, 2).unwrap().rounded, 2);
     assert_eq!(numbers::half_even(7, 2).unwrap().rounded, 4);
     assert_eq!(numbers::half_even(-5, 2).unwrap().rounded, -2);
