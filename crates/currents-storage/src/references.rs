@@ -36,6 +36,7 @@ const RECORDS: &[&str] = &[
     "OwnershipPerimeter",
     "ImportReceipt",
     "ObservationVersion",
+    "AddressedParseProduct",
     "FinancialEvent",
     "FinancialLeg",
     "Association",
@@ -50,7 +51,11 @@ const RECORDS: &[&str] = &[
     "Scenario",
     "ForecastRun",
 ];
-const EVIDENCE: &[&str] = &["ObservationVersion", "ImportReceipt"];
+const EVIDENCE: &[&str] = &[
+    "ObservationVersion",
+    "ImportReceipt",
+    "AddressedParseProduct",
+];
 
 /// Result effects use family existence, not changed-record or latest-version semantics.
 /// The canonical commit carries them directly; they are not synthetic item rows.
@@ -271,6 +276,32 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                     .map_err(|_| EngineError::invalid())?,
                 size: None,
             });
+        }
+        AuthoritativeRecordV1::AddressedParseProduct(product) => {
+            if product.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if product.id.0.is_nil()
+                || product.id == product.product.source_version_id
+                || product
+                    .product
+                    .facets
+                    .iter()
+                    .any(|facet| facet.lineage_key == product.id)
+            {
+                return Err(EngineError::invalid());
+            }
+            let v = &v["product"];
+            m.reference(&["ObservationVersion"], &v["source_version_id"], None);
+            for facet in v["facets"].as_array().ok_or_else(EngineError::invalid)? {
+                m.define(
+                    "Facet",
+                    &scoped(&v["source_version_id"], &facet["lineage_key"]),
+                    0,
+                    true,
+                );
+                m.many(&["Association"], &facet["relationships"]);
+            }
         }
         AuthoritativeRecordV1::ParseProduct(_) => {
             m.reference(&["ObservationVersion"], &v["source_version_id"], None);

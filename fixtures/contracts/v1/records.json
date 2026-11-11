@@ -152,6 +152,19 @@
     }
   },
   {
+    "kind": "AddressedParseProduct",
+    "value": {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "schema_version": 1,
+      "product": {
+        "facets": [],
+        "parser_id": "synthetic",
+        "parser_version": "synthetic",
+        "source_version_id": "00000000-0000-0000-0000-000000000001"
+      }
+    }
+  },
+  {
     "kind": "FinancialEvent",
     "value": {
       "id": "00000000-0000-0000-0000-000000000001",

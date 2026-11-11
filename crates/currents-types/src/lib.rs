@@ -20,3 +20,6 @@ pub use planning_contracts::*;
 
 pub mod accounting;
 pub use accounting::*;
+
+pub mod acquisition_contracts;
+pub use acquisition_contracts::*;
