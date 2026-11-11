@@ -475,32 +475,36 @@ fn cur_025_3() {
             .class,
         ErrorClass::InvalidReference
     );
-    let mut duplicate = third.clone();
-    duplicate.version += 1;
-    duplicate.recurrence.day = Some(RecurrenceDayV1::Day(21));
-    duplicate.series_generation += 1;
-    duplicate.supersession = Some(CommitmentSupersessionV1 {
-        prior_version: third.version,
-        prior_generation: third.series_generation,
-        from_ordinal: CommitSeq(0),
-        remaps: vec![
-            OccurrenceRemapV1 {
-                old: key(&third, 0),
-                new: Some(key(&duplicate, 0)),
-            },
-            OccurrenceRemapV1 {
-                old: key(&third, 1),
-                new: Some(key(&duplicate, 0)),
-            },
-        ],
-    });
+    let mut valid_transition = pattern(&third, 0, 21);
+    // The prior series' ordinal zero is April 20, despite its April 1 anchor.
+    // Satisfy that cutoff so each variant reaches the intended remap guard.
+    valid_transition.start = CivilDateV1(date("2024-04-20"));
+    valid_transition.due_date = valid_transition.start;
+    valid_transition.supersession.as_mut().unwrap().remaps = vec![
+        OccurrenceRemapV1 {
+            old: key(&third, 0),
+            new: Some(key(&valid_transition, 0)),
+        },
+        OccurrenceRemapV1 {
+            old: key(&third, 1),
+            new: Some(key(&valid_transition, 1)),
+        },
+    ];
+    assert!(
+        CommitmentEngine::new(calendar())
+            .set(&s, &valid_transition)
+            .is_ok(),
+        "distinct remap targets in the new generation must be accepted"
+    );
+    let mut duplicate = valid_transition.clone();
+    duplicate.supersession.as_mut().unwrap().remaps[1].new = Some(key(&valid_transition, 0));
     assert!(
         CommitmentEngine::new(calendar())
             .set(&s, &duplicate)
-            .is_err()
+            .is_err(),
+        "duplicate remap targets must be rejected"
     );
-    let mut wrong_generation = duplicate.clone();
-    wrong_generation.supersession.as_mut().unwrap().remaps.pop();
+    let mut wrong_generation = valid_transition.clone();
     wrong_generation.supersession.as_mut().unwrap().remaps[0]
         .new
         .as_mut()
@@ -509,7 +513,8 @@ fn cur_025_3() {
     assert!(
         CommitmentEngine::new(calendar())
             .set(&s, &wrong_generation)
-            .is_err()
+            .is_err(),
+        "a remap target in the wrong generation must be rejected"
     );
     let mut absent_transition = duplicate.clone();
     absent_transition.supersession = None;
