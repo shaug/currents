@@ -344,6 +344,137 @@ fn cur_025_3() {
         .unwrap();
     assert!(active.iter().all(|o| o.key.series_generation == 3));
     assert_eq!(active.len(), 9);
+
+    // A once-valid key becomes inactive when a later same-generation revision
+    // removes it. Direct keys and one- or two-transition remaps agree with the
+    // active expansion, without rewriting the accepted earlier snapshot.
+    for (prefix_len, later_start) in [(4, "2024-04-01"), (5, "2024-05-01"), (2, "2024-03-01")] {
+        let prefix = &history[..prefix_len];
+        let latest = prefix.last().unwrap();
+        let target = key(latest, 0);
+        let sources: Vec<_> = [key(&c, 0), key(&next, 0), key(&third, 0)]
+            .into_iter()
+            .filter(|k| k.series_generation <= latest.series_generation)
+            .collect();
+        let planner = CommitmentEngine::new(calendar());
+        let saved = planner
+            .expand_history(prefix, date("2024-01-01"), 12)
+            .unwrap();
+        assert!(saved.iter().any(|o| o.key == target));
+        for removal in ["cancel", "skip", "end", "start"] {
+            let mut removed = latest.clone();
+            removed.version += 1;
+            match removal {
+                "cancel" | "skip" => removed.exceptions.push(PlanningExceptionV1 {
+                    ordinal: CommitSeq(0),
+                    action: if removal == "cancel" {
+                        PlanningExceptionActionV1::Cancel
+                    } else {
+                        PlanningExceptionActionV1::Skip
+                    },
+                    due_date: None,
+                    legs: vec![],
+                    reason: "Synthetic owner removed the expectation".into(),
+                }),
+                "end" => removed.end = Some(removed.start),
+                "start" => removed.start = CivilDateV1(date(later_start)),
+                _ => unreachable!(),
+            }
+            let mut accepted = state(&removed);
+            for revision in prefix {
+                save(&mut accepted, revision);
+            }
+            save(&mut accepted, &removed);
+            let mut changed = prefix.to_vec();
+            changed.push(removed.clone());
+            let remaining = planner
+                .expand_history(&changed, date("2024-01-01"), 12)
+                .unwrap();
+            assert!(!remaining.iter().any(|o| o.key == target));
+            for source in &sources {
+                assert_eq!(
+                    resolve_occurrence(prefix, source).unwrap(),
+                    Some(target.clone())
+                );
+                assert_eq!(
+                    resolve_occurrence(&changed, source).unwrap(),
+                    None,
+                    "{removal} must retire generation {} through source {source:?}",
+                    latest.series_generation
+                );
+            }
+            for occurrence in &remaining {
+                assert_eq!(
+                    resolve_occurrence(&changed, &occurrence.key).unwrap(),
+                    Some(occurrence.key.clone())
+                );
+            }
+            assert_eq!(
+                planner
+                    .expand_history(prefix, date("2024-01-01"), 12)
+                    .unwrap(),
+                saved
+            );
+            // A subsequent pattern change cannot resurrect the removed key or
+            // a match that reached it through an earlier remap.
+            let mut later = pattern(&removed, 0, 27);
+            later.start = CivilDateV1(date("2024-06-01"));
+            later.due_date = later.start;
+            later.end = None;
+            later.exceptions.clear();
+            save(&mut accepted, &later);
+            changed.push(later.clone());
+            for source in &sources {
+                assert_eq!(resolve_occurrence(&changed, source).unwrap(), None);
+            }
+            assert_eq!(
+                resolve_occurrence(&changed, &key(&later, 0)).unwrap(),
+                Some(key(&later, 0))
+            );
+        }
+    }
+    // Inactive historical keys are not interchangeable with fabricated keys
+    // that never denoted an occurrence in any accepted revision.
+    let mut foreign = key(&third, 0);
+    foreign.commitment_id = CommitmentId(id(999).0);
+    let mut unknown_generation = key(&third, 0);
+    unknown_generation.series_generation = 999;
+    for invalid in [foreign, unknown_generation, key(&third, u64::MAX)] {
+        assert_eq!(
+            resolve_occurrence(&history, &invalid).unwrap_err().class,
+            ErrorClass::InvalidReference
+        );
+    }
+    for action in [
+        PlanningExceptionActionV1::Cancel,
+        PlanningExceptionActionV1::Skip,
+    ] {
+        let mut never_active = commitment();
+        never_active.exceptions.push(PlanningExceptionV1 {
+            ordinal: CommitSeq(0),
+            action,
+            due_date: None,
+            legs: vec![],
+            reason: "Synthetic occurrence absent from its first revision".into(),
+        });
+        let mut accepted = state(&never_active);
+        save(&mut accepted, &never_active);
+        assert_eq!(
+            resolve_occurrence(std::slice::from_ref(&never_active), &key(&never_active, 0))
+                .unwrap_err()
+                .class,
+            ErrorClass::InvalidReference
+        );
+    }
+    let mut bounded = commitment();
+    bounded.end = Some(bounded.start);
+    save(&mut state(&bounded), &bounded);
+    assert_eq!(
+        resolve_occurrence(std::slice::from_ref(&bounded), &key(&bounded, 1))
+            .unwrap_err()
+            .class,
+        ErrorClass::InvalidReference
+    );
     let mut duplicate = third.clone();
     duplicate.version += 1;
     duplicate.recurrence.day = Some(RecurrenceDayV1::Day(21));

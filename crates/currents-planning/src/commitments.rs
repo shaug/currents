@@ -102,7 +102,8 @@ impl CommitmentEngine {
     }
 }
 /// Resolve keys and their attached matches through all accepted transitions.
-/// None is explicit retirement; no allocation amount is changed here.
+/// None means a historically valid key is no longer active; keys that never
+/// existed are invalid. No allocation amount is changed here.
 pub fn resolve_occurrence(
     history: &[CommitmentV1],
     key: &OccurrenceKeyV1,
@@ -114,12 +115,18 @@ fn resolve_validated(
     history: &[CommitmentV1],
     key: &OccurrenceKeyV1,
 ) -> Result<Option<OccurrenceKeyV1>, EngineError> {
-    let origin = history
+    let mut existed = false;
+    for origin in history
         .iter()
         .rev()
-        .find(|c| c.id == key.commitment_id && c.series_generation == key.series_generation)
-        .ok_or_else(EngineError::invalid)?;
-    if occurrence_date(origin, key.ordinal.0)?.is_none() {
+        .filter(|c| c.id == key.commitment_id && c.series_generation == key.series_generation)
+    {
+        if occurrence_date(origin, key.ordinal.0)?.is_some() {
+            existed = true;
+            break;
+        }
+    }
+    if !existed {
         return Err(EngineError::invalid());
     }
     let mut current = key.clone();
@@ -140,7 +147,12 @@ fn resolve_validated(
             }
         }
     }
-    Ok(Some(current))
+    let latest = history
+        .iter()
+        .rev()
+        .find(|c| c.id == current.commitment_id && c.series_generation == current.series_generation)
+        .ok_or_else(EngineError::invalid)?;
+    Ok(occurrence_date(latest, current.ordinal.0)?.map(|_| current))
 }
 fn validate_history(history: &[CommitmentV1]) -> Result<(), EngineError> {
     if history.is_empty() {

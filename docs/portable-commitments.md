@@ -65,8 +65,12 @@ same-generation revisions preserve their generation transition unchanged.
 resolve_occurrence consumes ordered, contiguous accepted revisions and resolves
 old keys through every successive transition. A retired key and its attached
 matches are inactive. A remapped key identifies the single target expectation;
-it never contributes a second expectation. expand_history uses the latest
-revision of each series and excludes retired/remapped source expectations.
+it never contributes a second expectation. Resolution checks the final target
+against its generation's latest revision: a later Skip, Cancel, or date/bounds
+edit that removes it makes both direct and remapped keys inactive (None). A key
+that never existed in any accepted revision is invalid, not retired.
+expand_history uses the latest revision of each series and excludes
+retired/remapped source expectations.
 These APIs define retirement only, not actual/pending allocation or matching
 algorithms. Saved snapshots and results retain their original interpretation.
 

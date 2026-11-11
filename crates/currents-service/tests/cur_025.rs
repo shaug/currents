@@ -365,7 +365,30 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
             },
         ],
     });
-    let expected = vec![first, edited, transition_one, c.clone()];
+    let mut expected = vec![first, edited, transition_one, c.clone()];
+    // Accept each way of removing the chained remap target through real C03
+    // commands. Every revision is checked again after closing and reopening.
+    c.version = 5;
+    c.exceptions.push(PlanningExceptionV1 {
+        ordinal: CommitSeq(0),
+        action: PlanningExceptionActionV1::Cancel,
+        due_date: None,
+        legs: vec![],
+        reason: "Synthetic owner canceled the mapped expectation".into(),
+    });
+    expected.push(c.clone());
+    c.version = 6;
+    c.exceptions[0].action = PlanningExceptionActionV1::Skip;
+    expected.push(c.clone());
+    c.version = 7;
+    c.exceptions.clear();
+    c.start = date("2024-01-04");
+    expected.push(c.clone());
+    c.version = 8;
+    c.start = date("2024-01-03");
+    c.due_date = date("2024-01-05");
+    c.end = Some(date("2024-01-04"));
+    expected.push(c.clone());
     let mut submitted = vec![];
     for (i, revision) in expected.iter().enumerate() {
         // Fresh process-like reopen and durable state load for EVERY revision.
@@ -376,6 +399,18 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
         let restored = CalendarEngine::from_saved(&calendar_data, &retained).unwrap();
         assert_eq!(restored.calendar_data(), calendar_data);
         let engine = CommitmentEngine::new(restored);
+        if i > 4 {
+            for source in [key(&c, 1, 1), key(&c, 2, 0), key(&c, 3, 0)] {
+                assert_eq!(resolve_occurrence(&history, &source).unwrap(), None);
+            }
+            assert!(
+                !engine
+                    .expand_history(&history, date("2024-01-01").0, 1)
+                    .unwrap()
+                    .iter()
+                    .any(|o| o.key == key(&c, 3, 0))
+            );
+        }
         let head = state.through;
         f.host.reconnect();
         f.service = Service::new(
@@ -406,9 +441,12 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
     let retained = content(&store, state.through, calendar_data.timezone_data.digest).await;
     let engine = CommitmentEngine::new(CalendarEngine::new(zone, version, &retained).unwrap());
     assert_eq!(
-        resolve_occurrence(&history, &key(&c, 1, 1)).unwrap(),
+        resolve_occurrence(&history[..4], &key(&c, 1, 1)).unwrap(),
         Some(key(&c, 3, 0))
     );
+    for source in [key(&c, 1, 1), key(&c, 2, 0), key(&c, 3, 0)] {
+        assert_eq!(resolve_occurrence(&history, &source).unwrap(), None);
+    }
     assert_eq!(resolve_occurrence(&history, &key(&c, 1, 2)).unwrap(), None);
     assert_eq!(resolve_occurrence(&history, &key(&c, 2, 1)).unwrap(), None);
     assert_eq!(
@@ -418,7 +456,17 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
     let active = engine
         .expand_history(&history, date("2024-01-01").0, 1)
         .unwrap();
-    assert_eq!(active.iter().filter(|o| o.key == key(&c, 3, 0)).count(), 1);
+    let before_removal = engine
+        .expand_history(&history[..4], date("2024-01-01").0, 1)
+        .unwrap();
+    assert_eq!(
+        before_removal
+            .iter()
+            .filter(|o| o.key == key(&c, 3, 0))
+            .count(),
+        1
+    );
+    assert!(!active.iter().any(|o| o.key == key(&c, 3, 0)));
     assert!(!active.iter().any(|o| o.key.series_generation == 2));
     assert!(
         active
