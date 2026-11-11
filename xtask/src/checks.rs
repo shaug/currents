@@ -591,7 +591,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("check","privacy")=>crate::quality::privacy(&root()),
         ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
-        ("qualify","native-platform")=>crate::native::qualify(&root()),
+        ("qualify","native-platform")=>crate::native::command(&root(), &args[2..]),
         ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),
         ("qualify","cipher")=>crate::cipher::qualify(),
