@@ -1,0 +1,123 @@
+{
+  "batch": {
+    "decision_digest": "31bf80d2c10e13b3ac5b700b2f55705dadb78b8ddf631cc45e241169e3a5d109",
+    "native_semantics": 1,
+    "operations": [
+      {
+        "kind": "Entry",
+        "value": {
+          "booking_date": "2024-07-02",
+          "date_policy": {
+            "bookkeeping": "Explicit",
+            "conversion": {
+              "kind": "CivilOnly"
+            },
+            "id": "00000000-0000-0000-0000-000000000384",
+            "version": 1
+          },
+          "generated_document": "31bf80d2c10e13b3ac5b700b2f55705dadb78b8ddf631cc45e241169e3a5d109",
+          "key": "recognition/00000000-0000-0000-0000-00000000000a",
+          "postings": [
+            {
+              "native_coefficient": "1000000000000000000",
+              "original": {
+                "account_id": "00000000-0000-0000-0000-000000000002",
+                "amount": {
+                  "coefficient": "1",
+                  "scale": 0,
+                  "unit_id": "00000000-0000-0000-0000-000000000001"
+                },
+                "effective": {
+                  "civil": "2024-06-30",
+                  "kind": "Date",
+                  "original_text": "2024-06-30"
+                },
+                "id": "00000000-0000-0000-0000-0000000007da",
+                "posting": {
+                  "civil": "2024-07-02",
+                  "kind": "Date",
+                  "original_text": "2024-07-02"
+                }
+              },
+              "path": "Currents:A00000000000000000000000000000002",
+              "unit": {
+                "exponent": 2,
+                "id": "00000000-0000-0000-0000-000000000001",
+                "kind": "Currency",
+                "native_code": "USD"
+              }
+            },
+            {
+              "native_coefficient": "-1000000000000000000",
+              "original": {
+                "account_id": "00000000-0000-0000-0000-000000000003",
+                "amount": {
+                  "coefficient": "-1",
+                  "scale": 0,
+                  "unit_id": "00000000-0000-0000-0000-000000000001"
+                },
+                "effective": {
+                  "civil": "2024-06-30",
+                  "kind": "Date",
+                  "original_text": "2024-06-30"
+                },
+                "id": "00000000-0000-0000-0000-000000000bc2",
+                "posting": {
+                  "civil": "2024-07-02",
+                  "kind": "Date",
+                  "original_text": "2024-07-02"
+                }
+              },
+              "path": "Currents:A00000000000000000000000000000003",
+              "unit": {
+                "exponent": 2,
+                "id": "00000000-0000-0000-0000-000000000001",
+                "kind": "Currency",
+                "native_code": "USD"
+              }
+            }
+          ],
+          "recognition_id": "00000000-0000-0000-0000-00000000000a",
+          "reverses": null,
+          "value_date": "2024-06-30"
+        }
+      }
+    ],
+    "preconditions": {
+      "domain_digest": "b97fdcd60a459525bf8dda92c2266412251d8133f8e51d6b1172ed3b7a74fdcc",
+      "native_head": {
+        "checkpoint": "074d4d878e944c2047670688911e473bd7c855f8a283357d80e1386fb567f9a0",
+        "semantics_version": 1
+      },
+      "through": "6"
+    },
+    "result_expectations": {
+      "financial_entry_count": "1",
+      "native_operation_count": "1"
+    },
+    "schema_version": 1
+  },
+  "manifest": {
+    "decision_digest": "31bf80d2c10e13b3ac5b700b2f55705dadb78b8ddf631cc45e241169e3a5d109",
+    "id": "00000000-0000-0000-0000-0000000003e7",
+    "instructions": {
+      "byte_count": "1549",
+      "digest": "1d5756c5ae8a6290d11842fd47bde943f7ea08c62a9c06a1682bf78dfa6078ab",
+      "media_type": "application/vnd.currents.frozen-operations-v1+json"
+    },
+    "native_semantics": 1,
+    "preconditions": {
+      "domain_digest": "b97fdcd60a459525bf8dda92c2266412251d8133f8e51d6b1172ed3b7a74fdcc",
+      "native_head": {
+        "checkpoint": "074d4d878e944c2047670688911e473bd7c855f8a283357d80e1386fb567f9a0",
+        "semantics_version": 1
+      },
+      "through": "6"
+    },
+    "result_expectations": {
+      "financial_entry_count": "1",
+      "native_operation_count": "1"
+    },
+    "schema_version": 1
+  }
+}

@@ -355,6 +355,40 @@ fn ticket(name: &str) -> Result<Value> {
     if name == "CUR-047" {
         return crate::readiness::qualify();
     }
+    if name == "CUR-009" {
+        let assertions = ["cur_009_1", "cur_009_2", "cur_009_3", "cur_009_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-accounting",
+            "--test",
+            "cur_009",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR009 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-accounting",
+            "--test",
+            "cur_009",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR009 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic exact C05 freezing; not production activation or adoption","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
+        );
+    }
     if name == "CUR-008" {
         let assertions = [
             "chain_tamper",
