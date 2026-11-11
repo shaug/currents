@@ -7341,6 +7341,10 @@
                           "pattern": "^(0|[1-9][0-9]{0,19})$",
                           "type": "string"
                         },
+                        "not_before": {
+                          "format": "date",
+                          "type": "string"
+                        },
                         "prior_generation": {
                           "maximum": 4294967295,
                           "minimum": 0,
@@ -7427,6 +7431,7 @@
                         "prior_version",
                         "prior_generation",
                         "from_ordinal",
+                        "not_before",
                         "remaps"
                       ],
                       "type": "object"
@@ -10312,6 +10317,10 @@
                                     "pattern": "^(0|[1-9][0-9]{0,19})$",
                                     "type": "string"
                                   },
+                                  "not_before": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
                                   "prior_generation": {
                                     "maximum": 4294967295,
                                     "minimum": 0,
@@ -10398,6 +10407,7 @@
                                   "prior_version",
                                   "prior_generation",
                                   "from_ordinal",
+                                  "not_before",
                                   "remaps"
                                 ],
                                 "type": "object"
@@ -18985,6 +18995,10 @@
                               "pattern": "^(0|[1-9][0-9]{0,19})$",
                               "type": "string"
                             },
+                            "not_before": {
+                              "format": "date",
+                              "type": "string"
+                            },
                             "prior_generation": {
                               "maximum": 4294967295,
                               "minimum": 0,
@@ -19071,6 +19085,7 @@
                             "prior_version",
                             "prior_generation",
                             "from_ordinal",
+                            "not_before",
                             "remaps"
                           ],
                           "type": "object"
@@ -21830,6 +21845,10 @@
                                         "pattern": "^(0|[1-9][0-9]{0,19})$",
                                         "type": "string"
                                       },
+                                      "not_before": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
                                       "prior_generation": {
                                         "maximum": 4294967295,
                                         "minimum": 0,
@@ -21916,6 +21935,7 @@
                                       "prior_version",
                                       "prior_generation",
                                       "from_ordinal",
+                                      "not_before",
                                       "remaps"
                                     ],
                                     "type": "object"
@@ -32448,6 +32468,10 @@
                                 "pattern": "^(0|[1-9][0-9]{0,19})$",
                                 "type": "string"
                               },
+                              "not_before": {
+                                "format": "date",
+                                "type": "string"
+                              },
                               "prior_generation": {
                                 "maximum": 4294967295,
                                 "minimum": 0,
@@ -32534,6 +32558,7 @@
                               "prior_version",
                               "prior_generation",
                               "from_ordinal",
+                              "not_before",
                               "remaps"
                             ],
                             "type": "object"
@@ -35419,6 +35444,10 @@
                                           "pattern": "^(0|[1-9][0-9]{0,19})$",
                                           "type": "string"
                                         },
+                                        "not_before": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
                                         "prior_generation": {
                                           "maximum": 4294967295,
                                           "minimum": 0,
@@ -35505,6 +35534,7 @@
                                         "prior_version",
                                         "prior_generation",
                                         "from_ordinal",
+                                        "not_before",
                                         "remaps"
                                       ],
                                       "type": "object"
@@ -43866,6 +43896,10 @@
                                 "pattern": "^(0|[1-9][0-9]{0,19})$",
                                 "type": "string"
                               },
+                              "not_before": {
+                                "format": "date",
+                                "type": "string"
+                              },
                               "prior_generation": {
                                 "maximum": 4294967295,
                                 "minimum": 0,
@@ -43952,6 +43986,7 @@
                               "prior_version",
                               "prior_generation",
                               "from_ordinal",
+                              "not_before",
                               "remaps"
                             ],
                             "type": "object"
@@ -46837,6 +46872,10 @@
                                           "pattern": "^(0|[1-9][0-9]{0,19})$",
                                           "type": "string"
                                         },
+                                        "not_before": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
                                         "prior_generation": {
                                           "maximum": 4294967295,
                                           "minimum": 0,
@@ -46923,6 +46962,7 @@
                                         "prior_version",
                                         "prior_generation",
                                         "from_ordinal",
+                                        "not_before",
                                         "remaps"
                                       ],
                                       "type": "object"
@@ -55536,6 +55576,10 @@
                                         "pattern": "^(0|[1-9][0-9]{0,19})$",
                                         "type": "string"
                                       },
+                                      "not_before": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
                                       "prior_generation": {
                                         "maximum": 4294967295,
                                         "minimum": 0,
@@ -55622,6 +55666,7 @@
                                       "prior_version",
                                       "prior_generation",
                                       "from_ordinal",
+                                      "not_before",
                                       "remaps"
                                     ],
                                     "type": "object"
@@ -64419,6 +64464,10 @@
                                       "pattern": "^(0|[1-9][0-9]{0,19})$",
                                       "type": "string"
                                     },
+                                    "not_before": {
+                                      "format": "date",
+                                      "type": "string"
+                                    },
                                     "prior_generation": {
                                       "maximum": 4294967295,
                                       "minimum": 0,
@@ -64505,6 +64554,7 @@
                                     "prior_version",
                                     "prior_generation",
                                     "from_ordinal",
+                                    "not_before",
                                     "remaps"
                                   ],
                                   "type": "object"
@@ -67264,6 +67314,10 @@
                                                 "pattern": "^(0|[1-9][0-9]{0,19})$",
                                                 "type": "string"
                                               },
+                                              "not_before": {
+                                                "format": "date",
+                                                "type": "string"
+                                              },
                                               "prior_generation": {
                                                 "maximum": 4294967295,
                                                 "minimum": 0,
@@ -67350,6 +67404,7 @@
                                               "prior_version",
                                               "prior_generation",
                                               "from_ordinal",
+                                              "not_before",
                                               "remaps"
                                             ],
                                             "type": "object"
@@ -76605,6 +76660,10 @@
                                           "pattern": "^(0|[1-9][0-9]{0,19})$",
                                           "type": "string"
                                         },
+                                        "not_before": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
                                         "prior_generation": {
                                           "maximum": 4294967295,
                                           "minimum": 0,
@@ -76691,6 +76750,7 @@
                                         "prior_version",
                                         "prior_generation",
                                         "from_ordinal",
+                                        "not_before",
                                         "remaps"
                                       ],
                                       "type": "object"
@@ -79450,6 +79510,10 @@
                                                     "pattern": "^(0|[1-9][0-9]{0,19})$",
                                                     "type": "string"
                                                   },
+                                                  "not_before": {
+                                                    "format": "date",
+                                                    "type": "string"
+                                                  },
                                                   "prior_generation": {
                                                     "maximum": 4294967295,
                                                     "minimum": 0,
@@ -79536,6 +79600,7 @@
                                                   "prior_version",
                                                   "prior_generation",
                                                   "from_ordinal",
+                                                  "not_before",
                                                   "remaps"
                                                 ],
                                                 "type": "object"

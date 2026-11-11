@@ -58,7 +58,27 @@ from_ordinal retires every prior-generation key at or after that ordinal unless
 an explicit one-to-one old→new mapping is supplied. An explicit absent target
 also records retirement. A mapping cannot name a different commitment, an
 incorrect generation, a nonexistent ordinal, an ordinal before the cutoff, or a
-duplicate target. The new series starts no earlier than the old cutoff date.
+duplicate target. Its required not_before civil date records the exact inclusive
+predecessor boundary, calculated as the maximum of:
+
+- the previous generation's not_before, when present;
+- the nominal previous-series date at from_ordinal;
+- one civil day after each still-active previous-series exception before
+  from_ordinal, including date-shifted exceptions that survive the transition.
+
+Skipped, canceled, out-of-bounds and retired exceptions do not raise the bound.
+If a surviving exception is on the maximum CivilDate, no successor date exists
+and the transition fails with PrecisionOrOverflow; the bound never wraps or
+saturates. A bound at the maximum date itself remains representable. Calendar
+expansion still rejects a requested horizon extending beyond the date range.
+The caller supplies this exact field; admission verifies it from the previous
+revision without looking up storage. It must not be loosened or tightened
+arbitrarily. The new series starts at or after not_before. Every later
+same-generation revision also enforces that lower start bound while retaining
+the entire supersession unchanged. Safe backward start/date edits within the
+boundary preserve keys, and earlier anchors can leave out-of-bounds ordinals
+inactive. A subsequent transition inherits the bound even in that case.
+
 Old revisions are retained, not overwritten in authoritative history. Later
 same-generation revisions preserve their generation transition unchanged.
 
@@ -79,6 +99,11 @@ algorithms. Saved snapshots and results retain their original interpretation.
 cargo test --locked -p currents-planning --test cur_025 covers the four named
 portable assertions. cargo test --locked -p currents-service --test cur_025
 covers actual synthetic C03 persistence, retained TZif content and reopen without
-financial postings. cargo xtask ticket CUR-025 requires both suites and reports
+financial postings. The occurrence-identity assertion and the existing single
+service assertion also cover unsafe backdate rejection, safe backwards edits,
+surviving shifted exceptions, inherited boundaries over successive transitions,
+immutable saved expansions and upper civil-date bounds. The non-null
+fixtures/planning/calendar/supersession.json golden retains the required boundary;
+missing boundary fields are rejected rather than inferred from later state. cargo xtask ticket CUR-025 requires both suites and reports
 the executed assertions/output digests. Schema fixtures remain structural
 synthetic vectors, not usable household commitments or production qualification.

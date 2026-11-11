@@ -334,6 +334,7 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
         prior_version: 2,
         prior_generation: 1,
         from_ordinal: CommitSeq(1),
+        not_before: date("2024-01-03"),
         remaps: vec![
             OccurrenceRemapV1 {
                 old: key(&c, 1, 1),
@@ -354,6 +355,7 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
         prior_version: 3,
         prior_generation: 2,
         from_ordinal: CommitSeq(0),
+        not_before: date("2024-01-03"),
         remaps: vec![
             OccurrenceRemapV1 {
                 old: key(&c, 2, 0),
@@ -519,4 +521,198 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
         snapshot
     );
     store.close().await.unwrap();
+    durable_boundary_regressions(
+        &mut f,
+        &path,
+        &empty_native,
+        &metadata_native,
+        &calendar_data,
+        &c,
+    )
+    .await;
+}
+
+// Uses actual C03 commands and retained C02/C03 history, not an in-memory save.
+async fn durable_boundary_regressions(
+    f: &mut Fixture,
+    path: &Path,
+    empty_native: &NativeHead,
+    metadata_native: &NativeHead,
+    calendar_data: &ForecastCalendarDataV1,
+    template: &CommitmentV1,
+) {
+    for (case, initial, shifted, transition, lower, unsafe_date) in [
+        (
+            0,
+            "2024-01-01",
+            "2024-01-15",
+            "2024-01-20",
+            "2024-01-16",
+            "2024-01-15",
+        ),
+        (
+            1,
+            "9999-11-01",
+            "9999-11-15",
+            "9999-11-20",
+            "9999-11-16",
+            "9999-11-15",
+        ),
+    ] {
+        let mut first = template.clone();
+        first.id = CommitmentId(id(80_000 + case).0);
+        first.version = 1;
+        first.series_generation = 1;
+        first.supersession = None;
+        first.start = date(initial);
+        first.due_date = first.start;
+        first.end = None;
+        first.recurrence.cadence = RecurrenceCadenceV1::Daily;
+        first.recurrence.interval = 1;
+        first.exceptions = vec![PlanningExceptionV1 {
+            ordinal: CommitSeq(0),
+            action: PlanningExceptionActionV1::Replace,
+            due_date: Some(date(shifted)),
+            legs: vec![],
+            reason: "Synthetic retained pre-cutoff shift".into(),
+        }];
+        let mut second = first.clone();
+        second.version = 2;
+        second.series_generation = 2;
+        second.recurrence.cadence = RecurrenceCadenceV1::Weekly;
+        second.start = date(transition);
+        second.due_date = second.start;
+        second.exceptions.clear();
+        second.supersession = Some(CommitmentSupersessionV1 {
+            prior_version: 1,
+            prior_generation: 1,
+            from_ordinal: CommitSeq(10),
+            not_before: date(lower),
+            remaps: vec![],
+        });
+        let mut safe = second.clone();
+        safe.version += 1;
+        safe.start = date(lower);
+        safe.due_date = safe.start;
+        let mut earlier_anchor = safe.clone();
+        earlier_anchor.version += 1;
+        earlier_anchor.due_date = first.due_date;
+        let mut third = earlier_anchor.clone();
+        third.version += 1;
+        third.series_generation += 1;
+        third.recurrence.cadence = RecurrenceCadenceV1::Daily;
+        third.recurrence.interval = 2;
+        third.due_date = third.start;
+        third.supersession = Some(CommitmentSupersessionV1 {
+            prior_version: earlier_anchor.version,
+            prior_generation: earlier_anchor.series_generation,
+            from_ordinal: CommitSeq(0),
+            not_before: date(lower),
+            remaps: vec![],
+        });
+        let expected = [first.clone(), second, safe, earlier_anchor, third];
+        let mut saved = None;
+        // A final read-only iteration also tests unsafe editing after transition 2.
+        for i in 0..=expected.len() {
+            let store = open(path).await;
+            let (state, all_history) = state_at_tip(&store, empty_native).await;
+            let history: Vec<_> = all_history
+                .into_iter()
+                .filter(|c| c.id == first.id)
+                .collect();
+            assert_eq!(history, expected[..i]);
+            assert_eq!(
+                &store.writer().audited_prefix().await.unwrap().native_head,
+                metadata_native
+            );
+            let bytes = content(&store, state.through, calendar_data.timezone_data.digest).await;
+            let engine =
+                CommitmentEngine::new(CalendarEngine::from_saved(calendar_data, &bytes).unwrap());
+            if i >= 2 {
+                let original = engine
+                    .expand_history(&history[..2], first.start.0, 1)
+                    .unwrap();
+                if let Some(saved) = &saved {
+                    assert_eq!(&original, saved);
+                } else {
+                    saved = Some(original);
+                }
+                let active = engine.expand_history(&history, first.start.0, 1).unwrap();
+                assert_eq!(
+                    resolve_occurrence(&history, &key(&first, 1, 0)).unwrap(),
+                    Some(key(&first, 1, 0))
+                );
+                assert!(
+                    active
+                        .iter()
+                        .any(|o| o.key == key(&first, 1, 0) && o.due_date == date(shifted))
+                );
+                assert!(
+                    active
+                        .iter()
+                        .filter(|o| o.key.series_generation > 1)
+                        .all(|o| o.due_date.0 >= date(lower).0)
+                );
+                if i == 3 {
+                    let moved = active.iter().find(|o| o.key == key(&first, 2, 0)).unwrap();
+                    assert_eq!(moved.due_date, date(lower));
+                    assert_eq!(moved.version, 3);
+                }
+                if i == 5 {
+                    assert!(!active.iter().any(|o| o.key.series_generation == 2));
+                }
+            }
+            let head = state.through;
+            f.host.reconnect();
+            f.service = Service::new(
+                store,
+                DatasetId(id(1000).0),
+                InstanceId(id(999).0),
+                ServiceProfile::Synthetic,
+                f.host.clone(),
+                Arc::new(PlanningFixture { state, engine }),
+                f.clock.clone(),
+            )
+            .await
+            .unwrap();
+            f.service.recover().await.unwrap();
+            if i >= 2 {
+                let mut unsafe_edit = history.last().unwrap().clone();
+                unsafe_edit.version += 1;
+                unsafe_edit.start = date(unsafe_date);
+                unsafe_edit.due_date = unsafe_edit.start;
+                let mut body = f.body(90_000 + case * 100 + i as u128);
+                body.expected_head = head;
+                body.operation = OperationV1::SetCommitment(unsafe_edit.clone());
+                // C03 prepares the decision during mandatory preview. An invalid
+                // plan must fail there, before any approval or submit exists.
+                assert_eq!(
+                    f.service.preview(f.ctx(), body).unwrap_err().class,
+                    ErrorClass::InvalidReference,
+                    "C03 must reject unsafe boundary edit after durable reopen, case={case}, revision={i}"
+                );
+                assert_eq!(f.prefix().await.through, head);
+                let mut invalid_history = history.clone();
+                invalid_history.push(unsafe_edit);
+                let engine = CommitmentEngine::new(
+                    CalendarEngine::from_saved(calendar_data, &bytes).unwrap(),
+                );
+                assert!(
+                    engine
+                        .expand_history(&invalid_history, first.start.0, 1)
+                        .is_err()
+                );
+                assert!(resolve_occurrence(&invalid_history, &key(&first, 1, 0)).is_err());
+            }
+            if let Some(revision) = expected.get(i) {
+                let mut body = f.body(100_000 + case * 100 + i as u128);
+                body.expected_head = head;
+                body.operation = OperationV1::SetCommitment(revision.clone());
+                let auth = f.approve(&body);
+                let result = f.service.submit(f.ctx(), body, auth).await.unwrap();
+                assert_eq!(result.state, CommandState::Committed);
+            }
+            f.service.close().await.unwrap();
+        }
+    }
 }

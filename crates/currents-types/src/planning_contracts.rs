@@ -99,7 +99,7 @@ dto!(OccurrenceKeyV1 {
     ordinal: CommitSeq
 });
 dto!(OccurrenceRemapV1 { old:OccurrenceKeyV1, new:Option<OccurrenceKeyV1> });
-dto!(CommitmentSupersessionV1 { prior_version:u32, prior_generation:u32, from_ordinal:CommitSeq, remaps:Vec<OccurrenceRemapV1> });
+dto!(CommitmentSupersessionV1 { prior_version:u32, prior_generation:u32, from_ordinal:CommitSeq, not_before:CivilDateV1, remaps:Vec<OccurrenceRemapV1> });
 dto!(OccurrenceV1 { key:OccurrenceKeyV1, version:u32, legs:Vec<PlannedLegV1>, due_date:CivilDateV1, settlement_range:SettlementRangeV1 });
 choices!(StartingInclusionV1 {
     IncludedInStartingBalance,

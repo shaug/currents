@@ -167,6 +167,15 @@ fn validate_history(history: &[CommitmentV1]) -> Result<(), EngineError> {
     Ok(())
 }
 fn validate_revision(prior: Option<&CommitmentV1>, c: &CommitmentV1) -> Result<(), EngineError> {
+    // Every revision retains its generation's established predecessor boundary.
+    // All active nominal and exception dates are filtered by start, so checking
+    // the bound here also protects expansion/resolution of retained histories.
+    if c.supersession
+        .as_ref()
+        .is_some_and(|s| c.start.0 < s.not_before.0)
+    {
+        return Err(EngineError::invalid());
+    }
     let Some(p) = prior else {
         return if c.version == 1 && c.series_generation == 1 && c.supersession.is_none() {
             Ok(())
@@ -202,16 +211,23 @@ fn validate_revision(prior: Option<&CommitmentV1>, c: &CommitmentV1) -> Result<(
     {
         return Err(EngineError::invalid());
     }
-    let cutoff = nominal(p, s.from_ordinal.0)?.ok_or_else(EngineError::invalid)?;
-    if c.start.0 < cutoff || c.due_date.0 < c.start.0 {
-        return Err(EngineError::invalid());
+    let mut not_before = nominal(p, s.from_ordinal.0)?.ok_or_else(EngineError::invalid)?;
+    if let Some(inherited) = &p.supersession {
+        not_before = not_before.max(inherited.not_before.0);
     }
+    // Nominal pre-cutoff dates are strictly before the nominal cutoff. An active
+    // date-shift exception can survive later, and must be strictly before every
+    // new expectation. Carry that fact explicitly, even when a later generation
+    // has an earlier anchor or retires all of its immediate predecessor's keys.
     for exception in &p.exceptions {
         if exception.ordinal < s.from_ordinal
-            && occurrence_date(p, exception.ordinal.0)?.is_some_and(|d| d >= c.start.0)
+            && let Some(date) = occurrence_date(p, exception.ordinal.0)?
         {
-            return Err(EngineError::invalid());
+            not_before = not_before.max(date.next_day().ok_or_else(EngineError::precision)?);
         }
+    }
+    if s.not_before.0 != not_before || c.due_date.0 < c.start.0 {
+        return Err(EngineError::invalid());
     }
     let mut sources = BTreeSet::new();
     let mut targets = BTreeSet::new();
