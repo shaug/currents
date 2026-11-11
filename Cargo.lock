@@ -600,6 +600,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "time",
+ "tokio",
  "unicode-normalization",
 ]
 

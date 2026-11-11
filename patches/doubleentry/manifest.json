@@ -2004,9 +2004,10 @@
     },
     "src/store/sql/write/authority.rs": {
       "upstream_sha256": null,
-      "patched_sha256": "6d5f74e9aff4fc0241ba2b8259c2d41ff2a68648fbf0ddfdb134a11025ff47a4"
+      "patched_sha256": "b65ea83a2dabb4e95c47c8d69eceaf31444a86db61b0a16f007421c49785caa2"
     }
   },
   "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544",
-  "authority_patch_sha256": "3c3ce9d852f04e1fdf40c4e7e18f7d72fb834d947729e121720d45c1852b6668"
+  "authority_patch_sha256": "3c3ce9d852f04e1fdf40c4e7e18f7d72fb834d947729e121720d45c1852b6668",
+  "multi_operation_patch_sha256": "3a271ba4fd08b83557b2ec2218bd41818ef33b5ceb6a9c74a736857da29398b9"
 }
