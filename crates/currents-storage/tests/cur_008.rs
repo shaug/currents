@@ -279,7 +279,10 @@ async fn prefix_visibility() {
             version: 1,
         });
     }
-    for unsupported in [recognition, commitment] {
+    for (unsupported, expected) in [
+        (recognition, ErrorClass::InvalidReference),
+        (commitment, ErrorClass::UnsupportedVersion),
+    ] {
         let err = store
             .writer()
             .append(HistoryAppend {
@@ -295,9 +298,9 @@ async fn prefix_visibility() {
         assert!(matches!(
             err,
             currents_storage::CommitFailure::DefinitelyRolledBack(EngineError {
-                class: ErrorClass::UnsupportedVersion,
+                class,
                 ..
-            })
+            }) if class == expected
         ));
     }
     let mut decision = second.decisions[0].clone();

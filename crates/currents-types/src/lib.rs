@@ -17,3 +17,6 @@ pub use contracts::*;
 
 pub mod planning_contracts;
 pub use planning_contracts::*;
+
+pub mod accounting;
+pub use accounting::*;

@@ -228,7 +228,7 @@ dto!(ScenarioV1 { id:RecordId, version:u32, basis:ReadBasis, commitments:Vec<Com
 dto!(ForecastPointV1 { account_id:AccountId, at:TemporalValue, amount:SourceValue<Amount>, uncertainty:Vec<String> });
 dto!(DecisionEnvelopeV1 { id:RecordId, commit:CommitSeq, item_position:u32, decision_type:DecisionKind, schema_version:u32, actor:RecordId, authority:AuthorityKind, grant_id:Option<GrantId>, command_id:CommandId, command_digest:Digest, references:Vec<RecordId>, recorded_time:RecordedInstant, adopted_result:Vec<RecordId>, policy:PolicyReferenceV1, corrections:Vec<RecordId>, supersedes:Vec<RecordId> });
 tagged!(AuthoritativeRecordV1 {
- Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1)
+ DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1)
 });
 choices!(CommandState {
     Committed,
@@ -252,6 +252,7 @@ dto!(DecisionPlan { records:Vec<AuthoritativeRecordV1>, invalidations:Vec<Record
 /// A nonauthoritative in-memory replay index. It deliberately has no wire/history serialization.
 #[derive(Clone, Debug, Default)]
 pub struct DomainState {
+    pub accounting: Option<AccountingIndexV1>,
     pub records: BTreeMap<RecordId, AuthoritativeRecordV1>,
     pub through: CommitSeq,
 }

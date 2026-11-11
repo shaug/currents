@@ -10,5 +10,17 @@
     "function": "checked_ratio",
     "attribute": "#[expect(clippy::arithmetic_side_effects, reason = \"CUR-003: bounded BigInt arithmetic; reviewed in docs/lint-allowlist.json\")]",
     "justification": "At most three i128 factors and 10^18; zero denominator rejected before exact BigInt division and narrowing checked."
+  },
+  {
+    "path": "crates/currents-accounting/src/numbers.rs",
+    "function": "half_even",
+    "attribute": "#[expect(clippy::arithmetic_side_effects, reason = \"Bounded BigInt intermediates; C05 exact rational arithmetic\")]",
+    "justification": "Two bounded i128 inputs, positive denominator, checked output conversion; exact signed remainder and half-even tie."
+  },
+  {
+    "path": "crates/currents-accounting/src/numbers.rs",
+    "function": "largest_remainder",
+    "attribute": "#[expect(clippy::arithmetic_side_effects, reason = \"Bounded nonnegative BigInt products and sums; C05 exact allocation\")]",
+    "justification": "At most20000 nonnegative i128 weights and one i128 total; bounded widened product, nonzero divisor, checked outputs and stable-ID ordering."
   }
 ]

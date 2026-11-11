@@ -28,6 +28,8 @@ pub(crate) struct Metadata {
 }
 const RECORDS: &[&str] = &[
     "DatasetPolicy",
+    "DateConversionPolicy",
+    "FrozenAccountingManifest",
     "UnitCatalog",
     "AccountComponent",
     "AccountAlias",
@@ -218,6 +220,22 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
     m.values(v);
     // Matching the enum, not only strings, makes a newly added variant a compile failure.
     match record {
+        AuthoritativeRecordV1::DateConversionPolicy(p) => {
+            if p.version == 0 {
+                return Err(EngineError::version());
+            }
+        }
+        AuthoritativeRecordV1::FrozenAccountingManifest(manifest) => {
+            if manifest.schema_version != 1
+                || manifest.native_semantics != 1
+                || manifest.instructions.byte_count.0 > 67_108_864
+                || manifest.result_expectations.native_operation_count.0 > 20_000
+            {
+                return Err(EngineError::invalid());
+            }
+            m.content(&v["instructions"])?;
+            m.prefixes.push(manifest.preconditions.through.0);
+        }
         AuthoritativeRecordV1::Dataset(_) => {
             m.reference(&["UnitCatalog"], &v["unit_catalog"], None);
             m.reference(&["Unit"], &v["reporting_currency"], None);
@@ -294,8 +312,11 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
         AuthoritativeRecordV1::Recognition(_) => {
             m.many(&["FinancialLeg"], &v["leg_ids"]);
             m.allocations(&v["evidence_allocations"]);
-            // C02/C08 have not defined an addressable date-policy payload.
-            m.unsupported = true;
+            m.reference(
+                &["DateConversionPolicy"],
+                &v["date_policy"]["id"],
+                v["date_policy"]["version"].as_i64(),
+            );
             for posting in v["postings"].as_array().ok_or_else(EngineError::invalid)? {
                 m.define("Posting", &posting["id"], 0, false);
             }
