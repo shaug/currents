@@ -355,6 +355,40 @@ fn ticket(name: &str) -> Result<Value> {
     if name == "CUR-047" {
         return crate::readiness::qualify();
     }
+    if name == "CUR-007" {
+        let assertions = ["cur_007_1", "cur_007_2", "cur_007_3", "cur_007_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_007",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR007 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_007",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR007 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted multi-operation authority; not service admission or physical power-loss qualification"}),
+        );
+    }
     if name == "CUR-009" {
         let assertions = ["cur_009_1", "cur_009_2", "cur_009_3", "cur_009_4"];
         let list = cargo(&[
