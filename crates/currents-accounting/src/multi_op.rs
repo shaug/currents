@@ -142,6 +142,14 @@ impl ClosureControl {
                     .unwrap_or_else(EngineError::invalid)
             })
     }
+    /// Final rollback-capable boundary. The pause exists only in synthetic builds.
+    pub async fn before_commit(&self) -> Result<(), EngineError> {
+        #[cfg(feature = "synthetic-test-fixtures")]
+        if self.test_fault.load(Ordering::SeqCst) == 5 {
+            self.test_pause().await;
+        }
+        self.check_cancelled()
+    }
     pub fn settle(&self) {
         // Preserve submission evidence even after a lost acknowledgment resolves.
         let mut phase = self.phase.load(Ordering::SeqCst);

@@ -151,6 +151,26 @@ impl Writer {
             .map(|bytes| checked_command(&bytes, command, digest))
             .transpose()
     }
+    /// Trusted service lookup. Authorize the returned scope before comparing the
+    /// caller's digest, so an unauthorized caller cannot probe command identity.
+    pub async fn command_record(
+        &self,
+        command: CommandId,
+    ) -> Result<Option<DomainCommitV1>, EngineError> {
+        let bytes: Option<Vec<u8>> =
+            sqlx::query_scalar("SELECT canonical FROM currents_commits WHERE command_id=?")
+                .bind(command.0.as_bytes().as_slice())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|_| schema::failure())?;
+        bytes
+            .map(|bytes| {
+                let value: DomainCommitV1 =
+                    serde_json::from_slice(&bytes).map_err(|_| schema::failure())?;
+                checked_command(&bytes, command, value.command_result.digest)
+            })
+            .transpose()
+    }
     /// C04 closure execution; C05 supplies the opaque validated instructions.
     pub async fn append_closure(
         &self,
@@ -401,6 +421,7 @@ impl Writer {
                 }
             }
             if let Some((_, control)) = closure {
+                control.before_commit().await?;
                 control.submit_commit()?;
             }
             Ok::<_, EngineError>(commit)
@@ -431,6 +452,9 @@ impl HistoryReader {
         Self { pool }
     }
     pub(crate) async fn audit(&self) -> Result<(), EngineError> {
+        self.audited_tip().await.map(|_| ())
+    }
+    pub(crate) async fn audited_tip(&self) -> Result<Option<DomainCommitV1>, EngineError> {
         let head: i64 = sqlx::query_scalar("SELECT coalesce(max(seq),0) FROM currents_commits")
             .fetch_one(&self.pool)
             .await
@@ -440,8 +464,11 @@ impl HistoryReader {
                 u64::try_from(head).map_err(|_| schema::failure())?,
             ))
             .await?;
-        while stream.next().await?.is_some() {}
-        Ok(())
+        let mut tip = None;
+        while let Some(commit) = stream.next().await? {
+            tip = Some(commit);
+        }
+        Ok(tip)
     }
     /// A fixed database snapshot. Each next() holds at most one bounded commit.
     pub async fn stream_prefix(&self, through: CommitSeq) -> Result<HistoryStream, EngineError> {

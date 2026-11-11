@@ -52,6 +52,7 @@ pub enum ClosureFault {
     PauseAfter600,
     PauseAfter1200,
     LostCommitAcknowledgment,
+    PauseBeforeCommit,
 }
 pub fn fault_control(fault: ClosureFault) -> crate::ClosureControl {
     let control = crate::ClosureControl::default();
@@ -61,6 +62,7 @@ pub fn fault_control(fault: ClosureFault) -> crate::ClosureControl {
             ClosureFault::PauseAfter600 => 2,
             ClosureFault::PauseAfter1200 => 3,
             ClosureFault::LostCommitAcknowledgment => 4,
+            ClosureFault::PauseBeforeCommit => 5,
         },
         std::sync::atomic::Ordering::SeqCst,
     );

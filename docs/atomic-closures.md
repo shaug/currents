@@ -82,3 +82,9 @@ actual synthetic writer transaction's pager at the final chunk: a different
 reader connection would not exercise the writer's allocation failure. This is
 real SQLite database-size exhaustion, not a claim to fill the host filesystem.
 Process kill demonstrates crash recovery, not physical power-loss durability.
+
+CUR010's private typed Writer::commit adapter and admission lifecycle are described
+in [serialized commands](serialized-commands.md). Its final cancellation check has
+an additional synthetic-only pause before COMMIT, after native/domain work, for
+service-level rollback and close-race assertions. Production cancellation and
+COMMIT arbitration remain the same atomic control, with no raw callback.
