@@ -573,14 +573,14 @@ impl Service {
         self.authenticate(&ctx, None)?;
         if self.prefix().is_ok() {
             let store = self.inner.store.read().await;
-            if let Some(commit) = store
+            let commit = store
                 .as_ref()
                 .ok_or_else(|| error(ErrorClass::Locked))?
                 .writer()
                 .command_record(id)
-                .await?
-            {
-                self.authenticate(&ctx, None)?;
+                .await?;
+            self.authenticate(&ctx, None)?;
+            if let Some(commit) = commit {
                 self.inner
                     .host
                     .authorize_result(&ctx, ResultAccess::Committed(&commit))?;
@@ -707,3 +707,6 @@ impl Service {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod lookup_tests;

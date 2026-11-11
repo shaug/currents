@@ -1,7 +1,7 @@
+use super::service_api::*;
 use currents_accounting::AccountingAdapter;
 use currents_cipher::{CipherProfileV1, DatasetKey};
 use currents_protocol::*;
-use currents_service::*;
 use currents_storage::EncryptedStore;
 use currents_types::*;
 use std::{

@@ -3,6 +3,7 @@
 mod support;
 use currents_accounting::test_fixtures::{self, ClosureFault};
 use currents_protocol::*;
+use currents_service as service_api;
 use currents_types::*;
 use std::sync::Arc;
 use support::*;
