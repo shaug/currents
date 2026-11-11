@@ -5786,6 +5786,64 @@
                   ],
                   "type": "object"
                 },
+                "calendar_data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "calendar_version": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "holidays": {
+                      "items": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "maxItems": 16384,
+                      "type": "array"
+                    },
+                    "timezone": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "timezone_data": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "byte_count": {
+                          "maxLength": 20,
+                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                          "type": "string"
+                        },
+                        "digest": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "media_type": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "digest",
+                        "byte_count",
+                        "media_type"
+                      ],
+                      "type": "object"
+                    },
+                    "timezone_data_version": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "timezone",
+                    "timezone_data_version",
+                    "timezone_data",
+                    "calendar_version",
+                    "holidays"
+                  ],
+                  "type": "object"
+                },
                 "calendar_version": {
                   "maximum": 4294967295,
                   "minimum": 0,
@@ -7140,6 +7198,11 @@
                   "minimum": 0,
                   "type": "integer"
                 },
+                "series_generation": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
                 "settlement": {
                   "oneOf": [
                     {
@@ -7268,6 +7331,111 @@
                   "format": "date",
                   "type": "string"
                 },
+                "supersession": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "from_ordinal": {
+                          "maxLength": 20,
+                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                          "type": "string"
+                        },
+                        "prior_generation": {
+                          "maximum": 4294967295,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "prior_version": {
+                          "maximum": 4294967295,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "remaps": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "new": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "commitment_id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "ordinal": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "series_generation": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "commitment_id",
+                                      "series_generation",
+                                      "ordinal"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "old": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "commitment_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "ordinal": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "series_generation": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "commitment_id",
+                                  "series_generation",
+                                  "ordinal"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "old",
+                              "new"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 16384,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "prior_version",
+                        "prior_generation",
+                        "from_ordinal",
+                        "remaps"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "timezone": {
                   "maxLength": 1048576,
                   "type": "string"
@@ -7285,6 +7453,9 @@
               "required": [
                 "id",
                 "version",
+                "series_generation",
+                "calendar_data",
+                "supersession",
                 "kind",
                 "amounts",
                 "legs",
@@ -8583,6 +8754,64 @@
                               "low",
                               "base",
                               "high"
+                            ],
+                            "type": "object"
+                          },
+                          "calendar_data": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "calendar_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "holidays": {
+                                "items": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "timezone": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "timezone_data": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "byte_count": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "digest": {
+                                    "pattern": "^[0-9a-f]{64}$",
+                                    "type": "string"
+                                  },
+                                  "media_type": {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "digest",
+                                  "byte_count",
+                                  "media_type"
+                                ],
+                                "type": "object"
+                              },
+                              "timezone_data_version": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "timezone",
+                              "timezone_data_version",
+                              "timezone_data",
+                              "calendar_version",
+                              "holidays"
                             ],
                             "type": "object"
                           },
@@ -9940,6 +10169,11 @@
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "series_generation": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
                           "settlement": {
                             "oneOf": [
                               {
@@ -10068,6 +10302,111 @@
                             "format": "date",
                             "type": "string"
                           },
+                          "supersession": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from_ordinal": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "prior_generation": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "prior_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "remaps": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "new": {
+                                          "anyOf": [
+                                            {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "commitment_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                },
+                                                "ordinal": {
+                                                  "maxLength": 20,
+                                                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                  "type": "string"
+                                                },
+                                                "series_generation": {
+                                                  "maximum": 4294967295,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                }
+                                              },
+                                              "required": [
+                                                "commitment_id",
+                                                "series_generation",
+                                                "ordinal"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "old": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "commitment_id": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            },
+                                            "ordinal": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "series_generation": {
+                                              "maximum": 4294967295,
+                                              "minimum": 0,
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "commitment_id",
+                                            "series_generation",
+                                            "ordinal"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      },
+                                      "required": [
+                                        "old",
+                                        "new"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 16384,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "prior_version",
+                                  "prior_generation",
+                                  "from_ordinal",
+                                  "remaps"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "timezone": {
                             "maxLength": 1048576,
                             "type": "string"
@@ -10085,6 +10424,9 @@
                         "required": [
                           "id",
                           "version",
+                          "series_generation",
+                          "calendar_data",
+                          "supersession",
                           "kind",
                           "amounts",
                           "legs",
@@ -17088,6 +17430,64 @@
                       ],
                       "type": "object"
                     },
+                    "calendar_data": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "calendar_version": {
+                          "maximum": 4294967295,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "holidays": {
+                          "items": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "maxItems": 16384,
+                          "type": "array"
+                        },
+                        "timezone": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "timezone_data": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "byte_count": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "digest": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "media_type": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "digest",
+                            "byte_count",
+                            "media_type"
+                          ],
+                          "type": "object"
+                        },
+                        "timezone_data_version": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "timezone",
+                        "timezone_data_version",
+                        "timezone_data",
+                        "calendar_version",
+                        "holidays"
+                      ],
+                      "type": "object"
+                    },
                     "calendar_version": {
                       "maximum": 4294967295,
                       "minimum": 0,
@@ -18442,6 +18842,11 @@
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "series_generation": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
                     "settlement": {
                       "oneOf": [
                         {
@@ -18570,6 +18975,111 @@
                       "format": "date",
                       "type": "string"
                     },
+                    "supersession": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from_ordinal": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "prior_generation": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "prior_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "remaps": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "new": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "commitment_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          },
+                                          "ordinal": {
+                                            "maxLength": 20,
+                                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                            "type": "string"
+                                          },
+                                          "series_generation": {
+                                            "maximum": 4294967295,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "commitment_id",
+                                          "series_generation",
+                                          "ordinal"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "old": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "commitment_id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "ordinal": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "series_generation": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "commitment_id",
+                                      "series_generation",
+                                      "ordinal"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "old",
+                                  "new"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 16384,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "prior_version",
+                            "prior_generation",
+                            "from_ordinal",
+                            "remaps"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "timezone": {
                       "maxLength": 1048576,
                       "type": "string"
@@ -18587,6 +19097,9 @@
                   "required": [
                     "id",
                     "version",
+                    "series_generation",
+                    "calendar_data",
+                    "supersession",
                     "kind",
                     "amounts",
                     "legs",
@@ -19759,6 +20272,64 @@
                                   "low",
                                   "base",
                                   "high"
+                                ],
+                                "type": "object"
+                              },
+                              "calendar_data": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "calendar_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "holidays": {
+                                    "items": {
+                                      "format": "date",
+                                      "type": "string"
+                                    },
+                                    "maxItems": 16384,
+                                    "type": "array"
+                                  },
+                                  "timezone": {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  "timezone_data": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "byte_count": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "digest": {
+                                        "pattern": "^[0-9a-f]{64}$",
+                                        "type": "string"
+                                      },
+                                      "media_type": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "digest",
+                                      "byte_count",
+                                      "media_type"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "timezone_data_version": {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "timezone",
+                                  "timezone_data_version",
+                                  "timezone_data",
+                                  "calendar_version",
+                                  "holidays"
                                 ],
                                 "type": "object"
                               },
@@ -21116,6 +21687,11 @@
                                 "minimum": 0,
                                 "type": "integer"
                               },
+                              "series_generation": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
                               "settlement": {
                                 "oneOf": [
                                   {
@@ -21244,6 +21820,111 @@
                                 "format": "date",
                                 "type": "string"
                               },
+                              "supersession": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "from_ordinal": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "prior_generation": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "prior_version": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "remaps": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "new": {
+                                              "anyOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "commitment_id": {
+                                                      "format": "uuid",
+                                                      "type": "string"
+                                                    },
+                                                    "ordinal": {
+                                                      "maxLength": 20,
+                                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                      "type": "string"
+                                                    },
+                                                    "series_generation": {
+                                                      "maximum": 4294967295,
+                                                      "minimum": 0,
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "commitment_id",
+                                                    "series_generation",
+                                                    "ordinal"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "old": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "commitment_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                },
+                                                "ordinal": {
+                                                  "maxLength": 20,
+                                                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                  "type": "string"
+                                                },
+                                                "series_generation": {
+                                                  "maximum": 4294967295,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                }
+                                              },
+                                              "required": [
+                                                "commitment_id",
+                                                "series_generation",
+                                                "ordinal"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "old",
+                                            "new"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "prior_version",
+                                      "prior_generation",
+                                      "from_ordinal",
+                                      "remaps"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "timezone": {
                                 "maxLength": 1048576,
                                 "type": "string"
@@ -21261,6 +21942,9 @@
                             "required": [
                               "id",
                               "version",
+                              "series_generation",
+                              "calendar_data",
+                              "supersession",
                               "kind",
                               "amounts",
                               "legs",
@@ -30209,6 +30893,64 @@
                         ],
                         "type": "object"
                       },
+                      "calendar_data": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "calendar_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "holidays": {
+                            "items": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "timezone": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          "timezone_data": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "byte_count": {
+                                "maxLength": 20,
+                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                "type": "string"
+                              },
+                              "digest": {
+                                "pattern": "^[0-9a-f]{64}$",
+                                "type": "string"
+                              },
+                              "media_type": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "digest",
+                              "byte_count",
+                              "media_type"
+                            ],
+                            "type": "object"
+                          },
+                          "timezone_data_version": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "timezone",
+                          "timezone_data_version",
+                          "timezone_data",
+                          "calendar_version",
+                          "holidays"
+                        ],
+                        "type": "object"
+                      },
                       "calendar_version": {
                         "maximum": 4294967295,
                         "minimum": 0,
@@ -31563,6 +32305,11 @@
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "series_generation": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
                       "settlement": {
                         "oneOf": [
                           {
@@ -31691,6 +32438,111 @@
                         "format": "date",
                         "type": "string"
                       },
+                      "supersession": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "from_ordinal": {
+                                "maxLength": 20,
+                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                "type": "string"
+                              },
+                              "prior_generation": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "prior_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "remaps": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "new": {
+                                      "anyOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "commitment_id": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            },
+                                            "ordinal": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "series_generation": {
+                                              "maximum": 4294967295,
+                                              "minimum": 0,
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "commitment_id",
+                                            "series_generation",
+                                            "ordinal"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "old": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "commitment_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "ordinal": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "series_generation": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "commitment_id",
+                                        "series_generation",
+                                        "ordinal"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "old",
+                                    "new"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "prior_version",
+                              "prior_generation",
+                              "from_ordinal",
+                              "remaps"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "timezone": {
                         "maxLength": 1048576,
                         "type": "string"
@@ -31708,6 +32560,9 @@
                     "required": [
                       "id",
                       "version",
+                      "series_generation",
+                      "calendar_data",
+                      "supersession",
                       "kind",
                       "amounts",
                       "legs",
@@ -33006,6 +33861,64 @@
                                     "low",
                                     "base",
                                     "high"
+                                  ],
+                                  "type": "object"
+                                },
+                                "calendar_data": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "calendar_version": {
+                                      "maximum": 4294967295,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "holidays": {
+                                      "items": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "timezone": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    "timezone_data": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "byte_count": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "digest": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "type": "string"
+                                        },
+                                        "media_type": {
+                                          "maxLength": 1048576,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "digest",
+                                        "byte_count",
+                                        "media_type"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "timezone_data_version": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timezone",
+                                    "timezone_data_version",
+                                    "timezone_data",
+                                    "calendar_version",
+                                    "holidays"
                                   ],
                                   "type": "object"
                                 },
@@ -34363,6 +35276,11 @@
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "series_generation": {
+                                  "maximum": 4294967295,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
                                 "settlement": {
                                   "oneOf": [
                                     {
@@ -34491,6 +35409,111 @@
                                   "format": "date",
                                   "type": "string"
                                 },
+                                "supersession": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "from_ordinal": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "prior_generation": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "prior_version": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "remaps": {
+                                          "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "new": {
+                                                "anyOf": [
+                                                  {
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                      "commitment_id": {
+                                                        "format": "uuid",
+                                                        "type": "string"
+                                                      },
+                                                      "ordinal": {
+                                                        "maxLength": 20,
+                                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                        "type": "string"
+                                                      },
+                                                      "series_generation": {
+                                                        "maximum": 4294967295,
+                                                        "minimum": 0,
+                                                        "type": "integer"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "commitment_id",
+                                                      "series_generation",
+                                                      "ordinal"
+                                                    ],
+                                                    "type": "object"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "old": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "commitment_id": {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  "ordinal": {
+                                                    "maxLength": 20,
+                                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                    "type": "string"
+                                                  },
+                                                  "series_generation": {
+                                                    "maximum": 4294967295,
+                                                    "minimum": 0,
+                                                    "type": "integer"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "commitment_id",
+                                                  "series_generation",
+                                                  "ordinal"
+                                                ],
+                                                "type": "object"
+                                              }
+                                            },
+                                            "required": [
+                                              "old",
+                                              "new"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 16384,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "prior_version",
+                                        "prior_generation",
+                                        "from_ordinal",
+                                        "remaps"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "timezone": {
                                   "maxLength": 1048576,
                                   "type": "string"
@@ -34508,6 +35531,9 @@
                               "required": [
                                 "id",
                                 "version",
+                                "series_generation",
+                                "calendar_data",
+                                "supersession",
                                 "kind",
                                 "amounts",
                                 "legs",
@@ -41285,6 +42311,64 @@
                         ],
                         "type": "object"
                       },
+                      "calendar_data": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "calendar_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "holidays": {
+                            "items": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "timezone": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          "timezone_data": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "byte_count": {
+                                "maxLength": 20,
+                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                "type": "string"
+                              },
+                              "digest": {
+                                "pattern": "^[0-9a-f]{64}$",
+                                "type": "string"
+                              },
+                              "media_type": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "digest",
+                              "byte_count",
+                              "media_type"
+                            ],
+                            "type": "object"
+                          },
+                          "timezone_data_version": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "timezone",
+                          "timezone_data_version",
+                          "timezone_data",
+                          "calendar_version",
+                          "holidays"
+                        ],
+                        "type": "object"
+                      },
                       "calendar_version": {
                         "maximum": 4294967295,
                         "minimum": 0,
@@ -42639,6 +43723,11 @@
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "series_generation": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
                       "settlement": {
                         "oneOf": [
                           {
@@ -42767,6 +43856,111 @@
                         "format": "date",
                         "type": "string"
                       },
+                      "supersession": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "from_ordinal": {
+                                "maxLength": 20,
+                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                "type": "string"
+                              },
+                              "prior_generation": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "prior_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "remaps": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "new": {
+                                      "anyOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "commitment_id": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            },
+                                            "ordinal": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "series_generation": {
+                                              "maximum": 4294967295,
+                                              "minimum": 0,
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "commitment_id",
+                                            "series_generation",
+                                            "ordinal"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "old": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "commitment_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "ordinal": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "series_generation": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "commitment_id",
+                                        "series_generation",
+                                        "ordinal"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "old",
+                                    "new"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "prior_version",
+                              "prior_generation",
+                              "from_ordinal",
+                              "remaps"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "timezone": {
                         "maxLength": 1048576,
                         "type": "string"
@@ -42784,6 +43978,9 @@
                     "required": [
                       "id",
                       "version",
+                      "series_generation",
+                      "calendar_data",
+                      "supersession",
                       "kind",
                       "amounts",
                       "legs",
@@ -44082,6 +45279,64 @@
                                     "low",
                                     "base",
                                     "high"
+                                  ],
+                                  "type": "object"
+                                },
+                                "calendar_data": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "calendar_version": {
+                                      "maximum": 4294967295,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "holidays": {
+                                      "items": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "timezone": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    "timezone_data": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "byte_count": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "digest": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "type": "string"
+                                        },
+                                        "media_type": {
+                                          "maxLength": 1048576,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "digest",
+                                        "byte_count",
+                                        "media_type"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "timezone_data_version": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timezone",
+                                    "timezone_data_version",
+                                    "timezone_data",
+                                    "calendar_version",
+                                    "holidays"
                                   ],
                                   "type": "object"
                                 },
@@ -45439,6 +46694,11 @@
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "series_generation": {
+                                  "maximum": 4294967295,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
                                 "settlement": {
                                   "oneOf": [
                                     {
@@ -45567,6 +46827,111 @@
                                   "format": "date",
                                   "type": "string"
                                 },
+                                "supersession": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "from_ordinal": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "prior_generation": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "prior_version": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "remaps": {
+                                          "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "new": {
+                                                "anyOf": [
+                                                  {
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                      "commitment_id": {
+                                                        "format": "uuid",
+                                                        "type": "string"
+                                                      },
+                                                      "ordinal": {
+                                                        "maxLength": 20,
+                                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                        "type": "string"
+                                                      },
+                                                      "series_generation": {
+                                                        "maximum": 4294967295,
+                                                        "minimum": 0,
+                                                        "type": "integer"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "commitment_id",
+                                                      "series_generation",
+                                                      "ordinal"
+                                                    ],
+                                                    "type": "object"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "old": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "commitment_id": {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  "ordinal": {
+                                                    "maxLength": 20,
+                                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                    "type": "string"
+                                                  },
+                                                  "series_generation": {
+                                                    "maximum": 4294967295,
+                                                    "minimum": 0,
+                                                    "type": "integer"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "commitment_id",
+                                                  "series_generation",
+                                                  "ordinal"
+                                                ],
+                                                "type": "object"
+                                              }
+                                            },
+                                            "required": [
+                                              "old",
+                                              "new"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 16384,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "prior_version",
+                                        "prior_generation",
+                                        "from_ordinal",
+                                        "remaps"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "timezone": {
                                   "maxLength": 1048576,
                                   "type": "string"
@@ -45584,6 +46949,9 @@
                               "required": [
                                 "id",
                                 "version",
+                                "series_generation",
+                                "calendar_data",
+                                "supersession",
                                 "kind",
                                 "amounts",
                                 "legs",
@@ -52613,6 +53981,64 @@
                                 ],
                                 "type": "object"
                               },
+                              "calendar_data": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "calendar_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "holidays": {
+                                    "items": {
+                                      "format": "date",
+                                      "type": "string"
+                                    },
+                                    "maxItems": 16384,
+                                    "type": "array"
+                                  },
+                                  "timezone": {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  "timezone_data": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "byte_count": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "digest": {
+                                        "pattern": "^[0-9a-f]{64}$",
+                                        "type": "string"
+                                      },
+                                      "media_type": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "digest",
+                                      "byte_count",
+                                      "media_type"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "timezone_data_version": {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "timezone",
+                                  "timezone_data_version",
+                                  "timezone_data",
+                                  "calendar_version",
+                                  "holidays"
+                                ],
+                                "type": "object"
+                              },
                               "calendar_version": {
                                 "maximum": 4294967295,
                                 "minimum": 0,
@@ -53967,6 +55393,11 @@
                                 "minimum": 0,
                                 "type": "integer"
                               },
+                              "series_generation": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
                               "settlement": {
                                 "oneOf": [
                                   {
@@ -54095,6 +55526,111 @@
                                 "format": "date",
                                 "type": "string"
                               },
+                              "supersession": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "from_ordinal": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "prior_generation": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "prior_version": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      "remaps": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "new": {
+                                              "anyOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "commitment_id": {
+                                                      "format": "uuid",
+                                                      "type": "string"
+                                                    },
+                                                    "ordinal": {
+                                                      "maxLength": 20,
+                                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                      "type": "string"
+                                                    },
+                                                    "series_generation": {
+                                                      "maximum": 4294967295,
+                                                      "minimum": 0,
+                                                      "type": "integer"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "commitment_id",
+                                                    "series_generation",
+                                                    "ordinal"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "old": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "commitment_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                },
+                                                "ordinal": {
+                                                  "maxLength": 20,
+                                                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                  "type": "string"
+                                                },
+                                                "series_generation": {
+                                                  "maximum": 4294967295,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                }
+                                              },
+                                              "required": [
+                                                "commitment_id",
+                                                "series_generation",
+                                                "ordinal"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "old",
+                                            "new"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "prior_version",
+                                      "prior_generation",
+                                      "from_ordinal",
+                                      "remaps"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "timezone": {
                                 "maxLength": 1048576,
                                 "type": "string"
@@ -54112,6 +55648,9 @@
                             "required": [
                               "id",
                               "version",
+                              "series_generation",
+                              "calendar_data",
+                              "supersession",
                               "kind",
                               "amounts",
                               "legs",
@@ -61325,6 +62864,64 @@
                               ],
                               "type": "object"
                             },
+                            "calendar_data": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "calendar_version": {
+                                  "maximum": 4294967295,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "holidays": {
+                                  "items": {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  "maxItems": 16384,
+                                  "type": "array"
+                                },
+                                "timezone": {
+                                  "maxLength": 1048576,
+                                  "type": "string"
+                                },
+                                "timezone_data": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "byte_count": {
+                                      "maxLength": 20,
+                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                      "type": "string"
+                                    },
+                                    "digest": {
+                                      "pattern": "^[0-9a-f]{64}$",
+                                      "type": "string"
+                                    },
+                                    "media_type": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "digest",
+                                    "byte_count",
+                                    "media_type"
+                                  ],
+                                  "type": "object"
+                                },
+                                "timezone_data_version": {
+                                  "maxLength": 1048576,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timezone",
+                                "timezone_data_version",
+                                "timezone_data",
+                                "calendar_version",
+                                "holidays"
+                              ],
+                              "type": "object"
+                            },
                             "calendar_version": {
                               "maximum": 4294967295,
                               "minimum": 0,
@@ -62679,6 +64276,11 @@
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "series_generation": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
                             "settlement": {
                               "oneOf": [
                                 {
@@ -62807,6 +64409,111 @@
                               "format": "date",
                               "type": "string"
                             },
+                            "supersession": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "from_ordinal": {
+                                      "maxLength": 20,
+                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                      "type": "string"
+                                    },
+                                    "prior_generation": {
+                                      "maximum": 4294967295,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "prior_version": {
+                                      "maximum": 4294967295,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "remaps": {
+                                      "items": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "new": {
+                                            "anyOf": [
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "commitment_id": {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  "ordinal": {
+                                                    "maxLength": 20,
+                                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                    "type": "string"
+                                                  },
+                                                  "series_generation": {
+                                                    "maximum": 4294967295,
+                                                    "minimum": 0,
+                                                    "type": "integer"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "commitment_id",
+                                                  "series_generation",
+                                                  "ordinal"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "old": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "commitment_id": {
+                                                "format": "uuid",
+                                                "type": "string"
+                                              },
+                                              "ordinal": {
+                                                "maxLength": 20,
+                                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                "type": "string"
+                                              },
+                                              "series_generation": {
+                                                "maximum": 4294967295,
+                                                "minimum": 0,
+                                                "type": "integer"
+                                              }
+                                            },
+                                            "required": [
+                                              "commitment_id",
+                                              "series_generation",
+                                              "ordinal"
+                                            ],
+                                            "type": "object"
+                                          }
+                                        },
+                                        "required": [
+                                          "old",
+                                          "new"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "prior_version",
+                                    "prior_generation",
+                                    "from_ordinal",
+                                    "remaps"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "timezone": {
                               "maxLength": 1048576,
                               "type": "string"
@@ -62824,6 +64531,9 @@
                           "required": [
                             "id",
                             "version",
+                            "series_generation",
+                            "calendar_data",
+                            "supersession",
                             "kind",
                             "amounts",
                             "legs",
@@ -63996,6 +65706,64 @@
                                           "low",
                                           "base",
                                           "high"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "calendar_data": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "calendar_version": {
+                                            "maximum": 4294967295,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "holidays": {
+                                            "items": {
+                                              "format": "date",
+                                              "type": "string"
+                                            },
+                                            "maxItems": 16384,
+                                            "type": "array"
+                                          },
+                                          "timezone": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          "timezone_data": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "byte_count": {
+                                                "maxLength": 20,
+                                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                "type": "string"
+                                              },
+                                              "digest": {
+                                                "pattern": "^[0-9a-f]{64}$",
+                                                "type": "string"
+                                              },
+                                              "media_type": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "digest",
+                                              "byte_count",
+                                              "media_type"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "timezone_data_version": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "timezone",
+                                          "timezone_data_version",
+                                          "timezone_data",
+                                          "calendar_version",
+                                          "holidays"
                                         ],
                                         "type": "object"
                                       },
@@ -65353,6 +67121,11 @@
                                         "minimum": 0,
                                         "type": "integer"
                                       },
+                                      "series_generation": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
                                       "settlement": {
                                         "oneOf": [
                                           {
@@ -65481,6 +67254,111 @@
                                         "format": "date",
                                         "type": "string"
                                       },
+                                      "supersession": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "from_ordinal": {
+                                                "maxLength": 20,
+                                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                "type": "string"
+                                              },
+                                              "prior_generation": {
+                                                "maximum": 4294967295,
+                                                "minimum": 0,
+                                                "type": "integer"
+                                              },
+                                              "prior_version": {
+                                                "maximum": 4294967295,
+                                                "minimum": 0,
+                                                "type": "integer"
+                                              },
+                                              "remaps": {
+                                                "items": {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "new": {
+                                                      "anyOf": [
+                                                        {
+                                                          "additionalProperties": false,
+                                                          "properties": {
+                                                            "commitment_id": {
+                                                              "format": "uuid",
+                                                              "type": "string"
+                                                            },
+                                                            "ordinal": {
+                                                              "maxLength": 20,
+                                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                              "type": "string"
+                                                            },
+                                                            "series_generation": {
+                                                              "maximum": 4294967295,
+                                                              "minimum": 0,
+                                                              "type": "integer"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "commitment_id",
+                                                            "series_generation",
+                                                            "ordinal"
+                                                          ],
+                                                          "type": "object"
+                                                        },
+                                                        {
+                                                          "type": "null"
+                                                        }
+                                                      ]
+                                                    },
+                                                    "old": {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "commitment_id": {
+                                                          "format": "uuid",
+                                                          "type": "string"
+                                                        },
+                                                        "ordinal": {
+                                                          "maxLength": 20,
+                                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                          "type": "string"
+                                                        },
+                                                        "series_generation": {
+                                                          "maximum": 4294967295,
+                                                          "minimum": 0,
+                                                          "type": "integer"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "commitment_id",
+                                                        "series_generation",
+                                                        "ordinal"
+                                                      ],
+                                                      "type": "object"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "old",
+                                                    "new"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                "maxItems": 16384,
+                                                "type": "array"
+                                              }
+                                            },
+                                            "required": [
+                                              "prior_version",
+                                              "prior_generation",
+                                              "from_ordinal",
+                                              "remaps"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
                                       "timezone": {
                                         "maxLength": 1048576,
                                         "type": "string"
@@ -65498,6 +67376,9 @@
                                     "required": [
                                       "id",
                                       "version",
+                                      "series_generation",
+                                      "calendar_data",
+                                      "supersession",
                                       "kind",
                                       "amounts",
                                       "legs",
@@ -73169,6 +75050,64 @@
                                   ],
                                   "type": "object"
                                 },
+                                "calendar_data": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "calendar_version": {
+                                      "maximum": 4294967295,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "holidays": {
+                                      "items": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "timezone": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    "timezone_data": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "byte_count": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "digest": {
+                                          "pattern": "^[0-9a-f]{64}$",
+                                          "type": "string"
+                                        },
+                                        "media_type": {
+                                          "maxLength": 1048576,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "digest",
+                                        "byte_count",
+                                        "media_type"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "timezone_data_version": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timezone",
+                                    "timezone_data_version",
+                                    "timezone_data",
+                                    "calendar_version",
+                                    "holidays"
+                                  ],
+                                  "type": "object"
+                                },
                                 "calendar_version": {
                                   "maximum": 4294967295,
                                   "minimum": 0,
@@ -74523,6 +76462,11 @@
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "series_generation": {
+                                  "maximum": 4294967295,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
                                 "settlement": {
                                   "oneOf": [
                                     {
@@ -74651,6 +76595,111 @@
                                   "format": "date",
                                   "type": "string"
                                 },
+                                "supersession": {
+                                  "anyOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "from_ordinal": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "prior_generation": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "prior_version": {
+                                          "maximum": 4294967295,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "remaps": {
+                                          "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "new": {
+                                                "anyOf": [
+                                                  {
+                                                    "additionalProperties": false,
+                                                    "properties": {
+                                                      "commitment_id": {
+                                                        "format": "uuid",
+                                                        "type": "string"
+                                                      },
+                                                      "ordinal": {
+                                                        "maxLength": 20,
+                                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                        "type": "string"
+                                                      },
+                                                      "series_generation": {
+                                                        "maximum": 4294967295,
+                                                        "minimum": 0,
+                                                        "type": "integer"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "commitment_id",
+                                                      "series_generation",
+                                                      "ordinal"
+                                                    ],
+                                                    "type": "object"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "old": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "commitment_id": {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  "ordinal": {
+                                                    "maxLength": 20,
+                                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                    "type": "string"
+                                                  },
+                                                  "series_generation": {
+                                                    "maximum": 4294967295,
+                                                    "minimum": 0,
+                                                    "type": "integer"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "commitment_id",
+                                                  "series_generation",
+                                                  "ordinal"
+                                                ],
+                                                "type": "object"
+                                              }
+                                            },
+                                            "required": [
+                                              "old",
+                                              "new"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 16384,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "prior_version",
+                                        "prior_generation",
+                                        "from_ordinal",
+                                        "remaps"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "timezone": {
                                   "maxLength": 1048576,
                                   "type": "string"
@@ -74668,6 +76717,9 @@
                               "required": [
                                 "id",
                                 "version",
+                                "series_generation",
+                                "calendar_data",
+                                "supersession",
                                 "kind",
                                 "amounts",
                                 "legs",
@@ -75840,6 +77892,64 @@
                                               "low",
                                               "base",
                                               "high"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "calendar_data": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "calendar_version": {
+                                                "maximum": 4294967295,
+                                                "minimum": 0,
+                                                "type": "integer"
+                                              },
+                                              "holidays": {
+                                                "items": {
+                                                  "format": "date",
+                                                  "type": "string"
+                                                },
+                                                "maxItems": 16384,
+                                                "type": "array"
+                                              },
+                                              "timezone": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
+                                              },
+                                              "timezone_data": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "byte_count": {
+                                                    "maxLength": 20,
+                                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                    "type": "string"
+                                                  },
+                                                  "digest": {
+                                                    "pattern": "^[0-9a-f]{64}$",
+                                                    "type": "string"
+                                                  },
+                                                  "media_type": {
+                                                    "maxLength": 1048576,
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "digest",
+                                                  "byte_count",
+                                                  "media_type"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              "timezone_data_version": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "timezone",
+                                              "timezone_data_version",
+                                              "timezone_data",
+                                              "calendar_version",
+                                              "holidays"
                                             ],
                                             "type": "object"
                                           },
@@ -77197,6 +79307,11 @@
                                             "minimum": 0,
                                             "type": "integer"
                                           },
+                                          "series_generation": {
+                                            "maximum": 4294967295,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
                                           "settlement": {
                                             "oneOf": [
                                               {
@@ -77325,6 +79440,111 @@
                                             "format": "date",
                                             "type": "string"
                                           },
+                                          "supersession": {
+                                            "anyOf": [
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "from_ordinal": {
+                                                    "maxLength": 20,
+                                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                    "type": "string"
+                                                  },
+                                                  "prior_generation": {
+                                                    "maximum": 4294967295,
+                                                    "minimum": 0,
+                                                    "type": "integer"
+                                                  },
+                                                  "prior_version": {
+                                                    "maximum": 4294967295,
+                                                    "minimum": 0,
+                                                    "type": "integer"
+                                                  },
+                                                  "remaps": {
+                                                    "items": {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "new": {
+                                                          "anyOf": [
+                                                            {
+                                                              "additionalProperties": false,
+                                                              "properties": {
+                                                                "commitment_id": {
+                                                                  "format": "uuid",
+                                                                  "type": "string"
+                                                                },
+                                                                "ordinal": {
+                                                                  "maxLength": 20,
+                                                                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                                  "type": "string"
+                                                                },
+                                                                "series_generation": {
+                                                                  "maximum": 4294967295,
+                                                                  "minimum": 0,
+                                                                  "type": "integer"
+                                                                }
+                                                              },
+                                                              "required": [
+                                                                "commitment_id",
+                                                                "series_generation",
+                                                                "ordinal"
+                                                              ],
+                                                              "type": "object"
+                                                            },
+                                                            {
+                                                              "type": "null"
+                                                            }
+                                                          ]
+                                                        },
+                                                        "old": {
+                                                          "additionalProperties": false,
+                                                          "properties": {
+                                                            "commitment_id": {
+                                                              "format": "uuid",
+                                                              "type": "string"
+                                                            },
+                                                            "ordinal": {
+                                                              "maxLength": 20,
+                                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                                              "type": "string"
+                                                            },
+                                                            "series_generation": {
+                                                              "maximum": 4294967295,
+                                                              "minimum": 0,
+                                                              "type": "integer"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "commitment_id",
+                                                            "series_generation",
+                                                            "ordinal"
+                                                          ],
+                                                          "type": "object"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "old",
+                                                        "new"
+                                                      ],
+                                                      "type": "object"
+                                                    },
+                                                    "maxItems": 16384,
+                                                    "type": "array"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "prior_version",
+                                                  "prior_generation",
+                                                  "from_ordinal",
+                                                  "remaps"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
                                           "timezone": {
                                             "maxLength": 1048576,
                                             "type": "string"
@@ -77342,6 +79562,9 @@
                                         "required": [
                                           "id",
                                           "version",
+                                          "series_generation",
+                                          "calendar_data",
+                                          "supersession",
                                           "kind",
                                           "amounts",
                                           "legs",

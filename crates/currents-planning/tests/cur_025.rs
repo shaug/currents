@@ -1,0 +1,427 @@
+//! CUR025 portable behavior through public APIs, with only synthetic records.
+use currents_planning::{
+    calendar::{CalendarEngine, ConversionPolicy, MAX_TIMEZONE_BYTES},
+    commitments::{CommitmentEngine, resolve_occurrence},
+};
+use currents_types::*;
+fn date(s: &str) -> Date {
+    serde_json::from_value::<CivilDateV1>(serde_json::json!(s))
+        .unwrap()
+        .0
+}
+fn id(n: u32) -> RecordId {
+    serde_json::from_value(serde_json::json!(format!(
+        "00000000-0000-0000-0000-{n:012}"
+    )))
+    .unwrap()
+}
+fn fixtures() -> Vec<AuthoritativeRecordV1> {
+    serde_json::from_str(include_str!("../../../fixtures/contracts/v1/records.json")).unwrap()
+}
+fn calendar() -> CalendarEngine {
+    let (zone, bytes) = jiff_tzdb::get("America/New_York").unwrap();
+    CalendarEngine::new(zone, jiff_tzdb::VERSION.unwrap(), bytes).unwrap()
+}
+fn commitment() -> CommitmentV1 {
+    let mut c = fixtures()
+        .into_iter()
+        .find_map(|r| match r {
+            AuthoritativeRecordV1::Commitment(c) => Some(c),
+            _ => None,
+        })
+        .unwrap();
+    c.id = CommitmentId(id(25).0);
+    c.timezone = "America/New_York".into();
+    c.timezone_data_version = jiff_tzdb::VERSION.unwrap().into();
+    *c.calendar_data = calendar().calendar_data();
+    c.provenance.kind = DecisionKind::Planning;
+    c.amounts.nominal = SourceValue::Known(Amount {
+        coefficient: 10001,
+        scale: 2,
+        unit_id: UnitId(id(1).0),
+    });
+    c.legs = vec![PlannedLegV1 {
+        id: id(26),
+        account_id: AccountId(id(1).0),
+        amounts: c.amounts.clone(),
+        settlement: c.settlement.clone(),
+    }];
+    c.start = CivilDateV1(date("2024-01-31"));
+    c.due_date = c.start;
+    c.recurrence = RecurrenceV1 {
+        cadence: RecurrenceCadenceV1::Monthly,
+        interval: 1,
+        month: None,
+        day: Some(RecurrenceDayV1::Day(31)),
+    };
+    c
+}
+fn state(c: &CommitmentV1) -> DomainState {
+    let mut s = DomainState::default();
+    for r in fixtures() {
+        match r {
+            AuthoritativeRecordV1::Dataset(mut d) => {
+                d.household_timezone = SourceValue::Known(c.timezone.clone());
+                s.records.insert(id(10), AuthoritativeRecordV1::Dataset(d));
+            }
+            AuthoritativeRecordV1::AccountComponent(a) => {
+                s.records
+                    .insert(id(11), AuthoritativeRecordV1::AccountComponent(a));
+            }
+            _ => {}
+        }
+    }
+    s
+}
+fn save(s: &mut DomainState, c: &CommitmentV1) {
+    let plan = CommitmentEngine::new(calendar()).set(s, c).unwrap();
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    s.records.insert(RecordId(c.id.0), plan.records[0].clone());
+}
+fn key(c: &CommitmentV1, n: u64) -> OccurrenceKeyV1 {
+    OccurrenceKeyV1 {
+        commitment_id: c.id,
+        series_generation: c.series_generation,
+        ordinal: CommitSeq(n),
+    }
+}
+fn pattern(prior: &CommitmentV1, from: u64, day: u8) -> CommitmentV1 {
+    let mut c = prior.clone();
+    c.version += 1;
+    c.series_generation += 1;
+    c.recurrence.day = Some(RecurrenceDayV1::Day(day));
+    c.supersession = Some(CommitmentSupersessionV1 {
+        prior_version: prior.version,
+        prior_generation: prior.series_generation,
+        from_ordinal: CommitSeq(from),
+        remaps: vec![],
+    });
+    c
+}
+#[test]
+fn cur_025_1() {
+    let edges: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/planning/calendar/edges.json"
+    ))
+    .unwrap();
+    for edge in edges.as_array().unwrap() {
+        let mut c = commitment();
+        c.start = CivilDateV1(date(edge["start"].as_str().unwrap()));
+        c.due_date = c.start;
+        let actual = calendar()
+            .expand(&c, c.start.0, edge["months"].as_u64().unwrap() as u8)
+            .unwrap();
+        assert_eq!(
+            actual
+                .iter()
+                .map(|o| o.due_date.0.to_string())
+                .collect::<Vec<_>>(),
+            edge["dates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        );
+    }
+    let engine = calendar();
+    let mut c = commitment();
+    let expanded = engine.expand(&c, c.start.0, 1).unwrap();
+    assert_eq!(
+        expanded.iter().map(|o| o.due_date.0).collect::<Vec<_>>(),
+        vec![date("2024-01-31"), date("2024-02-29")]
+    );
+    c.start = CivilDateV1(date("2023-01-31"));
+    c.due_date = c.start;
+    assert_eq!(
+        engine.expand(&c, c.start.0, 1).unwrap()[1].due_date.0,
+        date("2023-02-28")
+    );
+    c.start = CivilDateV1(date("2024-02-29"));
+    c.due_date = c.start;
+    c.recurrence.cadence = RecurrenceCadenceV1::Annual;
+    c.recurrence.day = Some(RecurrenceDayV1::Day(29));
+    c.recurrence.month = Some(2);
+    assert_eq!(
+        engine.expand(&c, c.start.0, 12).unwrap()[1].due_date.0,
+        date("2025-02-28")
+    );
+    c = commitment();
+    c.start = CivilDateV1(date("2024-01-30"));
+    c.due_date = c.start;
+    c.recurrence.day = Some(RecurrenceDayV1::Day(30));
+    assert_eq!(
+        engine.expand(&c, c.start.0, 3).unwrap()[2].due_date.0,
+        date("2024-03-30")
+    );
+    c.recurrence.day = Some(RecurrenceDayV1::LastDay(PlanningEmptyV1 {}));
+    assert_eq!(
+        engine.expand(&c, c.start.0, 3).unwrap()[2].due_date.0,
+        date("2024-03-31")
+    );
+    c = commitment();
+    c.start = CivilDateV1(date("2024-06-01"));
+    c.due_date = c.start;
+    c.recurrence = RecurrenceV1 {
+        cadence: RecurrenceCadenceV1::Daily,
+        interval: 2,
+        month: None,
+        day: None,
+    };
+    let daily = engine.expand(&c, c.start.0, 1).unwrap();
+    assert_eq!(daily.len(), 16);
+    assert_eq!(daily[0].settlement_range.earliest, c.start);
+    assert_eq!(daily.last().unwrap().due_date.0, date("2024-07-01"));
+    c.recurrence.cadence = RecurrenceCadenceV1::Weekly;
+    c.recurrence.interval = 1;
+    assert_eq!(engine.expand(&c, c.start.0, 1).unwrap().len(), 5);
+    c.settlement = SettlementRuleV1::NextWeekday(PlanningEmptyV1 {});
+    assert_eq!(
+        engine.expand(&c, c.start.0, 1).unwrap()[0]
+            .settlement_range
+            .earliest
+            .0,
+        date("2024-06-03")
+    );
+    c.settlement = SettlementRuleV1::PreviousWeekday(PlanningEmptyV1 {});
+    assert_eq!(
+        engine.expand(&c, c.start.0, 1).unwrap()[0]
+            .settlement_range
+            .earliest
+            .0,
+        date("2024-05-31")
+    );
+    c.end = Some(CivilDateV1(date("2024-06-08")));
+    assert_eq!(engine.expand(&c, c.start.0, 1).unwrap().len(), 2);
+    c.exceptions = vec![PlanningExceptionV1 {
+        ordinal: CommitSeq(1),
+        action: PlanningExceptionActionV1::Skip,
+        due_date: None,
+        legs: vec![],
+        reason: "synthetic skip".into(),
+    }];
+    assert_eq!(engine.expand(&c, c.start.0, 1).unwrap().len(), 1);
+    for months in [0, 2, 13] {
+        assert!(engine.expand(&c, c.start.0, months).is_err());
+    }
+    c.recurrence.interval = 0;
+    assert!(engine.expand(&c, c.start.0, 1).is_err());
+    c = commitment();
+    c.recurrence_version = 2;
+    assert_eq!(
+        engine.expand(&c, c.start.0, 1).unwrap_err().class,
+        ErrorClass::UnsupportedVersion
+    );
+}
+#[test]
+fn cur_025_2() {
+    let engine = calendar();
+    let c = commitment();
+    let gap = "2024-03-10T02:30:00".parse().unwrap();
+    let overlap = "2024-11-03T01:30:00".parse().unwrap();
+    assert!(engine.resolve_local(gap, ConversionPolicy::Reject).is_err());
+    assert!(
+        engine
+            .resolve_local(overlap, ConversionPolicy::Reject)
+            .is_err()
+    );
+    for local in [gap, overlap] {
+        let earlier = engine
+            .resolve_local(local, ConversionPolicy::Earlier)
+            .unwrap();
+        let later = engine
+            .resolve_local(local, ConversionPolicy::Later)
+            .unwrap();
+        assert_eq!((later - earlier).whole_seconds(), 3600);
+    }
+    let saved = engine.expand(&c, c.start.0, 12).unwrap();
+    let wire = serde_json::to_string(&saved).unwrap();
+    assert!(!wire.contains("T00:00"));
+    let (_, bytes) = jiff_tzdb::get(&c.timezone).unwrap();
+    assert!(CalendarEngine::new(&c.timezone, "future-tzdb", bytes).is_err());
+    let mut historical = c.calendar_data.clone();
+    historical.timezone_data_version = "previous-accepted-release".into();
+    let older = CalendarEngine::from_saved(&historical, bytes).unwrap();
+    let mut historical_commitment = c.clone();
+    historical_commitment.timezone_data_version = historical.timezone_data_version.clone();
+    historical_commitment.calendar_data = historical;
+    assert_eq!(
+        older.expand(&historical_commitment, c.start.0, 12).unwrap(),
+        saved
+    );
+    let newer = CalendarEngine::from_saved(&historical_commitment.calendar_data, bytes).unwrap();
+    assert_eq!(
+        newer.expand(&c, c.start.0, 12).unwrap_err().class,
+        ErrorClass::UnsupportedVersion
+    );
+    let restored: Vec<OccurrenceV1> = serde_json::from_str(&wire).unwrap();
+    assert_eq!(restored, engine.expand(&c, c.start.0, 12).unwrap());
+    let mut wrong = c.clone();
+    wrong.calendar_data.timezone_data.digest = Digest([42; 32]);
+    assert!(engine.expand(&wrong, c.start.0, 1).is_err());
+    wrong = c.clone();
+    wrong.timezone = "UTC".into();
+    assert!(engine.expand(&wrong, c.start.0, 1).is_err());
+    assert!(CalendarEngine::new("America/New_York", "synthetic", b"not tzif").is_err());
+    assert!(
+        CalendarEngine::new(
+            "America/New_York",
+            "synthetic",
+            &vec![0; MAX_TIMEZONE_BYTES + 1]
+        )
+        .is_err()
+    );
+}
+#[test]
+fn cur_025_3() {
+    let mut c = commitment();
+    let mut s = state(&c);
+    save(&mut s, &c);
+    let mut history = vec![c.clone()];
+    let old = calendar().expand(&c, c.start.0, 1).unwrap();
+    c.version += 1;
+    c.amounts.nominal = SourceValue::Known(Amount {
+        coefficient: 20001,
+        scale: 2,
+        unit_id: UnitId(id(1).0),
+    });
+    c.legs[0].amounts = c.amounts.clone();
+    c.due_date = CivilDateV1(date("2024-02-01"));
+    save(&mut s, &c);
+    history.push(c.clone());
+    let edited = calendar().expand(&c, c.start.0, 3).unwrap();
+    assert_eq!(old[0].key, edited[0].key);
+    assert_eq!(edited[0].version, 2);
+    let mut next = pattern(&c, 0, 15);
+    next.start = CivilDateV1(date("2024-03-01"));
+    next.due_date = next.start;
+    let next_key = key(&next, 0);
+    next.supersession
+        .as_mut()
+        .unwrap()
+        .remaps
+        .push(OccurrenceRemapV1 {
+            old: key(&c, 0),
+            new: Some(next_key),
+        });
+    save(&mut s, &next);
+    history.push(next.clone());
+    assert_eq!(
+        resolve_occurrence(&history, &key(&c, 0)).unwrap(),
+        Some(key(&next, 0))
+    );
+    assert_eq!(resolve_occurrence(&history, &key(&c, 1)).unwrap(), None);
+    // A later amount/date edit retains the generation's original transition.
+    next.version += 1;
+    next.legs[0].amounts.nominal = SourceValue::Known(Amount {
+        coefficient: 30001,
+        scale: 2,
+        unit_id: UnitId(id(1).0),
+    });
+    save(&mut s, &next);
+    history.push(next.clone());
+    let mut third = pattern(&next, 0, 20);
+    third.start = CivilDateV1(date("2024-04-01"));
+    third.due_date = third.start;
+    let third_key = key(&third, 0);
+    third
+        .supersession
+        .as_mut()
+        .unwrap()
+        .remaps
+        .push(OccurrenceRemapV1 {
+            old: key(&next, 0),
+            new: Some(third_key),
+        });
+    save(&mut s, &third);
+    history.push(third.clone());
+    assert_eq!(
+        resolve_occurrence(&history, &key(&c, 0)).unwrap(),
+        Some(key(&third, 0))
+    );
+    let active = CommitmentEngine::new(calendar())
+        .expand_history(&history, date("2024-01-01"), 12)
+        .unwrap();
+    assert!(active.iter().all(|o| o.key.series_generation == 3));
+    assert_eq!(active.len(), 9);
+    let mut duplicate = third.clone();
+    duplicate.version += 1;
+    duplicate.recurrence.day = Some(RecurrenceDayV1::Day(21));
+    duplicate.series_generation += 1;
+    duplicate.supersession = Some(CommitmentSupersessionV1 {
+        prior_version: third.version,
+        prior_generation: third.series_generation,
+        from_ordinal: CommitSeq(0),
+        remaps: vec![
+            OccurrenceRemapV1 {
+                old: key(&third, 0),
+                new: Some(key(&duplicate, 0)),
+            },
+            OccurrenceRemapV1 {
+                old: key(&third, 1),
+                new: Some(key(&duplicate, 0)),
+            },
+        ],
+    });
+    assert!(
+        CommitmentEngine::new(calendar())
+            .set(&s, &duplicate)
+            .is_err()
+    );
+    let mut wrong_generation = duplicate.clone();
+    wrong_generation.supersession.as_mut().unwrap().remaps.pop();
+    wrong_generation.supersession.as_mut().unwrap().remaps[0]
+        .new
+        .as_mut()
+        .unwrap()
+        .series_generation = 999;
+    assert!(
+        CommitmentEngine::new(calendar())
+            .set(&s, &wrong_generation)
+            .is_err()
+    );
+    let mut absent_transition = duplicate.clone();
+    absent_transition.supersession = None;
+    assert!(
+        CommitmentEngine::new(calendar())
+            .set(&s, &absent_transition)
+            .is_err()
+    );
+    let mut invalid_version = third.clone();
+    invalid_version.version += 2;
+    assert!(
+        CommitmentEngine::new(calendar())
+            .set(&s, &invalid_version)
+            .is_err()
+    );
+    let mut stale = c.clone();
+    stale.version = 1;
+    assert!(CommitmentEngine::new(calendar()).set(&s, &stale).is_err());
+}
+#[test]
+fn cur_025_4() {
+    let mut c = commitment();
+    let mut s = state(&c);
+    let planner = CommitmentEngine::new(calendar());
+    assert!(matches!(
+        planner.set(&s, &c).unwrap().accounting,
+        AccountingIntent::NoEffect(_)
+    ));
+    save(&mut s, &c);
+    for future in ["2025-01-01", "2035-01-01"] {
+        assert!(calendar().expand(&c, date(future), 12).is_ok());
+        assert_eq!(
+            s.records.get(&RecordId(c.id.0)),
+            Some(&AuthoritativeRecordV1::Commitment(c.clone()))
+        );
+    }
+    c.provenance.authority = AuthorityKind::Source;
+    assert!(planner.set(&s, &c).is_err());
+    let manifest = include_str!("../Cargo.toml");
+    assert!(!manifest.contains("currents-accounting"));
+    assert!(!manifest.contains("currents-storage"));
+    assert!(!manifest.contains("sqlx"));
+    s = state(&commitment());
+    s.records.remove(&id(10));
+    assert!(planner.set(&s, &commitment()).is_err());
+}

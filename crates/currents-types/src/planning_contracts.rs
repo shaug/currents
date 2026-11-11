@@ -92,12 +92,14 @@ choices!(PlanningExceptionActionV1 {
     Replace
 });
 dto!(PlanningExceptionV1 { ordinal:CommitSeq, action:PlanningExceptionActionV1, due_date:Option<CivilDateV1>, legs:Vec<PlannedLegV1>, reason:String });
-dto!(CommitmentV1 { id:CommitmentId, version:u32, kind:CommitmentKindV1, amounts:PlanningAmountsV1, legs:Vec<PlannedLegV1>, due_date:CivilDateV1, settlement:SettlementRuleV1, recurrence:RecurrenceV1, recurrence_version:u32, timezone:String, timezone_data_version:String, calendar_version:u32, start:CivilDateV1, end:Option<CivilDateV1>, exceptions:Vec<PlanningExceptionV1>, provenance:InterpretationV1 });
+dto!(CommitmentV1 { id:CommitmentId, version:u32, series_generation:u32, calendar_data:Box<ForecastCalendarDataV1>, supersession:Option<CommitmentSupersessionV1>, kind:CommitmentKindV1, amounts:PlanningAmountsV1, legs:Vec<PlannedLegV1>, due_date:CivilDateV1, settlement:SettlementRuleV1, recurrence:RecurrenceV1, recurrence_version:u32, timezone:String, timezone_data_version:String, calendar_version:u32, start:CivilDateV1, end:Option<CivilDateV1>, exceptions:Vec<PlanningExceptionV1>, provenance:InterpretationV1 });
 dto!(OccurrenceKeyV1 {
     commitment_id: CommitmentId,
     series_generation: u32,
     ordinal: CommitSeq
 });
+dto!(OccurrenceRemapV1 { old:OccurrenceKeyV1, new:Option<OccurrenceKeyV1> });
+dto!(CommitmentSupersessionV1 { prior_version:u32, prior_generation:u32, from_ordinal:CommitSeq, remaps:Vec<OccurrenceRemapV1> });
 dto!(OccurrenceV1 { key:OccurrenceKeyV1, version:u32, legs:Vec<PlannedLegV1>, due_date:CivilDateV1, settlement_range:SettlementRangeV1 });
 choices!(StartingInclusionV1 {
     IncludedInStartingBalance,
