@@ -140,6 +140,7 @@ fn allowed_internal(name: &str) -> &'static [&'static str] {
         "currents-storage" => &["currents-types", "currents-accounting", "currents-cipher"],
         "currents-service" => &[
             "currents-types",
+            "currents-protocol",
             "currents-domain",
             "currents-planning",
             "currents-storage",
@@ -387,6 +388,40 @@ fn ticket(name: &str) -> Result<Value> {
         }
         return Ok(
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted multi-operation authority; not service admission or physical power-loss qualification"}),
+        );
+    }
+    if name == "CUR-010" {
+        let assertions = ["cur_010_1", "cur_010_2", "cur_010_3", "cur_010_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_010",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR010 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_010",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR010 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic serialized C03 lifecycle through encrypted C04/C05; not signed-host production or sibling domain semantics","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
         );
     }
     if name == "CUR-009" {
@@ -695,6 +730,16 @@ pub fn run(args: Vec<String>) -> Result<()> {
 #[cfg(test)]
 mod cipher_direction_tests {
     use super::sqlite_dependency_allowed;
+    #[test]
+    fn service_consumes_c03_without_native_access() {
+        assert!(super::allowed_internal("currents-service").contains(&"currents-protocol"));
+        assert_eq!(
+            super::allowed_internal("currents-protocol"),
+            ["currents-types"]
+        );
+        assert!(!super::allowed_internal("currents-service").contains(&"currents-accounting"));
+        assert!(!sqlite_dependency_allowed("currents-service", "sqlx"));
+    }
     #[test]
     fn private_adapter_sqlx_edges_only() {
         for name in ["currents-storage", "currents-accounting"] {

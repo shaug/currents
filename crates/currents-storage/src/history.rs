@@ -37,11 +37,7 @@ fn atomic(e: AtomicFailure) -> CommitFailure {
 fn failed(e: EngineError) -> CommitFailure {
     CommitFailure::DefinitelyRolledBack(e)
 }
-fn checked_command(
-    bytes: &[u8],
-    command: CommandId,
-    digest: Digest,
-) -> Result<DomainCommitV1, EngineError> {
+fn checked_record(bytes: &[u8], command: CommandId) -> Result<DomainCommitV1, EngineError> {
     let mut value: DomainCommitV1 = serde_json::from_slice(bytes).map_err(|_| schema::failure())?;
     if canonical(&value)? != bytes
         || value.command_result.command_id != command
@@ -56,6 +52,14 @@ fn checked_command(
         return Err(schema::failure());
     }
     value.digest = saved;
+    Ok(value)
+}
+fn checked_command(
+    bytes: &[u8],
+    command: CommandId,
+    digest: Digest,
+) -> Result<DomainCommitV1, EngineError> {
+    let value = checked_record(bytes, command)?;
     if value.command_result.digest != digest {
         return Err(EngineError::invalid());
     }
@@ -141,6 +145,21 @@ impl Writer {
         command: CommandId,
         digest: Digest,
     ) -> Result<Option<DomainCommitV1>, EngineError> {
+        let value = self.command_record(command).await?;
+        if value
+            .as_ref()
+            .is_some_and(|commit| commit.command_result.digest != digest)
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(value)
+    }
+    /// Trusted service lookup. Authorize the returned scope before comparing the
+    /// caller's digest, so an unauthorized caller cannot probe command identity.
+    pub async fn command_record(
+        &self,
+        command: CommandId,
+    ) -> Result<Option<DomainCommitV1>, EngineError> {
         let bytes: Option<Vec<u8>> =
             sqlx::query_scalar("SELECT canonical FROM currents_commits WHERE command_id=?")
                 .bind(command.0.as_bytes().as_slice())
@@ -148,7 +167,7 @@ impl Writer {
                 .await
                 .map_err(|_| schema::failure())?;
         bytes
-            .map(|bytes| checked_command(&bytes, command, digest))
+            .map(|bytes| checked_record(&bytes, command))
             .transpose()
     }
     /// C04 closure execution; C05 supplies the opaque validated instructions.
@@ -401,6 +420,7 @@ impl Writer {
                 }
             }
             if let Some((_, control)) = closure {
+                control.before_commit().await?;
                 control.submit_commit()?;
             }
             Ok::<_, EngineError>(commit)
@@ -431,6 +451,9 @@ impl HistoryReader {
         Self { pool }
     }
     pub(crate) async fn audit(&self) -> Result<(), EngineError> {
+        self.audited_tip().await.map(|_| ())
+    }
+    pub(crate) async fn audited_tip(&self) -> Result<Option<DomainCommitV1>, EngineError> {
         let head: i64 = sqlx::query_scalar("SELECT coalesce(max(seq),0) FROM currents_commits")
             .fetch_one(&self.pool)
             .await
@@ -440,8 +463,11 @@ impl HistoryReader {
                 u64::try_from(head).map_err(|_| schema::failure())?,
             ))
             .await?;
-        while stream.next().await?.is_some() {}
-        Ok(())
+        let mut tip = None;
+        while let Some(commit) = stream.next().await? {
+            tip = Some(commit);
+        }
+        Ok(tip)
     }
     /// A fixed database snapshot. Each next() holds at most one bounded commit.
     pub async fn stream_prefix(&self, through: CommitSeq) -> Result<HistoryStream, EngineError> {
@@ -877,3 +903,6 @@ mod decision_bindings_tests;
 mod effects_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod lookup_tests;

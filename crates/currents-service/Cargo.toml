@@ -8,6 +8,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+currents-protocol.workspace = true
+serde.workspace = true
+sha2.workspace = true
+uuid.workspace = true
 currents-types.workspace = true
 currents-domain.workspace = true
 currents-planning.workspace = true
@@ -17,3 +21,12 @@ tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+currents-service = { path = ".", features = ["synthetic-test-fixtures"] }
+currents-protocol.workspace = true
+currents-cipher.workspace = true
+currents-accounting = { workspace = true, features = ["synthetic-test-fixtures"] }
+uuid.workspace = true
+tempfile.workspace = true
+
+[features]
+synthetic-test-fixtures = []
