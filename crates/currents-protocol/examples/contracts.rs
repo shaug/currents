@@ -6,6 +6,7 @@ fn main() {
      "$schema":"https://json-schema.org/draft/2020-12/schema",
      "$id":"https://github.com/shaug/currents/schemas/v1/contracts.json",
      "$defs":{
+      "AccountingBatchV1":AccountingBatchV1::schema(), "FrozenAccountingManifestV1":FrozenAccountingManifestV1::schema(), "DateConversionPolicyV1":DateConversionPolicyV1::schema(),
       "AggregateV1":AggregateV1::schema(), "HistoryResponseV1":HistoryResponseV1::schema(), "ExplanationV1":ExplanationV1::schema(), "RequestV1":RequestV1::schema(), "Amount":Amount::schema(), "TemporalValue":TemporalValue::schema(),
       "SourceValue":SourceValue::<String>::schema(), "ReadBasis":ReadBasis::schema(),
       "AuthoritativeRecordV1":AuthoritativeRecordV1::schema(), "DomainCommitV1":DomainCommitV1::schema(),

@@ -380,13 +380,18 @@ name = "currents-accounting"
 version = "0.0.0"
 dependencies = [
  "currents-cipher",
+ "currents-storage",
  "currents-types",
  "doubleentry",
+ "num-bigint",
+ "num-traits",
+ "serde",
  "serde_json",
  "serde_json_canonicalizer",
  "sha2 0.11.1",
  "sqlx",
  "tempfile",
+ "time",
  "tokio",
 ]
 

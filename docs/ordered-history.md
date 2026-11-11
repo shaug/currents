@@ -141,5 +141,9 @@ The following is a new coordinator-approved C02 structural clarification, not an
 inference from repeated IDs in old shape fixtures: DatasetPolicy opening_policy
 and withholding_policy are DatasetPolicy family links. A self-link permits
 structural bootstrap only; it does not prove usable adopted rules. Recognition
-`date_policy` is explicitly UnsupportedVersion until its owner publishes an
-addressable date-policy contract. It is never silently coerced to governance.
+`date_policy` now resolves only an exact C05 DateConversionPolicy ID/version.
+A governance DatasetPolicy is the wrong role and fails the reference check;
+HolidayCalendar remains UnsupportedVersion. Structural storage resolution does
+not execute conversion, adoption or calendar semantics. C05 frozen manifests
+reference bounded encrypted instruction content and preserve the structured
+record1MiB limit. See [accounting freeze](accounting-freeze.md).

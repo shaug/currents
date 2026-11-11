@@ -26,7 +26,7 @@ ID newtypes over UUID: `DatasetId`, `InstanceId`, `CommandId`, `RecordId`, `Acco
 
 `EngineError` has the stable classes listed in design section 10, affected scope and safe next action; no raw SQL, secrets, path, or private excluded fields in external errors. `Health = Healthy | SourcePartial | SourceStale | Locked | ProjectionLagging | IntegrityFailed | MigrationRequired | RecoveryInProgress`; independent source conditions may coexist.
 
-CUR-008 structural reference clarification (new foundational contract): `DecisionEnvelopeV1.policy` pins exact `DatasetPolicy(id,version)`. `DatasetPolicy.opening_policy` and `withholding_policy` are family links to DatasetPolicy, not selection of a latest revision or executable policy definitions; bootstrap self-links prove closure only. Storage rejects Recognition date-policy and HolidayCalendar contexts as unsupported until their owners add addressable role-specific definitions. Forecast assumption versions resolve only inside that saved run's expanded assumption snapshots. No date/calendar/adoption semantics are implied. See [ordered history](../ordered-history.md).
+CUR-008 structural reference clarification (new foundational contract): `DecisionEnvelopeV1.policy` pins exact `DatasetPolicy(id,version)`. `DatasetPolicy.opening_policy` and `withholding_policy` are family links to DatasetPolicy, not selection of a latest revision or executable policy definitions; bootstrap self-links prove closure only. C05 adds an exact versioned DateConversionPolicy role for Recognition date-policy references; HolidayCalendar remains unsupported until its owner supplies an addressable definition. Forecast assumption versions resolve only inside that saved run's expanded assumption snapshots. No date/calendar/adoption semantics are implied. See [ordered history](../ordered-history.md).
 
 <a id="c03"></a>
 
@@ -51,6 +51,8 @@ CUR-006 implementation details and qualification limits are in [encrypted storag
 <a id="c05"></a>
 
 ## C05: Accounting adapter, owner CUR-009
+
+Versioned C05 wire instructions, bounded content manifests, exact date-role definitions and source-prefix-bound nonauthoritative indexes are specified in [accounting freeze](../accounting-freeze.md). Native checkpoint codec v1 is unchanged. C04 executes only validated opaque operations. Large instructions are encrypted content references, never oversized inline records.
 
 Files: `crates/currents-accounting/src/{batch,numbers,catalog,dates,templates}.rs`.
 

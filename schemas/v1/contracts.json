@@ -1,5 +1,736 @@
 {
   "$defs": {
+    "AccountingBatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "native_semantics": {
+          "const": 1
+        },
+        "operations": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Policy"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "effective": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "effective"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Calendar"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "end": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "start": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Unit"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "exponent": {
+                        "maximum": 18,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "Currency",
+                          "Security",
+                          "Analytical"
+                        ],
+                        "type": "string"
+                      },
+                      "native_code": {
+                        "pattern": "^[A-Z0-9]{1,16}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "exponent",
+                      "native_code",
+                      "kind"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Account"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "account_class": {
+                        "enum": [
+                          "Asset",
+                          "Liability",
+                          "Income",
+                          "Expense",
+                          "Equity"
+                        ],
+                        "type": "string"
+                      },
+                      "account_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "path": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "unit_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "account_id",
+                      "unit_id",
+                      "account_class",
+                      "path"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Entry"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "booking_date": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "date_policy": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bookkeeping": {
+                            "enum": [
+                              "RequirePosting",
+                              "Effective",
+                              "Explicit"
+                            ],
+                            "type": "string"
+                          },
+                          "conversion": {
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "CivilOnly"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "Instants"
+                                  },
+                                  "value": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "FixedOffset"
+                                          },
+                                          "value": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "offset": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "offset"
+                                            ],
+                                            "type": "object"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "value"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "Resolved"
+                                          },
+                                          "value": {
+                                            "items": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "data_version": {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                "offset": {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                "utc": {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                "zone": {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "utc",
+                                                "zone",
+                                                "data_version",
+                                                "offset"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "maxItems": 16384,
+                                            "type": "array"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "value"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "value"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version",
+                          "conversion",
+                          "bookkeeping"
+                        ],
+                        "type": "object"
+                      },
+                      "generated_document": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "key": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "postings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "native_coefficient": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "original": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "account_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "amount": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                "effective": {
+                                  "oneOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "civil": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "kind": {
+                                          "const": "Date"
+                                        },
+                                        "original_text": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "civil",
+                                        "original_text"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "Instant"
+                                        },
+                                        "original_offset": {
+                                          "anyOf": [
+                                            {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "original_text": {
+                                          "type": "string"
+                                        },
+                                        "original_zone": {
+                                          "anyOf": [
+                                            {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "precision": {
+                                          "enum": [
+                                            "Second",
+                                            "Millisecond",
+                                            "Microsecond",
+                                            "Nanosecond",
+                                            "Unknown"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "utc": {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "utc",
+                                        "original_offset",
+                                        "original_zone",
+                                        "precision",
+                                        "original_text"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "Unknown"
+                                        },
+                                        "original_text": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "original_text"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                },
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "posting": {
+                                  "oneOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "civil": {
+                                          "format": "date",
+                                          "type": "string"
+                                        },
+                                        "kind": {
+                                          "const": "Date"
+                                        },
+                                        "original_text": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "civil",
+                                        "original_text"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "Instant"
+                                        },
+                                        "original_offset": {
+                                          "anyOf": [
+                                            {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "original_text": {
+                                          "type": "string"
+                                        },
+                                        "original_zone": {
+                                          "anyOf": [
+                                            {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "precision": {
+                                          "enum": [
+                                            "Second",
+                                            "Millisecond",
+                                            "Microsecond",
+                                            "Nanosecond",
+                                            "Unknown"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "utc": {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "utc",
+                                        "original_offset",
+                                        "original_zone",
+                                        "precision",
+                                        "original_text"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "Unknown"
+                                        },
+                                        "original_text": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "original_text"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "account_id",
+                                "amount",
+                                "effective",
+                                "posting"
+                              ],
+                              "type": "object"
+                            },
+                            "path": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "unit": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "exponent": {
+                                  "maximum": 18,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "Currency",
+                                    "Security",
+                                    "Analytical"
+                                  ],
+                                  "type": "string"
+                                },
+                                "native_code": {
+                                  "pattern": "^[A-Z0-9]{1,16}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "exponent",
+                                "native_code",
+                                "kind"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "original",
+                            "native_coefficient",
+                            "path",
+                            "unit"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "recognition_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reverses": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "value_date": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "recognition_id",
+                      "key",
+                      "booking_date",
+                      "value_date",
+                      "postings",
+                      "date_policy",
+                      "generated_document",
+                      "reverses"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 20000,
+          "type": "array"
+        },
+        "preconditions": {
+          "additionalProperties": false,
+          "properties": {
+            "domain_digest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "native_head": {
+              "additionalProperties": false,
+              "properties": {
+                "checkpoint": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "semantics_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "semantics_version",
+                "checkpoint"
+              ],
+              "type": "object"
+            },
+            "through": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "through",
+            "domain_digest",
+            "native_head"
+          ],
+          "type": "object"
+        },
+        "result_expectations": {
+          "additionalProperties": false,
+          "properties": {
+            "financial_entry_count": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            "native_operation_count": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "native_operation_count",
+            "financial_entry_count"
+          ],
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "native_semantics",
+        "operations",
+        "preconditions",
+        "decision_digest",
+        "result_expectations"
+      ],
+      "type": "object"
+    },
     "AggregateV1": {
       "oneOf": [
         {
@@ -302,6 +1033,281 @@
     },
     "AuthoritativeRecordV1": {
       "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "DateConversionPolicy"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "bookkeeping": {
+                  "enum": [
+                    "RequirePosting",
+                    "Effective",
+                    "Explicit"
+                  ],
+                  "type": "string"
+                },
+                "conversion": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "CivilOnly"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Instants"
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "FixedOffset"
+                                },
+                                "value": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "offset": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "offset"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Resolved"
+                                },
+                                "value": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "data_version": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      },
+                                      "offset": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      },
+                                      "utc": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      },
+                                      "zone": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "utc",
+                                      "zone",
+                                      "data_version",
+                                      "offset"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 16384,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "conversion",
+                "bookkeeping"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "FrozenAccountingManifest"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "decision_digest": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "instructions": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "byte_count": {
+                      "maxLength": 20,
+                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                      "type": "string"
+                    },
+                    "digest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "media_type": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "digest",
+                    "byte_count",
+                    "media_type"
+                  ],
+                  "type": "object"
+                },
+                "native_semantics": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "preconditions": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "domain_digest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "native_head": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "checkpoint": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "semantics_version": {
+                          "maximum": 4294967295,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "semantics_version",
+                        "checkpoint"
+                      ],
+                      "type": "object"
+                    },
+                    "through": {
+                      "maxLength": 20,
+                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "through",
+                    "domain_digest",
+                    "native_head"
+                  ],
+                  "type": "object"
+                },
+                "result_expectations": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "financial_entry_count": {
+                      "maxLength": 20,
+                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                      "type": "string"
+                    },
+                    "native_operation_count": {
+                      "maxLength": 20,
+                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "native_operation_count",
+                    "financial_entry_count"
+                  ],
+                  "type": "object"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "native_semantics",
+                "instructions",
+                "preconditions",
+                "decision_digest",
+                "result_expectations"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
         {
           "additionalProperties": false,
           "properties": {
@@ -22711,6 +23717,139 @@
       ],
       "type": "object"
     },
+    "DateConversionPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bookkeeping": {
+          "enum": [
+            "RequirePosting",
+            "Effective",
+            "Explicit"
+          ],
+          "type": "string"
+        },
+        "conversion": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "CivilOnly"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "Instants"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "FixedOffset"
+                        },
+                        "value": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "offset": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "offset"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Resolved"
+                        },
+                        "value": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "data_version": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "offset": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "utc": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "zone": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "utc",
+                              "zone",
+                              "data_version",
+                              "offset"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 16384,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "value"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "version": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "conversion",
+        "bookkeeping"
+      ],
+      "type": "object"
+    },
     "DecisionPlan": {
       "additionalProperties": false,
       "properties": {
@@ -24317,6 +25456,281 @@
         "records": {
           "items": {
             "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "DateConversionPolicy"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bookkeeping": {
+                        "enum": [
+                          "RequirePosting",
+                          "Effective",
+                          "Explicit"
+                        ],
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "CivilOnly"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Instants"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "FixedOffset"
+                                      },
+                                      "value": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "offset": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "Resolved"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "data_version": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            "offset": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            "zone": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "utc",
+                                            "zone",
+                                            "data_version",
+                                            "offset"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "version",
+                      "conversion",
+                      "bookkeeping"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "FrozenAccountingManifest"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "decision_digest": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "instructions": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "byte_count": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          },
+                          "digest": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "type": "string"
+                          },
+                          "media_type": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "digest",
+                          "byte_count",
+                          "media_type"
+                        ],
+                        "type": "object"
+                      },
+                      "native_semantics": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "preconditions": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "domain_digest": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "type": "string"
+                          },
+                          "native_head": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "checkpoint": {
+                                "pattern": "^[0-9a-f]{64}$",
+                                "type": "string"
+                              },
+                              "semantics_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "semantics_version",
+                              "checkpoint"
+                            ],
+                            "type": "object"
+                          },
+                          "through": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "through",
+                          "domain_digest",
+                          "native_head"
+                        ],
+                        "type": "object"
+                      },
+                      "result_expectations": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "financial_entry_count": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          },
+                          "native_operation_count": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "native_operation_count",
+                          "financial_entry_count"
+                        ],
+                        "type": "object"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "native_semantics",
+                      "instructions",
+                      "preconditions",
+                      "decision_digest",
+                      "result_expectations"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
               {
                 "additionalProperties": false,
                 "properties": {
@@ -35122,6 +36536,281 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "DateConversionPolicy"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bookkeeping": {
+                        "enum": [
+                          "RequirePosting",
+                          "Effective",
+                          "Explicit"
+                        ],
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "CivilOnly"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Instants"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "FixedOffset"
+                                      },
+                                      "value": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "offset": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "offset"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "Resolved"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "data_version": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            "offset": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            },
+                                            "zone": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "utc",
+                                            "zone",
+                                            "data_version",
+                                            "offset"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "version",
+                      "conversion",
+                      "bookkeeping"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "FrozenAccountingManifest"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "decision_digest": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "instructions": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "byte_count": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          },
+                          "digest": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "type": "string"
+                          },
+                          "media_type": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "digest",
+                          "byte_count",
+                          "media_type"
+                        ],
+                        "type": "object"
+                      },
+                      "native_semantics": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "preconditions": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "domain_digest": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "type": "string"
+                          },
+                          "native_head": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "checkpoint": {
+                                "pattern": "^[0-9a-f]{64}$",
+                                "type": "string"
+                              },
+                              "semantics_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "semantics_version",
+                              "checkpoint"
+                            ],
+                            "type": "object"
+                          },
+                          "through": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "through",
+                          "domain_digest",
+                          "native_head"
+                        ],
+                        "type": "object"
+                      },
+                      "result_expectations": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "financial_entry_count": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          },
+                          "native_operation_count": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "native_operation_count",
+                          "financial_entry_count"
+                        ],
+                        "type": "object"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "native_semantics",
+                      "instructions",
+                      "preconditions",
+                      "decision_digest",
+                      "result_expectations"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "Dataset"
                   },
                   "value": {
@@ -45824,6 +47513,122 @@
         "roots",
         "nodes",
         "edges"
+      ],
+      "type": "object"
+    },
+    "FrozenAccountingManifestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "instructions": {
+          "additionalProperties": false,
+          "properties": {
+            "byte_count": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            "digest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "media_type": {
+              "maxLength": 1048576,
+              "type": "string"
+            }
+          },
+          "required": [
+            "digest",
+            "byte_count",
+            "media_type"
+          ],
+          "type": "object"
+        },
+        "native_semantics": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "preconditions": {
+          "additionalProperties": false,
+          "properties": {
+            "domain_digest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "native_head": {
+              "additionalProperties": false,
+              "properties": {
+                "checkpoint": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "semantics_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "semantics_version",
+                "checkpoint"
+              ],
+              "type": "object"
+            },
+            "through": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "through",
+            "domain_digest",
+            "native_head"
+          ],
+          "type": "object"
+        },
+        "result_expectations": {
+          "additionalProperties": false,
+          "properties": {
+            "financial_entry_count": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            "native_operation_count": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "native_operation_count",
+            "financial_entry_count"
+          ],
+          "type": "object"
+        },
+        "schema_version": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "schema_version",
+        "native_semantics",
+        "instructions",
+        "preconditions",
+        "decision_digest",
+        "result_expectations"
       ],
       "type": "object"
     },
