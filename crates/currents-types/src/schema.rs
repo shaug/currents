@@ -28,6 +28,11 @@ impl Schema for u32 {
         json!({"type":"integer","minimum":0,"maximum":4294967295u64})
     }
 }
+impl<T: Schema> Schema for Box<T> {
+    fn schema() -> Value {
+        T::schema()
+    }
+}
 impl<T: Schema> Schema for Vec<T> {
     fn schema() -> Value {
         json!({"type":"array","items":T::schema(),"maxItems":16384})

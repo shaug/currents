@@ -380,7 +380,20 @@
       "start": "2026-11-09",
       "timezone": "synthetic",
       "timezone_data_version": "synthetic",
-      "version": 1
+      "version": 1,
+      "series_generation": 1,
+      "supersession": null,
+      "calendar_data": {
+        "timezone": "synthetic",
+        "timezone_data_version": "synthetic",
+        "calendar_version": 1,
+        "holidays": [],
+        "timezone_data": {
+          "digest": "a4d26868017c0ccffe2efe50944ef4211834660cca834c6e9f86dec6a88246fa",
+          "byte_count": "6",
+          "media_type": "application/tzif"
+        }
+      }
     }
   },
   {

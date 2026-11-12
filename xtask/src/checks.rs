@@ -390,6 +390,66 @@ fn ticket(name: &str) -> Result<Value> {
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted multi-operation authority; not service admission or physical power-loss qualification"}),
         );
     }
+    if name == "CUR-025" {
+        let assertions = ["cur_025_1", "cur_025_2", "cur_025_3", "cur_025_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-planning",
+            "--test",
+            "cur_025",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR025 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-planning",
+            "--test",
+            "cur_025",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR025 incomplete qualification".into());
+        }
+        let durable = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_025",
+        ])?;
+        if !durable.contains("1 passed; 0 failed; 0 ignored") {
+            return Err("CUR025 incomplete durable qualification".into());
+        }
+        let source_paths = [
+            "crates/currents-planning/src/calendar.rs",
+            "crates/currents-planning/src/commitments.rs",
+            "crates/currents-planning/tests/cur_025.rs",
+            "crates/currents-service/tests/cur_025.rs",
+            "fixtures/planning/calendar/edges.json",
+            "fixtures/contracts/v1/records.json",
+        ];
+        let source_hashes: Vec<_> = source_paths
+            .iter()
+            .map(|path| {
+                fs::read(root().join(path)).map(|bytes| json!({"path":path,"sha256":sha(&bytes)}))
+            })
+            .collect::<std::io::Result<_>>()
+            .map_err(|error| error.to_string())?;
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"durable_output_sha256":sha(durable.as_bytes()),"source_hashes":source_hashes,"scope":"portable planning and durable synthetic C03 history, no production activation or financial recognition"}),
+        );
+    }
     if name == "CUR-010" {
         let assertions = ["cur_010_1", "cur_010_2", "cur_010_3", "cur_010_4"];
         let list = cargo(&[
