@@ -168,3 +168,52 @@ The macOS minimum criterion remains actual macOS **15.0** arm64, not a newer
 15.x runtime. This iOS correction neither changes that requirement nor claims
 coverage of an untested OS. The positive 18.5/18.6 evaluator fixtures are synthetic
 unit tests only; they do not qualify a runtime or populate the null destination.
+
+## Hosted patched-OS observations (supplemental only)
+
+The separate `native-supplemental.yml` workflow supports manual dispatch and PRs
+that change native inputs or its collector. It does not replace the existing CI
+or the exact-minimum platform gate. Its `macos-15` hosted runner is required to
+actually report arm64 and macOS 15.x; an Intel or different-major runner fails.
+The job selects the preinstalled Xcode 16.4 through job-local `DEVELOPER_DIR`,
+records the actual Xcode/Swift/SDK/OS build versions, and never changes the
+machine's selected developer directory. Availability is checked during the run,
+not inferred from a runner label or an older inventory.
+
+`tools/native-supplemental.py` reads the existing simulator runtime and device
+inventories. It selects the latest available numeric iOS 18.x version, breaking
+ties by simulator identifier. It records that exact identifier and actual runtime
+as a **supplemental destination**, never as a `tools/versions.lock.json` pin.
+Missing Xcode or a preinstalled usable runtime/device blocks collection with no
+installation, runtime download, device creation or settings-change fallback.
+The script is restricted to a GitHub Actions environment to avoid accidentally
+starting native builds on a local machine.
+
+Both macOS and iOS execute the existing synthetic plans in Debug and Release,
+with signing and parallel testing disabled. The collector requires the exact
+nonzero assertion sets, all Passed, matching summary counts, no failed/skipped
+or expected-failure tests, actual arm64, actual macOS version/build matching the
+host, and actual iOS version/identifier matching the selected simulator.
+It records the exact workflow/checkout candidate SHA, committed tree and clean
+worktree before and after execution. A successful observation is not accepted
+if the candidate or worktree changes.
+
+The failure-safe artifact upload preserves raw command stdout/stderr, their
+SHA-256 digests, parsed tests/summaries and xcresult bundles under
+`target/native-supplemental/`. The report uses the distinct
+`SupplementalNativeObservationV1` schema. A successful workflow means only that
+four supplemental runs were observed. Its native and production qualification
+statuses remain **Blocked**, with exact macOS **15.0** qualification **Pending**.
+This report cannot be supplied to the five-role native evidence aggregator.
+A macOS 15.8.x or iOS 18.5/18.6 observation must not be described as execution on
+macOS 15.0 or iOS 18.0. Publishing or dispatching the workflow is a separate step;
+adding these files does not establish any hosted runtime result.
+
+The workflow has a read-only contents token, no supplied secrets, no persisted
+checkout credentials, immutable action references and a 30-minute job limit.
+The collector has a shorter 25-minute budget and per-command timeouts. Offline
+counterexamples can be run without Apple tools or network access:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p test_native_supplemental.py
+```
