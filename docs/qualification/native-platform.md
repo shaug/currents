@@ -97,8 +97,11 @@ The minimum macOS role must execute on exactly macOS 15.0 arm64. The current rol
 uses the current macOS version recorded in the inventory. Different host roles
 may use different full Xcode/SDK versions; each records its own exact versions
 and requires Swift 6 or newer. In particular, an Xcode release requiring a newer
-host cannot be imposed on the macOS 15.0 runner. iOS requires actual 18.0 runtime
-results and an exact destination from the checked-in inventory. A null
+host cannot be imposed on the macOS 15.0 runner. iOS 18.0 is the deployment/API
+availability floor. Qualification accepts actual iOS 18.x minor and patch runtime
+results, including 18.5 and 18.6, at the exact destination from the checked-in
+inventory. Each result records its actual runtime; a patched-runtime pass does
+not claim execution on iOS 18.0. A null
 `native_platform.qualified_ios_destination` remains a blocker; no identifier is
 generated from a convenient available simulator. Linux evidence requires the
 native directory to be absent before and after the build, with only unstaged
@@ -155,6 +158,13 @@ Rerun collection after freezing the candidate instead.
 When an iOS destination has actually been qualified, its inventory value is a
 string with the exact form `platform=iOS Simulator,id=<qualified identifier>` or
 `platform=iOS,id=<qualified identifier>`. The evaluator checks both that ID and
-platform against xcresult's executed device and requires runtime version `18.0`,
-not an SDK version or deployment target. This documentation does not qualify or
-populate the currently null destination.
+platform against xcresult's executed device and requires a numeric iOS 18.x
+runtime version with two or three components. It rejects versions below the
+18.0 floor, malformed versions and other major versions. SDK or deployment
+target values do not replace actual runtime evidence. Debug and Release must
+still pass every required assertion on arm64 at the locked destination.
+
+The macOS minimum criterion remains actual macOS **15.0** arm64, not a newer
+15.x runtime. This iOS correction neither changes that requirement nor claims
+coverage of an untested OS. The positive 18.5/18.6 evaluator fixtures are synthetic
+unit tests only; they do not qualify a runtime or populate the null destination.

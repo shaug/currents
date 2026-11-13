@@ -92,12 +92,12 @@ pub fn qualify(root: &Path) -> Result<Value, String> {
     if full_selected && arch.trim() == "arm64" && !xcode.is_empty() {
         let observation = current_host(root)?;
         return Err(format!(
-            "BLOCKED: current-host native assertions passed; evidence: {}. cur_004_1 still requires actual macOS 15.0 arm64 plus current-OS evidence at the same candidate; cur_004_2 requires a same-candidate Linux core build with native unavailable; cur_004_3 is the separate CLT-only public counterexample; cur_004_4 still requires the qualified iOS 18.0 destination. Observed OS: {os}; Swift: {swift}; SDK: {sdk}; Xcode: {xcode}. No production or minimum-OS qualification is implied.",
+            "BLOCKED: current-host native assertions passed; evidence: {}. cur_004_1 still requires actual macOS 15.0 arm64 plus current-OS evidence at the same candidate; cur_004_2 requires a same-candidate Linux core build with native unavailable; cur_004_3 is the separate CLT-only public counterexample; cur_004_4 still requires the qualified iOS 18.x destination. Observed OS: {os}; Swift: {swift}; SDK: {sdk}; Xcode: {xcode}. No production or minimum-OS qualification is implied.",
             observation.display()
         ));
     }
     Err(format!(
-        "BLOCKED: native-platform requires full Xcode with Swift 6, actual macOS 15.0 arm64 and current-OS build/launch evidence, and a qualified iOS 18.0 destination. Selected developer directory: {selected:?}; discovered full Xcode: {installations:?}; discovery scope: /Applications and ~/Applications (3 levels), selected developer directory, Spotlight. OS: {os}; architecture: {arch}; Swift: {swift}; selected SDK: {sdk}; selected full Xcode: {xcode}. A usable selected full Xcode, minimum-OS runner and qualified iOS destination are required. CLT Swift/C synthetic probes do not qualify a native app. No signing, entitlement acquisition or developer-directory setting was changed."
+        "BLOCKED: native-platform requires full Xcode with Swift 6, actual macOS 15.0 arm64 and current-OS build/launch evidence, and a qualified iOS 18.x destination. Selected developer directory: {selected:?}; discovered full Xcode: {installations:?}; discovery scope: /Applications and ~/Applications (3 levels), selected developer directory, Spotlight. OS: {os}; architecture: {arch}; Swift: {swift}; selected SDK: {sdk}; selected full Xcode: {xcode}. A usable selected full Xcode, minimum-OS runner and qualified iOS destination are required. CLT Swift/C synthetic probes do not qualify a native app. No signing, entitlement acquisition or developer-directory setting was changed."
     ))
 }
 
@@ -432,7 +432,7 @@ mod tests {
                 2,
                 "summary",
                 "/devicesAndConfigurations/0/device/osVersion",
-                json!("18.1"),
+                json!("17.6"),
             ),
             (
                 2,
@@ -469,6 +469,80 @@ mod tests {
         let mut bad = evidence.clone();
         bad[0]["runs"][1] = bad[0]["runs"][0].clone();
         assert!(evaluate_matrix(&candidate, &tree, &lock, &bad).is_err());
+    }
+
+    fn with_ios_runtime(evidence: &[Value], version: &str) -> Vec<Value> {
+        let mut evidence = evidence.to_vec();
+        for run in evidence[2]["runs"].as_array_mut().unwrap() {
+            let mut summary: Value =
+                serde_json::from_str(run["summary"]["stdout"].as_str().unwrap()).unwrap();
+            summary["devicesAndConfigurations"][0]["device"]["osVersion"] = json!(version);
+            run["summary"]["stdout"] = json!(summary.to_string());
+        }
+        evidence.iter_mut().for_each(rehash_receipts);
+        evidence
+    }
+
+    #[test]
+    fn matrix_accepts_ios_18_minor_and_patch_runtimes_and_records_actual_version() {
+        let (candidate, tree, lock, evidence) = synthetic_matrix();
+        for version in ["18.0", "18.0.1", "18.5", "18.5.1", "18.6", "18.6.2"] {
+            let result = evaluate_matrix(
+                &candidate,
+                &tree,
+                &lock,
+                &with_ios_runtime(&evidence, version),
+            )
+            .unwrap_or_else(|error| panic!("{version}: {error}"));
+            let observations: Vec<_> = result["observed_tests"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|test| test["role"] == "ios")
+                .collect();
+            assert_eq!(observations.len(), 4);
+            assert!(
+                observations
+                    .iter()
+                    .all(|test| test["runtime"]["osVersion"] == version)
+            );
+            assert_eq!(result["production_status"], "Blocked");
+        }
+    }
+
+    #[test]
+    fn matrix_rejects_ios_below_floor_or_malformed_runtime() {
+        let (candidate, tree, lock, evidence) = synthetic_matrix();
+        for version in [
+            "17.0",
+            "17.6.1",
+            "19.0",
+            "",
+            "18",
+            "18.",
+            "18..5",
+            "18.5.",
+            "18.5.1.2",
+            "18.5beta",
+            "18.-1",
+            "18.+5",
+            "18.05",
+            "018.5",
+            " 18.5",
+            "18.5 ",
+            "18.4294967296",
+        ] {
+            assert!(
+                evaluate_matrix(
+                    &candidate,
+                    &tree,
+                    &lock,
+                    &with_ios_runtime(&evidence, version)
+                )
+                .is_err(),
+                "{version}"
+            );
+        }
     }
 
     #[test]

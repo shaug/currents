@@ -103,7 +103,7 @@ fn keys(value: &Value, expected: &[&str]) -> Result<()> {
 fn destination(lock: &Value) -> Result<(&str, &str, &str)> {
     let text = lock["native_platform"]["qualified_ios_destination"]
         .as_str()
-        .ok_or("BLOCKED: tools/versions.lock.json has no qualified iOS 18.0 destination")?;
+        .ok_or("BLOCKED: tools/versions.lock.json has no qualified iOS 18.x destination")?;
     for platform in ["iOS Simulator", "iOS"] {
         if let Some(id) = text.strip_prefix(&format!("platform={platform},id=")) {
             require(
@@ -223,11 +223,23 @@ pub(super) fn native_names(report: &Value, ios: bool) -> Result<BTreeSet<String>
     )?;
     Ok(names)
 }
+fn ios_18_runtime(version: &str) -> bool {
+    let parts: Vec<_> = version.split('.').collect();
+    (2..=3).contains(&parts.len())
+        && parts[0] == "18"
+        && parts.iter().all(|part| {
+            !part.is_empty()
+                && (part.len() == 1 || !part.starts_with('0'))
+                && part.bytes().all(|byte| byte.is_ascii_digit())
+                && part.parse::<u32>().is_ok()
+        })
+}
+
 fn summary_valid(
     summary: &Value,
     count: usize,
     platform: &str,
-    os: &str,
+    exact_macos_version: Option<&str>,
     id: Option<&str>,
     build: Option<&str>,
 ) -> Result<()> {
@@ -265,10 +277,13 @@ fn summary_valid(
         )?;
     }
     let device = &run["device"];
+    let actual_version = string(device, "osVersion")?;
+    let version_matches = match exact_macos_version {
+        Some(expected) => actual_version == expected,
+        None => ios_18_runtime(actual_version),
+    };
     require(
-        device["platform"] == platform
-            && device["architecture"] == "arm64"
-            && device["osVersion"] == os,
+        device["platform"] == platform && device["architecture"] == "arm64" && version_matches,
         "wrong actual OS, version or architecture",
     )?;
     require(
@@ -495,16 +510,12 @@ fn evaluate_entry(entry: &Value, candidate: &str, tree: &str, lock: &Value) -> R
         )?)
         .map_err(|e| e.to_string())?;
         let names = native_names(&tests, ios)?;
-        let os = if ios {
-            "18.0"
-        } else {
-            c["os"]["stdout"].as_str().unwrap_or("").trim()
-        };
+        let exact_macos_version = (!ios).then_some(c["os"]["stdout"].as_str().unwrap_or("").trim());
         summary_valid(
             &summary,
             names.len(),
             platform,
-            os,
+            exact_macos_version,
             ios.then_some(id),
             (!ios).then_some(c["os_build"]["stdout"].as_str().unwrap_or("").trim()),
         )?;
