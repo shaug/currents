@@ -203,8 +203,8 @@ fn cur_012_3() {
     let candidate = FileParser::parse(
         BoundedEvidence::new(
             "other.csv",
-            format!("{CSV}\n").into_bytes(),
-            incoming_context,
+            CSV.replace("r1,", "r2,").into_bytes(),
+            incoming_context.clone(),
         )
         .unwrap(),
         profile(ImportFormatV1::SyntheticCsv),
@@ -216,6 +216,34 @@ fn cur_012_3() {
         original.observations[0].id,
         AuthoritativeRecordV1::ObservationVersion(original.observations[0].clone()),
     );
+    // Source identifiers differ, but matching economic evidence is review-only.
+    assert_ne!(
+        candidate.observations[0].original_ids,
+        original.observations[0].original_ids
+    );
+    for changed in [
+        CSV.replace("12.34", "12.35"),
+        CSV.replace("2026-11-10", "2026-11-09"),
+        CSV.replace("synthetic purchase", "different description"),
+    ] {
+        let different = FileParser::parse(
+            BoundedEvidence::new(
+                "different.csv",
+                changed.into_bytes(),
+                incoming_context.clone(),
+            )
+            .unwrap(),
+            profile(ImportFormatV1::SyntheticCsv),
+        )
+        .unwrap();
+        assert!(
+            EvidenceEngine::similarity_candidates(
+                &existing,
+                &ValidatedEvidenceBatchV1::new(different).unwrap()
+            )
+            .is_empty()
+        );
+    }
     let validated = ValidatedEvidenceBatchV1::new(candidate).unwrap();
     assert_eq!(
         EvidenceEngine::similarity_candidates(&existing, &validated).len(),
@@ -224,6 +252,7 @@ fn cur_012_3() {
     let plan = EvidenceEngine::publish(&existing, validated).unwrap();
     assert!(plan.records.iter().any(|r|matches!(r,AuthoritativeRecordV1::ObservationVersion(o) if o.id==id(11000) && o.prior_version.is_none())));
     assert!(plan.invalidations.is_empty());
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
     assert_eq!(existing.records.len(), 1);
     let product = original.products[0].clone();
     let mut wire = serde_json::to_value(&product).unwrap();

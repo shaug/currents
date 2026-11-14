@@ -186,7 +186,25 @@ impl EvidenceEngine {
             for record in state.records.values() {
                 if let AuthoritativeRecordV1::ObservationVersion(existing) = record
                     && existing.id != incoming.id
-                    && existing.reported_fields == incoming.reported_fields
+                    && ["amount", "unit", "effective", "description"]
+                        .iter()
+                        .all(|name| {
+                            match (
+                                existing
+                                    .reported_fields
+                                    .iter()
+                                    .find(|field| field.name == *name),
+                                incoming
+                                    .reported_fields
+                                    .iter()
+                                    .find(|field| field.name == *name),
+                            ) {
+                                (Some(existing), Some(incoming)) => {
+                                    existing.value == incoming.value
+                                }
+                                _ => false,
+                            }
+                        })
                     && existing.original_ids != incoming.original_ids
                 {
                     candidates.push(ImportSimilarityCandidateV1 {
