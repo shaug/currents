@@ -433,11 +433,11 @@ impl AccountingAdapter {
                         }
                     }
                 }
-                AuthoritativeRecordV1::AccountComponent(account) => {
-                    if index.accounts.get(&account.account_id) != Some(&catalog::mapping(account)?)
-                    {
-                        return Err(EngineError::invalid());
-                    }
+                AuthoritativeRecordV1::AccountComponent(account)
+                    if index.accounts.get(&account.account_id)
+                        != Some(&catalog::mapping(account)?) =>
+                {
+                    return Err(EngineError::invalid());
                 }
                 _ => {}
             }
