@@ -17,8 +17,10 @@ pub enum ServiceProfile {
 }
 struct Meta {
     prefix: Option<AccountingPrefixV1>,
+    projection: Option<DomainState>,
     closing: bool,
     poisoned: bool,
+    replay_health: Health,
 }
 struct Inner {
     dataset: DatasetId,
@@ -74,8 +76,10 @@ impl Service {
                 serial: AsyncMutex::new(()),
                 meta: Mutex::new(Meta {
                     prefix: None,
+                    projection: None,
                     closing: false,
                     poisoned: false,
+                    replay_health: Health::RecoveryInProgress,
                 }),
                 previews: Mutex::new(BTreeMap::new()),
                 admissions: AsyncMutex::new(BTreeMap::new()),
@@ -121,37 +125,113 @@ impl Service {
             .authenticate(ctx, self.inner.dataset, capability, now)?;
         Ok(now)
     }
-    /// Initial recovery only. An uncertain COMMIT requires close/reopen before
-    /// this audit can authorize absence; a live uncertain connection is not reset.
+    /// Full correspondence requires a fresh encrypted destination supplied by the
+    /// trusted host. This legacy entry point cannot re-enable financial commands.
     pub async fn recover(&self) -> Result<(), EngineError> {
-        let _writer = self.inner.serial.lock().await;
-        let admissions = self.inner.admissions.lock().await;
-        if !admissions.is_empty() {
-            return Err(error(ErrorClass::ResultUnknown));
-        }
-        {
-            let meta = self
-                .inner
-                .meta
-                .lock()
-                .map_err(|_| error(ErrorClass::IntegrityFailure))?;
-            if meta.closing || meta.poisoned {
-                return Err(error(ErrorClass::ResultUnknown));
-            }
-        }
-        let store = self.inner.store.read().await;
-        let prefix = store
-            .as_ref()
-            .ok_or_else(|| error(ErrorClass::Locked))?
-            .writer()
-            .audited_prefix()
-            .await?;
+        Err(EngineError {
+            class: ErrorClass::IncompleteBasis,
+            affected_scope: vec![],
+            next_action: SafeNextAction::Recover,
+        })
+    }
+    pub fn replay_health(&self) -> Result<Health, EngineError> {
         self.inner
             .meta
             .lock()
-            .map_err(|_| error(ErrorClass::IntegrityFailure))?
-            .prefix = Some(prefix);
-        Ok(())
+            .map(|m| m.replay_health)
+            .map_err(|_| error(ErrorClass::IntegrityFailure))
+    }
+    /// Verify a complete shadow before activating its exact current prefix.
+    /// The host retains the source file; no active-generation or key switch occurs.
+    pub async fn recover_into(
+        &self,
+        destination: EncryptedStore,
+    ) -> Result<currents_storage::ReplayReport, EngineError> {
+        let _writer = self.inner.serial.lock().await;
+        let result = async {
+            let admissions = self.inner.admissions.lock().await;
+            if !admissions.is_empty() {
+                return Err(error(ErrorClass::ResultUnknown));
+            }
+            {
+                let mut meta = self
+                    .inner
+                    .meta
+                    .lock()
+                    .map_err(|_| error(ErrorClass::IntegrityFailure))?;
+                if meta.closing || meta.poisoned {
+                    return Err(error(ErrorClass::ResultUnknown));
+                }
+                meta.prefix = None;
+                meta.projection = None;
+                meta.replay_health = Health::RecoveryInProgress;
+            }
+            let store = self.inner.store.read().await;
+            let source = store.as_ref().ok_or_else(|| error(ErrorClass::Locked))?;
+            let before = source.writer().audited_prefix().await?;
+            let (report, projection) =
+                crate::ReplayCoordinator::rebuild_inner(&source.history(), &destination).await?;
+            let after = source.writer().audited_prefix().await?;
+            if before != after
+                || report.through != after.through
+                || report.native_head != after.native_head
+                || !report.problems.is_empty()
+            {
+                return Err(error(ErrorClass::IntegrityFailure));
+            }
+            Ok((report, after, projection))
+        }
+        .await;
+        let closed = destination.close().await;
+        let result = result.and_then(|value| closed.map(|()| value));
+        let mut meta = self
+            .inner
+            .meta
+            .lock()
+            .map_err(|_| error(ErrorClass::IntegrityFailure))?;
+        match result {
+            Ok((report, prefix, projection)) => {
+                meta.prefix = Some(prefix);
+                meta.projection = Some(projection);
+                // This is local replay health only, never source freshness/coverage.
+                meta.replay_health = Health::Healthy;
+                Ok(report)
+            }
+            Err(error) => {
+                meta.prefix = None;
+                meta.projection = None;
+                meta.replay_health = if error.class == ErrorClass::UnsupportedVersion {
+                    Health::MigrationRequired
+                } else {
+                    Health::IntegrityFailed
+                };
+                Err(error)
+            }
+        }
+    }
+    /// Returns only an exact-current verified projection. A later append makes
+    /// this snapshot unavailable until replay catches up; it never reads stale.
+    pub fn verified_projection(&self) -> Result<DomainState, EngineError> {
+        let meta = self
+            .inner
+            .meta
+            .lock()
+            .map_err(|_| error(ErrorClass::IntegrityFailure))?;
+        let prefix = meta
+            .prefix
+            .as_ref()
+            .ok_or_else(|| error(ErrorClass::ResultUnknown))?;
+        let projection = meta
+            .projection
+            .as_ref()
+            .ok_or_else(|| error(ErrorClass::IncompleteBasis))?;
+        if meta.closing
+            || projection.through != prefix.through
+            || projection.domain_digest != prefix.domain_digest
+        {
+            return Err(error(ErrorClass::IncompleteBasis));
+        }
+        Ok(projection.clone())
     }
     pub fn preview(
         &self,
@@ -502,6 +582,7 @@ impl Service {
                     .lock()
                     .map_err(|_| error(ErrorClass::IntegrityFailure))?;
                 meta.prefix = None;
+                meta.projection = None;
                 meta.poisoned = true;
                 Ok(status(
                     job.body.command_id,
@@ -626,6 +707,8 @@ impl Service {
         if query.basis.through_commit != prefix.through {
             return Err(error(ErrorClass::StaleBasis));
         }
+        // A detached planner head label cannot activate an unverified shadow.
+        self.verified_projection()?;
         let response = self.inner.planner.query(&query, &prefix)?;
         if response.processed_head != prefix.through || response.basis != query.basis {
             return Err(error(ErrorClass::IntegrityFailure));
@@ -644,6 +727,7 @@ impl Service {
                     .lock()
                     .map_err(|_| error(ErrorClass::IntegrityFailure))?;
                 meta.prefix = None;
+                meta.projection = None;
                 meta.poisoned = true;
                 return Err(error(ErrorClass::ResultUnknown));
             }

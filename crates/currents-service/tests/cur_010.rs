@@ -40,7 +40,7 @@ async fn cur_010_1() {
             .state,
         CommandState::ResultUnknown
     );
-    reopened.recover().await.unwrap();
+    recover_service(&reopened).await;
     f.host.reconnect(); // Same original scope, new session and fresh capability.
     let retry = reopened
         .submit(f.ctx(), body.clone(), f.auth(None))
@@ -156,7 +156,7 @@ async fn cur_010_2() {
             .state,
         CommandState::ResultUnknown
     );
-    reopened.recover().await.unwrap();
+    recover_service(&reopened).await;
     assert_eq!(
         reopened
             .command_result(f.ctx(), second.command_id, command_digest(&second).unwrap())
@@ -346,7 +346,7 @@ async fn cur_010_4() {
     );
     f.service.close().await.unwrap();
     let reopened = f.reopen().await;
-    reopened.recover().await.unwrap();
+    recover_service(&reopened).await;
     assert_eq!(
         reopened
             .cancel(f.ctx(), first.command_id)
@@ -396,7 +396,7 @@ async fn cur_010_4() {
     );
     f.service.close().await.unwrap();
     let reopened = f.reopen().await;
-    reopened.recover().await.unwrap();
+    recover_service(&reopened).await;
     assert_eq!(
         reopened
             .command_result(f.ctx(), body.command_id, command_digest(&body).unwrap())
@@ -470,7 +470,7 @@ async fn cur_010_4() {
             ErrorClass::Locked
         );
         let reopened = f.reopen().await;
-        reopened.recover().await.unwrap();
+        recover_service(&reopened).await;
         assert_eq!(
             reopened
                 .command_result(f.ctx(), first.command_id, command_digest(&first).unwrap())
@@ -510,7 +510,7 @@ async fn cur_010_4() {
             .state,
         CommandState::ResultUnknown
     );
-    f.service.recover().await.unwrap();
+    recover_service(&f.service).await;
     let body = f.body(70);
     assert_eq!(
         f.service

@@ -149,6 +149,7 @@ fn allowed_internal(name: &str) -> &'static [&'static str] {
             &["currents-service", "currents-protocol"]
         }
         "currents-verify" => &[
+            "currents-cipher",
             "currents-service",
             "currents-storage",
             "currents-protocol",
@@ -388,6 +389,40 @@ fn ticket(name: &str) -> Result<Value> {
         }
         return Ok(
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted multi-operation authority; not service admission or physical power-loss qualification"}),
+        );
+    }
+    if name == "CUR-011" {
+        let assertions = ["cur_011_1", "cur_011_2", "cur_011_3", "cur_011_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_011",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR011 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_011",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR011 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic complete frozen replay through encrypted C04/C05/C06; no production host or generation activation","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
         );
     }
     if name == "CUR-010" {
@@ -739,6 +774,14 @@ mod cipher_direction_tests {
         );
         assert!(!super::allowed_internal("currents-service").contains(&"currents-accounting"));
         assert!(!sqlite_dependency_allowed("currents-service", "sqlx"));
+    }
+    #[test]
+    fn verifier_key_plumbing_does_not_grant_sql_or_native_access() {
+        assert!(super::allowed_internal("currents-verify").contains(&"currents-cipher"));
+        assert!(!super::allowed_internal("currents-verify").contains(&"currents-accounting"));
+        for dependency in ["sqlx", "sqlx-core", "sqlx-sqlite", "libsqlite3-sys"] {
+            assert!(!sqlite_dependency_allowed("currents-verify", dependency));
+        }
     }
     #[test]
     fn private_adapter_sqlx_edges_only() {

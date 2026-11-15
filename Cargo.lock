@@ -494,6 +494,8 @@ version = "0.0.0"
 dependencies = [
  "currents-accounting",
  "currents-cipher",
+ "currents-domain",
+ "currents-service",
  "currents-types",
  "serde",
  "serde_json",
@@ -538,8 +540,12 @@ dependencies = [
 name = "currents-verify"
 version = "0.0.0"
 dependencies = [
+ "currents-cipher",
  "currents-service",
  "currents-storage",
+ "currents-types",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
