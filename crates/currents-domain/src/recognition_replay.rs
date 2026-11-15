@@ -19,6 +19,9 @@ pub(crate) fn validate_transition(
                 else {
                     return Err(EngineError::invalid());
                 };
+                // Independent plans share the prior prefix. Their combined
+                // projection must still have one chain and unambiguous aliases.
+                CatalogEngine::current(next, revision.component_id)?;
                 Some(CatalogEngine::set_complete(
                     prior,
                     &CatalogRequestV1 {

@@ -1035,3 +1035,146 @@ async fn anchor_posting_date_service_activity_rejects_before_or_at_cutoff() {
     assert_eq!(state.accounting.as_ref().unwrap().recognitions.len(), 2);
     f.service.close().await.unwrap();
 }
+
+#[derive(Clone, Copy)]
+enum CatalogBatchCase {
+    SiblingFork,
+    AliasCollision,
+    Independent,
+}
+
+async fn catalog_batch_recovery(case: CatalogBatchCase) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("catalog-batch.db");
+    let (mut f, empty) = bootstrap(&path).await;
+    declare_activity_accounts(&mut f, &path, &empty).await;
+    // There are catalog declarations but no activity/adoption records.
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let before = store.writer().audited_prefix().await.unwrap();
+    let state = snapshot(&store, empty).await;
+    assert!(
+        !state
+            .records
+            .values()
+            .any(|r| matches!(r, AuthoritativeRecordV1::ActivityAdoption(_)))
+    );
+    let mut first = CatalogEngine::current(&state, data::id(11)).unwrap();
+    first.prior_revision = Some(first.id);
+    first.id = data::id(98001);
+    first.catalog.display_name = "first update".into();
+    let mut second = if matches!(case, CatalogBatchCase::SiblingFork) {
+        first.clone()
+    } else {
+        let mut r = CatalogEngine::current(&state, data::id(31)).unwrap();
+        r.prior_revision = Some(r.id);
+        r
+    };
+    second.id = data::id(98002);
+    second.catalog.display_name = "second update".into();
+    if matches!(case, CatalogBatchCase::AliasCollision) {
+        first.catalog.aliases.push(SourceAliasV1 {
+            source: SourceIdentityV1 {
+                source: "synthetic".into(),
+                connection_id: data::id(102),
+                device_id: None,
+            },
+            original_id: "new-shared-alias".into(),
+        });
+        second.catalog.aliases.push(SourceAliasV1 {
+            source: SourceIdentityV1 {
+                source: "synthetic".into(),
+                connection_id: data::id(102),
+                device_id: None,
+            },
+            original_id: "new-shared-alias".into(),
+        });
+    }
+    // Each update is valid on the exact prior prefix. Only their combination
+    // violates catalog uniqueness; hashes, references and native state are valid.
+    for revision in [&first, &second] {
+        let Some(AuthoritativeRecordV1::AccountComponent(root)) =
+            state.records.get(&revision.component_id)
+        else {
+            panic!()
+        };
+        CatalogEngine::set_complete(
+            &state,
+            &CatalogRequestV1 {
+                schema_version: revision.schema_version,
+                revision_id: revision.id,
+                prior_revision: revision.prior_revision,
+                catalog: revision.catalog.clone(),
+                ownership: root.ownership.clone(),
+                origin: revision.origin.clone(),
+            },
+        )
+        .unwrap();
+    }
+    store
+        .writer()
+        .append(HistoryAppend {
+            prior_head: before.through,
+            records: vec![
+                AuthoritativeRecordV1::AccountCatalogRevision(first.clone()),
+                AuthoritativeRecordV1::AccountCatalogRevision(second.clone()),
+            ],
+            decisions: vec![],
+            staged: vec![],
+            native: None,
+            result: CommandResultV1 {
+                command_id: CommandId(support::id(98000).0),
+                digest: Digest([31; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+        })
+        .await
+        .unwrap();
+    let tip = store.writer().audited_prefix().await.unwrap();
+    assert_eq!(tip.native_head, before.native_head);
+    assert!(store.history().read_prefix(tip.through).await.is_ok());
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let destination = open(&dir.path().join("shadow.db")).await;
+    let result = f.service.recover_into(destination).await;
+    if matches!(case, CatalogBatchCase::Independent) {
+        result.unwrap();
+        let projection = f.service.verified_projection().unwrap();
+        assert_eq!(
+            CatalogEngine::current(&projection, first.component_id).unwrap(),
+            first
+        );
+        assert_eq!(
+            CatalogEngine::current(&projection, second.component_id).unwrap(),
+            second
+        );
+    } else {
+        assert!(
+            result.is_err(),
+            "combined invalid catalog must not activate recovery"
+        );
+        assert!(f.service.verified_projection().is_err());
+    }
+    f.service.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn catalog_batch_sibling_fork_cannot_activate_recovery() {
+    catalog_batch_recovery(CatalogBatchCase::SiblingFork).await;
+}
+#[tokio::test]
+async fn catalog_batch_alias_collision_cannot_activate_recovery() {
+    catalog_batch_recovery(CatalogBatchCase::AliasCollision).await;
+}
+#[tokio::test]
+async fn catalog_batch_independent_revisions_recover() {
+    catalog_batch_recovery(CatalogBatchCase::Independent).await;
+}

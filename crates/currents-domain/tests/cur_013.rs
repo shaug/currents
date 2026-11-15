@@ -879,3 +879,126 @@ fn anchor_posting_date_instant_conversion_is_not_guessed() {
     }
     assert!(RecognitionEngine::adopt(&state, &request).is_err());
 }
+
+fn catalog_batch_commit(
+    prior: &DomainState,
+    second_component: RecordId,
+    collision: bool,
+) -> DomainCommitV1 {
+    use currents_domain::catalog::CatalogEngine;
+    let mut first = CatalogEngine::current(prior, id(11)).unwrap();
+    let mut second = CatalogEngine::current(prior, second_component).unwrap();
+    for (revision, new_id) in [(&mut first, id(98001)), (&mut second, id(98002))] {
+        revision.prior_revision = Some(revision.id);
+        revision.id = new_id;
+        if collision {
+            revision.catalog.aliases.push(SourceAliasV1 {
+                source: SourceIdentityV1 {
+                    source: "synthetic".into(),
+                    connection_id: id(102),
+                    device_id: None,
+                },
+                original_id: "new-shared-alias".into(),
+            });
+        }
+        let Some(AuthoritativeRecordV1::AccountComponent(root)) =
+            prior.records.get(&revision.component_id)
+        else {
+            panic!()
+        };
+        CatalogEngine::set_complete(
+            prior,
+            &CatalogRequestV1 {
+                schema_version: revision.schema_version,
+                revision_id: revision.id,
+                prior_revision: revision.prior_revision,
+                catalog: revision.catalog.clone(),
+                ownership: root.ownership.clone(),
+                origin: revision.origin.clone(),
+            },
+        )
+        .unwrap();
+    }
+    let seq = CommitSeq(prior.through.0 + 1);
+    DomainCommitV1 {
+        seq,
+        previous_digest: prior.domain_digest,
+        records: vec![
+            AuthoritativeRecordV1::AccountCatalogRevision(first),
+            AuthoritativeRecordV1::AccountCatalogRevision(second),
+        ],
+        decisions: vec![],
+        native_head_after: prior
+            .accounting
+            .as_ref()
+            .unwrap()
+            .prefix
+            .native_head
+            .clone(),
+        digest: Digest([77; 32]),
+        command_result: CommandResultV1 {
+            command_id: CommandId(id(98000).0),
+            digest: Digest([88; 32]),
+            state: CommandState::Committed,
+            commit: Some(seq),
+            effects: EffectsV1 {
+                records: vec![],
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: vec![],
+            },
+            health: vec![],
+        },
+    }
+}
+fn assert_catalog_batch_rejected(component: RecordId, collision: bool) {
+    let prior = monetary_state();
+    let commit = catalog_batch_commit(&prior, component, collision);
+    for reverse in [false, true] {
+        let mut candidate = commit.clone();
+        if reverse {
+            candidate.records.reverse();
+        }
+        let mut state = prior.clone();
+        assert!(currents_domain::ReplayEngine::apply(&mut state, &candidate).is_err());
+        assert_eq!(state.records, prior.records);
+        assert_eq!(state.dataset_policies, prior.dataset_policies);
+        assert_eq!(state.through, prior.through);
+        assert_eq!(state.domain_digest, prior.domain_digest);
+        assert_eq!(
+            state.accounting.as_ref().unwrap().prefix,
+            prior.accounting.as_ref().unwrap().prefix
+        );
+    }
+}
+#[test]
+fn catalog_batch_fork_replay_is_atomic() {
+    assert_catalog_batch_rejected(id(11), false);
+}
+#[test]
+fn catalog_batch_alias_replay_is_atomic() {
+    assert_catalog_batch_rejected(id(31), true);
+}
+#[test]
+fn catalog_batch_independent_replay_and_single_prefixes_pass() {
+    use currents_domain::{ReplayEngine, catalog::CatalogEngine};
+    let prior = monetary_state();
+    let commit = catalog_batch_commit(&prior, id(31), false);
+    let mut state = prior.clone();
+    ReplayEngine::apply(&mut state, &commit).unwrap();
+    assert_eq!(
+        CatalogEngine::current(&state, id(11)).unwrap().id,
+        id(98001)
+    );
+    assert_eq!(
+        CatalogEngine::current(&state, id(31)).unwrap().id,
+        id(98002)
+    );
+    for record in &commit.records {
+        let mut single = commit.clone();
+        single.records = vec![record.clone()];
+        let mut prefix = prior.clone();
+        ReplayEngine::apply(&mut prefix, &single).unwrap();
+        assert_eq!(prefix.through, commit.seq);
+    }
+}
