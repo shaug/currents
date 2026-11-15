@@ -390,6 +390,40 @@ fn ticket(name: &str) -> Result<Value> {
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted multi-operation authority; not service admission or physical power-loss qualification"}),
         );
     }
+    if name == "CUR-012" {
+        let assertions = ["cur_012_1", "cur_012_2", "cur_012_3", "cur_012_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-acquisition",
+            "--test",
+            "cur_012",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR012 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-acquisition",
+            "--test",
+            "cur_012",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR012 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"bounded synthetic C07 evidence and inert text; no live formats, credential access, recognition or provider precedence","limits":{"file_bytes":104857600,"chunk_message_bytes":1048576,"normalized_observations":10000,"profile_rows":9998,"total_commit_items":20000}}),
+        );
+    }
     if name == "CUR-025" {
         let assertions = ["cur_025_1", "cur_025_2", "cur_025_3", "cur_025_4"];
         let list = cargo(&[
