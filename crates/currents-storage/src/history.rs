@@ -444,7 +444,7 @@ impl Writer {
 }
 #[derive(Clone)]
 pub struct HistoryReader {
-    pool: SqlitePool,
+    pub(crate) pool: SqlitePool,
 }
 impl HistoryReader {
     pub(crate) fn new(pool: SqlitePool) -> Self {

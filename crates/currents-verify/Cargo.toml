@@ -10,3 +10,9 @@ workspace = true
 [dependencies]
 currents-service.workspace = true
 currents-storage.workspace = true
+currents-cipher.workspace = true
+currents-types.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

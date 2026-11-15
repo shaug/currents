@@ -1,1 +1,3 @@
-//! Private acquisition boundary. Financial behavior is implemented by its owning tickets.
+//! Bounded synthetic evidence acquisition. No credentials, remote fetching or recognition.
+pub mod capture;
+pub mod parse;

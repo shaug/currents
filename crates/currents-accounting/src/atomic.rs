@@ -26,6 +26,19 @@ pub enum AtomicFailure {
     Unknown(CommandId),
 }
 impl AtomicStore {
+    /// Existing-ledger reader construction never creates schema/genesis or closes
+    /// the caller's shared pool when damaged native state cannot be opened.
+    pub async fn from_existing_pool(pool: sqlx::SqlitePool) -> Result<Self, EngineError> {
+        use doubleentry::store::Store;
+        let store = SqlStore::<Sqlite, 18>::currents_from_initialized_pool(pool);
+        store.open().await.map_err(|_| EngineError {
+            class: ErrorClass::IntegrityFailure,
+            affected_scope: vec![],
+            next_action: SafeNextAction::Recover,
+        })?;
+        Ok(Self { store })
+    }
+
     /// Trusted storage construction only. Receives an already keyed private pool;
     /// no URL, key, SQL, native handle or callback is exposed to clients.
     pub async fn from_initialized_pool(

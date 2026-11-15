@@ -11,3 +11,6 @@ use crate as service_api;
 #[cfg(test)]
 #[path = "../tests/support/lifecycle.rs"]
 pub mod test_support;
+
+mod replay;
+pub use replay::ReplayCoordinator;

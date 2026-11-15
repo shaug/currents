@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "receipt_id": "00000000-0000-0000-0000-000000000064",
+  "source_identity": {
+    "source": "synthetic",
+    "connection_id": "00000000-0000-0000-0000-000000000001",
+    "device_id": null
+  },
+  "original_capture_time": "2026-11-11T12:00:00Z",
+  "file_digest": "4f77a08f0b2c9875c4c05d97a250d65fcf9d576f5b353362f52bbfe0da0e6bf1",
+  "sanitizer_version": "synthetic-allowlist/1",
+  "profile_id": "synthetic-csv",
+  "parser_version": "1",
+  "unit": {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "exponent": 2,
+    "native_code": "USD",
+    "kind": "Currency"
+  }
+}

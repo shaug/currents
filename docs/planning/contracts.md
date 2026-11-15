@@ -81,6 +81,8 @@ Files: `crates/currents-acquisition/src/{adapter,capture,parse,identity,refresh}
 
 `AdapterCapabilitiesV1` defines endpoint allowlist, credential scopes, IDs/revision order, deletion/lifecycle, history, units/components/balance semantics, paging and freshness; unknown is explicit. `CaptureBatchV1 { connection_id, source_identity, parser_version, coverage, cursor, observations, sanitized_contract, original_capture_time }`; `ParseProductV1 { source_version_id, parser_id, parser_version, facets:Vec<MovementFacetV1> }`; `MovementFacetV1 { lineage_key, kind, amount, relationships, temporal }`. Facet lineage survives parse/provider revisions; payroll has separate net/gross/withholding/contribution facets.
 
+CUR012 adds the compatible authoritative `AddressedParseProductV1 { id:RecordId, schema_version:u32, product:ParseProductV1 }` under the `AddressedParseProduct` record kind. Only schema version 1 is supported. IDs are frozen trusted acceptance input and distinct from source/facet IDs. This is a new explicit decision/evidence reference role with same/prior-prefix closure; legacy unaddressed `ParseProductV1` remains unchanged and gains no fabricated address. The bounded in-process profile/context/batch types and rejection policy are documented in [synthetic import profiles](../formats/import-profiles.md). No provider precedence policy is introduced.
+
 `FileParser::parse(input:BoundedEvidence,profile:ParserProfileV1)->Result<CaptureBatchV1,EngineError>`; `EvidenceEngine::publish(state:&DomainState,batch:ValidatedEvidenceBatchV1)->Result<DecisionPlan,EngineError>`; `IdentityEngine::associate(state:&DomainState,request:AssociationRequestV1)->Result<DecisionPlan,EngineError>`. `AssociationRequestV1` specifies relationship type, legs/facets, exact allocations, survivor/corrections and reasons. `ReadOnlyAdapter` methods `describe_capabilities()->AdapterCapabilitiesV1`, `async fetch_changes(cursor:Option<String>)->Result<CaptureBatchV1,EngineError>`, `async fetch_snapshot(scope:SourceScopeV1)->Result<CaptureBatchV1,EngineError>`, `async resume_import(receipt:RecordId)->Result<CaptureBatchV1,EngineError>`; source scope is explicit accounts/time/type. No write institution methods. `RefreshCoordinator::next_attempt(state:&ConnectionState,now:OffsetDateTime)->RefreshDecision` is deterministic; 24 hours schedule opt-in,1/5/30 minutes retry then next scheduled, Retry-After, lock/auth failures suppress attempts.
 
 <a id="c08"></a>
@@ -176,3 +178,20 @@ Files: `crates/currents-transfer/src/{lib,archive,ffi}.rs`, `include/currents_tr
 Private bounded C functions are `currents_transfer_encode_v1(payload,len,key,key_len,destination,destination_len,out_operation)->Status`, `currents_transfer_decode_v1(archive_bytes,len,key,key_len,out_operation)->Status`, `currents_transfer_poll_v1(operation,out_buffer,out_len)->Status`, `currents_transfer_copy_v1(buffer,destination,capacity,out_written)->Status`, `currents_transfer_release_v1(buffer)->Status` and `currents_transfer_close_v1(operation)->Status`. Paths are supplied only by the trusted capture app's protected staging directory, never by source contents. Opaque operation/buffer handles are generation-tagged; explicit input/key lifetime and valid C memory obligations, limits, panic containment and actor cleanup match C14 without its owner/session authority. Copy/release handles belong to their operation. No financial command,full restore or owner-key/session API is linked/exported.
 
 `TransferActor` keeps work off the main actor and controls device-protected temporary files and key memory. Wrong key/profile/kind fails closed; all final files/acks reopen without sidecars. Actual device and simulator tests include canaries, interrupted closure, duplicate/late buffers, debug/release memory harness and Mac↔iOS cross-process canonical interoperability. Desktop crypto proof is not substituted.
+
+### CUR-011 implementation clarification
+
+The synthetic headless verifier may construct host-private `DatasetKey` and
+`CipherProfileV1` through an explicit dependency on `currents-cipher`; it still
+cannot use SQLx/sys, native accounting, network or Apple APIs. The documented
+public fixture key is never private-data encryption. C06 integration tests may
+use dev-only storage→service/domain edges; production storage remains service-free.
+
+C06 `DomainState.domain_digest` records exact accepted prefix continuity beside
+its nonauthoritative latest-ID index. Full comparison hashes ordered authority,
+not that lossy index. `Service::recover_into(destination)` requires a fresh
+host-supplied encrypted shadow, holds serial exclusion, verifies complete
+correspondence and unchanged source, and only then publishes the verified prefix.
+The old `recover()` returns `IncompleteBasis/Recover`; it cannot certify replay.
+A separately rebuilt destination does not repair or grant write authority to a
+damaged source. Active file/key generation switching remains C13/CUR-032.
