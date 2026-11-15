@@ -1,0 +1,10 @@
+[
+  {
+    "file": "catalog.json",
+    "command_sha256": "63ee62bf0d7093d3eba2d6c76ae1a7c5f6886054df302ae71d0954125f4b5230"
+  },
+  {
+    "file": "pending.json",
+    "command_sha256": "fdb5cc18a5907ee8214aa2dd8424002cb3a8e3b424455d3546060c7150252d21"
+  }
+]

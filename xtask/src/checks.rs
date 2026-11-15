@@ -425,6 +425,78 @@ fn ticket(name: &str) -> Result<Value> {
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic complete frozen replay through encrypted C04/C05/C06; no production host or generation activation","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
         );
     }
+    if name == "CUR-013" {
+        let domain = [
+            "cur_013_1",
+            "cur_013_2",
+            "cur_013_3",
+            "cur_013_4",
+            "cur_013_catalog_commands",
+        ];
+        let durable = [
+            "cur_013_1_service_pending_posted_reopen_and_no_double_money",
+            "cur_013_2_service_corroboration_is_one_entry",
+            "cur_013_3_service_unknown_and_supported_openings_are_distinct",
+            "cur_013_4_service_invalid_money_never_changes_domain_or_native_head",
+            "cur_013_catalog_commands_service",
+            "catalog_authority_and_ownership_negatives_leave_exact_prefix_unchanged",
+            "historical_adoption_keeps_exact_policy_versions_after_later_policy_records",
+            "coherent_catalog_corruption_cannot_activate_replay_projection",
+        ];
+        let mut evidence = Vec::new();
+        for (package, target, required) in [
+            ("currents-domain", "cur_013", domain.as_slice()),
+            ("currents-service", "cur_013", durable.as_slice()),
+            (
+                "currents-protocol",
+                "cur_013_contracts",
+                ["cur_013_complete_command_goldens"].as_slice(),
+            ),
+        ] {
+            let text = cargo(&["test", "--locked", "-p", package, "--test", target])?;
+            if !text.contains("test result: ok.")
+                || !text.contains("; 0 failed; 0 ignored;")
+                || required
+                    .iter()
+                    .any(|name| !text.contains(&format!("test {name} ... ok")))
+            {
+                return Err(format!(
+                    "CUR013 incomplete qualification in {package}/{target}: {text}"
+                ));
+            }
+            evidence.push(json!({"package":package,"target":target,"assertions":required,"output_sha256":sha(text.as_bytes())}));
+        }
+        let paths = [
+            "crates/currents-domain/src/catalog.rs",
+            "crates/currents-domain/src/recognition.rs",
+            "crates/currents-domain/src/segments.rs",
+            "crates/currents-domain/src/policy_history.rs",
+            "crates/currents-domain/src/recognition_replay.rs",
+            "crates/currents-domain/src/replay.rs",
+            "crates/currents-service/src/replay.rs",
+            "fixtures/journeys/s1/authorization.json",
+            "fixtures/journeys/s1/posted.json",
+            "fixtures/journeys/s1/enrichment.json",
+            "crates/currents-domain/tests/cur_013.rs",
+            "crates/currents-domain/tests/support/recognition.rs",
+            "crates/currents-service/tests/cur_013.rs",
+            "crates/currents-types/src/recognition_contracts.rs",
+            "crates/currents-storage/src/references.rs",
+            "fixtures/contracts/v1/recognition/catalog.json",
+            "fixtures/contracts/v1/recognition/pending.json",
+            "fixtures/contracts/v1/recognition/digests.json",
+        ];
+        let sources: Vec<_> = paths
+            .iter()
+            .map(|path| {
+                fs::read(root().join(path)).map(|bytes| json!({"path":path,"sha256":sha(&bytes)}))
+            })
+            .collect::<std::io::Result<_>>()
+            .map_err(|error| error.to_string())?;
+        return Ok(
+            json!({"ticket":name,"suites":evidence,"sources":sources,"scope":"explicit synthetic evidence adoption, immutable catalog, encrypted Service/native recognition and initial supported opening; no production host, inferred associations or replacement correction"}),
+        );
+    }
     if name == "CUR-012" {
         let assertions = ["cur_012_1", "cur_012_2", "cur_012_3", "cur_012_4"];
         let list = cargo(&[

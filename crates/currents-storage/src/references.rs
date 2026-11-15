@@ -32,6 +32,8 @@ const RECORDS: &[&str] = &[
     "FrozenAccountingManifest",
     "UnitCatalog",
     "AccountComponent",
+    "AccountCatalogRevision",
+    "ActivityAdoption",
     "AccountAlias",
     "OwnershipPerimeter",
     "ImportReceipt",
@@ -130,6 +132,15 @@ impl Metadata {
     fn allocation(&mut self, a: &Value) {
         self.reference(&["ObservationVersion"], &a["observation"], None);
         self.reference(&["Facet"], &scoped(&a["observation"], &a["facet"]), None);
+    }
+    fn adopted_source(&mut self, source: &Value) {
+        self.reference(&["ObservationVersion"], &source["observation"], None);
+        self.reference(&["AddressedParseProduct"], &source["parse_product"], None);
+        self.reference(
+            &["Facet"],
+            &scoped(&source["observation"], &source["facet"]),
+            None,
+        );
     }
     fn interpretation(&mut self, v: &Value) {
         self.many(EVIDENCE, &v["evidence"]);
@@ -234,6 +245,95 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
     m.values(v);
     // Matching the enum, not only strings, makes a newly added variant a compile failure.
     match record {
+        AuthoritativeRecordV1::AccountCatalogRevision(r) => {
+            if r.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if r.id.0.is_nil()
+                || r.id == r.component_id
+                || r.prior_revision == Some(r.id)
+                || r.component_id != r.catalog.component_id
+                || r.account_id != r.catalog.account_id
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["AccountComponent"], &v["component_id"], None);
+            m.define(
+                "CatalogComponentRevision",
+                &scoped(&v["component_id"], &v["id"]),
+                0,
+                false,
+            );
+            m.reference(
+                &["CatalogComponentRevision"],
+                &scoped(&v["component_id"], &v["prior_revision"]),
+                None,
+            );
+        }
+        AuthoritativeRecordV1::ActivityAdoption(a) => {
+            if a.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if a.id.0.is_nil()
+                || a.legs.is_empty()
+                || a.legs.len() > 1024
+                || a.facets.len() > 16384
+                || a.legs
+                    .iter()
+                    .any(|leg| !a.facets.iter().any(|f| f.leg_id == *leg))
+                || a.facets.iter().any(|f| !a.legs.contains(&f.leg_id))
+            {
+                return Err(EngineError::invalid());
+            }
+            match a.status {
+                ActivityStatusV1::Pending => {
+                    if a.recognition.is_some()
+                        || a.prior_pending.is_some()
+                        || a.opening.is_some()
+                        || a.unresolved_account.is_some()
+                    {
+                        return Err(EngineError::invalid());
+                    }
+                    m.define("PendingAdoption", &v["id"], 0, false);
+                }
+                ActivityStatusV1::Posted => {
+                    if a.recognition.is_none() {
+                        return Err(EngineError::invalid());
+                    }
+                    m.reference(&["Recognition"], &v["recognition"], None);
+                    if a.prior_pending.is_some() {
+                        m.reference(&["PendingAdoption"], &v["prior_pending"], None);
+                        m.define("PendingConsumption", &v["prior_pending"], 0, false);
+                    }
+                }
+            }
+            m.reference(&["FinancialEvent"], &v["event_id"], None);
+            m.many(&["FinancialLeg"], &v["legs"]);
+            for leg in v["legs"].as_array().ok_or_else(EngineError::invalid)? {
+                m.define("AdoptedFinancialLeg", leg, 0, false);
+            }
+            for facet in v["facets"].as_array().ok_or_else(EngineError::invalid)? {
+                m.adopted_source(&facet["source"]);
+            }
+            m.policy(&v["governing_policy"]);
+            m.interpretation(&v["interpretation"]);
+            m.reference(&["Account"], &v["unresolved_account"], None);
+            if let Some(opening) = &a.opening {
+                if a.prior_pending.is_some() || opening.included_activity.len() > 4096 {
+                    return Err(EngineError::invalid());
+                }
+                let opening = &v["opening"];
+                m.reference(&["AccountingSegment"], &opening["segment_id"], None);
+                m.reference(&["AccountComponent"], &opening["component_id"], None);
+                m.adopted_source(&opening["evidence"]);
+                for source in opening["included_activity"]
+                    .as_array()
+                    .ok_or_else(EngineError::invalid)?
+                {
+                    m.adopted_source(source);
+                }
+            }
+        }
         AuthoritativeRecordV1::DateConversionPolicy(p) => {
             if p.version == 0 {
                 return Err(EngineError::version());
