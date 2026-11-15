@@ -202,6 +202,66 @@ dto!(ReportedFieldV1 { name:String, value:SourceValue<String> });
 dto!(ObservationVersionV1 { id:RecordId, source:SourceIdentityV1, original_ids:Vec<String>, sanitized_representation:String, reported_fields:Vec<ReportedFieldV1>, temporal:TemporalValue, semantic_kind:ObservationKind, prior_version:Option<RecordId>, tombstone_of:Option<RecordId>, content_digest:Digest });
 dto!(MovementFacetV1 { lineage_key:RecordId, kind:ObservationKind, amount:SourceValue<Amount>, relationships:Vec<RecordId>, temporal:TemporalValue });
 dto!(ParseProductV1 { source_version_id:RecordId, parser_id:String, parser_version:String, facets:Vec<MovementFacetV1> });
+/// Addressable immutable product. Legacy unaddressed products remain unchanged.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AddressedParseProductV1 {
+    pub id: RecordId,
+    pub schema_version: u32,
+    pub product: ParseProductV1,
+}
+dto!(AddressedParseProductWireV1 {
+    id: RecordId,
+    schema_version: u32,
+    product: ParseProductV1
+});
+impl AddressedParseProductV1 {
+    pub fn validate(&self) -> Result<(), EngineError> {
+        if self.schema_version != 1 {
+            return Err(EngineError::version());
+        }
+        if self.id.0.is_nil()
+            || self.id == self.product.source_version_id
+            || self
+                .product
+                .facets
+                .iter()
+                .any(|facet| facet.lineage_key == self.id)
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(())
+    }
+}
+impl serde::Serialize for AddressedParseProductV1 {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.validate().map_err(serde::ser::Error::custom)?;
+        AddressedParseProductWireV1 {
+            id: self.id,
+            schema_version: self.schema_version,
+            product: self.product.clone(),
+        }
+        .serialize(serializer)
+    }
+}
+impl<'de> serde::Deserialize<'de> for AddressedParseProductV1 {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = AddressedParseProductWireV1::deserialize(deserializer)?;
+        let product = Self {
+            id: wire.id,
+            schema_version: wire.schema_version,
+            product: wire.product,
+        };
+        product.validate().map_err(serde::de::Error::custom)?;
+        Ok(product)
+    }
+}
+impl Schema for AddressedParseProductV1 {
+    fn schema() -> serde_json::Value {
+        let mut schema = AddressedParseProductWireV1::schema();
+        schema["properties"]["schema_version"] = serde_json::json!({"const":1});
+        schema
+    }
+}
 dto!(EvidenceAllocationV1 {
     observation: RecordId,
     facet: RecordId,
@@ -228,7 +288,7 @@ dto!(ScenarioV1 { id:RecordId, version:u32, basis:ReadBasis, commitments:Vec<Com
 dto!(ForecastPointV1 { account_id:AccountId, at:TemporalValue, amount:SourceValue<Amount>, uncertainty:Vec<String> });
 dto!(DecisionEnvelopeV1 { id:RecordId, commit:CommitSeq, item_position:u32, decision_type:DecisionKind, schema_version:u32, actor:RecordId, authority:AuthorityKind, grant_id:Option<GrantId>, command_id:CommandId, command_digest:Digest, references:Vec<RecordId>, recorded_time:RecordedInstant, adopted_result:Vec<RecordId>, policy:PolicyReferenceV1, corrections:Vec<RecordId>, supersedes:Vec<RecordId> });
 tagged!(AuthoritativeRecordV1 {
- DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1)
+ DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1)
 });
 choices!(CommandState {
     Committed,

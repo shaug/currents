@@ -21,7 +21,10 @@ def example(s):
  if 'pattern' in s:
   return '0'*64 if '64' in s['pattern'] else '1'
  return 'synthetic'
-save('records.json',[example(x) for x in s['AuthoritativeRecordV1']['oneOf']])
+records=[example(x) for x in s['AuthoritativeRecordV1']['oneOf']]
+for record in records:
+ if record['kind']=='AddressedParseProduct':record['value']['id']='00000000-0000-0000-0000-000000000002'
+save('records.json',records)
 save('command.json',example(s['CommandBodyV1']))
 save('operations.json',[dict(example(s['CommandBodyV1']),operation=example(x)) for x in s['CommandBodyV1']['properties']['operation']['oneOf']])
 save('canonical.json',{'source':'RFC 8785 section 3.2.3 UTF16 property sorting and section 3.2.2.2 escaping','utf16':{'input':{'\u20ac':'Euro Sign','\r':'Carriage Return','\ufb33':'Hebrew Letter Dalet With Dagesh','1':'One','\U0001f600':'Emoji: Grinning Face','\u0080':'Control','\u00f6':'Latin Small Letter O With Diaeresis'},'expected_keys':['\r','1','\u0080','\u00f6','\u20ac','\U0001f600','\ufb33']},'escaping':{'input':'\u0000\b\t\n\f\r"\\/€','expected':'"\\u0000\\b\\t\\n\\f\\r\\"\\\\/€"'}})

@@ -81,3 +81,9 @@ requiring allocation/leg ownership semantics, currently return
 `UnsupportedVersion`: their owning algorithms are not delivered by C06.
 `ReadOnlyStore::into_forensic` preserves a failed full-replay result on the same
 read-only source; structural audit success alone does not certify these semantics.
+
+Addressed parse products retain their immutable product IDs and supported schema
+version in the latest-record projection. Reparse products coexist with prior
+products; legacy anonymous products remain only in ordered authority and do not
+receive a fabricated ID. Receipt capture-metadata blobs are copied byte-for-byte
+with all retained content, preserving capture time independently of receipt time.

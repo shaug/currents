@@ -96,6 +96,10 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::Scenario(v) => Some(v.id),
                 AuthoritativeRecordV1::ForecastRun(v) => Some(v.id),
                 AuthoritativeRecordV1::ParseProduct(_) => None,
+                AuthoritativeRecordV1::AddressedParseProduct(v) => {
+                    v.validate()?;
+                    Some(v.id)
+                }
             };
             if let Some(id) = id {
                 records.insert(id, record);

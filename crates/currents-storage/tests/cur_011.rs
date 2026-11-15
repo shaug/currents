@@ -239,13 +239,87 @@ async fn cur_011_4() {
         vec![AuthoritativeRecordV1::Recognition(recognition)],
     )
     .await;
-    let destination = open(&dir.path().join("destination.db")).await;
+    let (capture_reference, capture_bytes, products) = append_import_history(&source).await;
+    let history = source.history().read_prefix(CommitSeq(4)).await.unwrap();
+    let mut projection = DomainState::default();
+    for commit in &history {
+        currents_domain::ReplayEngine::apply(&mut projection, commit).unwrap();
+    }
+    for product in &products {
+        assert_eq!(
+            projection.records.get(&product.id),
+            Some(&AuthoritativeRecordV1::AddressedParseProduct(
+                product.clone()
+            )),
+            "replay must index both immutable parse versions by their own identity"
+        );
+    }
+    assert!(
+        matches!(
+            projection.records.get(&fixture::id(71001)),
+            Some(AuthoritativeRecordV1::ObservationVersion(_))
+        ),
+        "legacy anonymous product must not overwrite source observation identity"
+    );
+    let mut prefix = DomainState::default();
+    for commit in &history[..2] {
+        currents_domain::ReplayEngine::apply(&mut prefix, commit).unwrap();
+    }
+    for invalid_version in [true, false] {
+        let mut invalid = history[2].clone();
+        for record in &mut invalid.records {
+            if let AuthoritativeRecordV1::AddressedParseProduct(product) = record {
+                if invalid_version {
+                    product.schema_version = 2;
+                } else {
+                    product.id = product.product.source_version_id;
+                }
+            }
+        }
+        let mut unchanged = prefix.clone();
+        let error = currents_domain::ReplayEngine::apply(&mut unchanged, &invalid).unwrap_err();
+        assert_eq!(
+            error.class,
+            if invalid_version {
+                ErrorClass::UnsupportedVersion
+            } else {
+                ErrorClass::InvalidReference
+            }
+        );
+        assert_eq!(unchanged.records, prefix.records);
+        assert_eq!(unchanged.through, prefix.through);
+        assert_eq!(unchanged.domain_digest, prefix.domain_digest);
+    }
+    let destination_path = dir.path().join("destination.db");
+    let destination = open(&destination_path).await;
     let before = source.history().audit_report().await.unwrap();
     let rebuilt = currents_service::ReplayCoordinator::rebuild(source.history(), destination)
         .await
         .unwrap();
     assert_eq!(before, rebuilt);
-    assert_eq!(rebuilt.through, CommitSeq(2));
+    assert_eq!(rebuilt.through, CommitSeq(4));
+    let reopened = open(&destination_path).await;
+    assert_eq!(
+        reopened.history().read_prefix(CommitSeq(4)).await.unwrap(),
+        history
+    );
+    let mut stream = reopened
+        .history()
+        .stream_content(CommitSeq(4), capture_reference.digest)
+        .await
+        .unwrap();
+    let mut actual = Vec::new();
+    while let Some(chunk) = stream.next().await.unwrap() {
+        actual.extend(chunk);
+    }
+    assert_eq!(actual, capture_bytes);
+    let retained: ImportCaptureMetadataV1 = serde_json::from_slice(&actual).unwrap();
+    assert_ne!(
+        retained.original_capture_time,
+        serde_json::from_str::<RecordedInstant>("\"2026-11-13T14:00:00Z\"").unwrap()
+    );
+    drop(stream);
+    reopened.close().await.unwrap();
     println!("replay-v1 {rebuilt:?}");
     source.close().await.unwrap();
 }
@@ -468,4 +542,134 @@ async fn damage_authority(path: &std::path::Path, kind: u8) {
             .unwrap();
     }
     pool.close().await;
+}
+
+async fn append_import_history(
+    source: &EncryptedStore,
+) -> (ContentReferenceV1, Vec<u8>, Vec<AddressedParseProductV1>) {
+    let content = b"synthetic retained capture";
+    let raw = source.stage(content).await.unwrap();
+    let identity = SourceIdentityV1 {
+        source: "synthetic-replay".into(),
+        connection_id: fixture::id(71000),
+        device_id: None,
+    };
+    let metadata = ImportCaptureMetadataV1 {
+        schema_version: 1,
+        receipt_id: fixture::id(71002),
+        source_identity: identity.clone(),
+        original_capture_time: serde_json::from_str("\"2026-11-12T12:00:00Z\"").unwrap(),
+        file_digest: raw.digest(),
+        sanitizer_version: "1".into(),
+        profile_id: "synthetic".into(),
+        parser_version: "1".into(),
+        unit: UnitDefinition {
+            id: UnitId(fixture::id(1).0),
+            exponent: 2,
+            native_code: "USD".into(),
+            kind: UnitKind::Currency,
+        },
+    };
+    let capture_bytes = serde_json::to_vec(&metadata).unwrap();
+    let staged_metadata = source.stage(&capture_bytes).await.unwrap();
+    let capture_reference = ContentReferenceV1 {
+        digest: staged_metadata.digest(),
+        byte_count: CommitSeq(capture_bytes.len() as u64),
+        media_type: CAPTURE_METADATA_MEDIA_TYPE.into(),
+    };
+    let product = ParseProductV1 {
+        source_version_id: fixture::id(71001),
+        parser_id: "synthetic".into(),
+        parser_version: "1".into(),
+        facets: vec![],
+    };
+    let first = AddressedParseProductV1 {
+        id: fixture::id(71003),
+        schema_version: 1,
+        product: product.clone(),
+    };
+    let second = AddressedParseProductV1 {
+        id: fixture::id(71004),
+        schema_version: 1,
+        product: ParseProductV1 {
+            parser_version: "2".into(),
+            ..product.clone()
+        },
+    };
+    let records = vec![
+        AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {
+            id: metadata.receipt_id,
+            source: identity.clone(),
+            adapter_version: "1".into(),
+            parser_version: "1".into(),
+            requested_coverage: vec![],
+            reported_coverage: vec![],
+            received_time: serde_json::from_str("\"2026-11-13T14:00:00Z\"").unwrap(),
+            result: ImportResult::Complete,
+            cursor: SourceValue::Unknown,
+            truncated: false,
+            complete: true,
+            contents: vec![
+                ContentReferenceV1 {
+                    digest: raw.digest(),
+                    byte_count: CommitSeq(content.len() as u64),
+                    media_type: "text/plain".into(),
+                },
+                capture_reference.clone(),
+            ],
+        }),
+        AuthoritativeRecordV1::ObservationVersion(ObservationVersionV1 {
+            id: product.source_version_id,
+            source: identity,
+            original_ids: vec!["synthetic-row".into()],
+            sanitized_representation: "synthetic retained capture".into(),
+            reported_fields: vec![],
+            temporal: TemporalValue::Date {
+                civil: time_date("2024-06-29"),
+                original_text: "2024-06-29".into(),
+            },
+            semantic_kind: ObservationKind::Movement,
+            prior_version: None,
+            tombstone_of: None,
+            content_digest: raw.digest(),
+        }),
+        AuthoritativeRecordV1::ParseProduct(product),
+        AuthoritativeRecordV1::AddressedParseProduct(first.clone()),
+    ];
+    let mut result = source.history().read_prefix(CommitSeq(2)).await.unwrap()[1]
+        .command_result
+        .clone();
+    result.command_id = CommandId(fixture::id(71005).0);
+    result.digest = Digest([73; 32]);
+    result.commit = None;
+    let prior_native = source.writer().audited_prefix().await.unwrap().native_head;
+    let commit = source
+        .writer()
+        .append(HistoryAppend {
+            prior_head: CommitSeq(2),
+            records,
+            decisions: vec![],
+            staged: vec![raw, staged_metadata],
+            native: None,
+            result: result.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(commit.native_head_after, prior_native);
+    result.command_id = CommandId(fixture::id(71006).0);
+    result.digest = Digest([74; 32]);
+    let commit = source
+        .writer()
+        .append(HistoryAppend {
+            prior_head: CommitSeq(3),
+            records: vec![AuthoritativeRecordV1::AddressedParseProduct(second.clone())],
+            decisions: vec![],
+            staged: vec![],
+            native: None,
+            result,
+        })
+        .await
+        .unwrap();
+    assert_eq!(commit.native_head_after, prior_native);
+    (capture_reference, capture_bytes, vec![first, second])
 }
