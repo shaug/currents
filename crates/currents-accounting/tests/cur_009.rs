@@ -465,19 +465,22 @@ async fn persist(
     let manifest =
         AccountingAdapter::manifest(id(70_000 + u128::from(state.through.0)), batch).unwrap();
     let bytes = AccountingAdapter::instruction_bytes(batch).unwrap();
-    let staged = store.stage(&bytes).await.unwrap();
     let mut records = extra;
     records.push(AuthoritativeRecordV1::FrozenAccountingManifest(manifest));
     let committed = store
         .writer()
-        .append(currents_storage::HistoryAppend {
-            prior_head: state.through,
-            records,
-            decisions: vec![],
-            result: result(state.through.0 + 1),
-            staged: vec![staged],
-            native: AccountingAdapter::prepare_operations(batch).unwrap().pop(),
-        })
+        .append_closure(
+            currents_storage::HistoryAppend {
+                prior_head: state.through,
+                records,
+                decisions: vec![],
+                result: result(state.through.0 + 1),
+                staged: vec![],
+                native: None,
+            },
+            AccountingAdapter::prepare_closure(batch).unwrap(),
+            &currents_accounting::ClosureControl::default(),
+        )
         .await
         .unwrap();
     AccountingAdapter::advance_index(state, &committed, &bytes).unwrap();
@@ -509,7 +512,7 @@ async fn cur_009_4() {
     let mut s = state();
     s.accounting = Some(AccountingIndexV1::empty(empty.native_head_after.clone()));
     AccountingAdapter::advance_index(&mut s, &empty, &[]).unwrap();
-    // Existing C04 seam commits one metadata operation at a time. No plural executor.
+    // Preserve the single-operation replay vector through the strict C04 manifest writer.
     let declarations = metadata(&s);
     for (i, op) in declarations.operations.into_iter().enumerate() {
         let mut one = AccountingBatchV1 {

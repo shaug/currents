@@ -140,6 +140,7 @@ fn allowed_internal(name: &str) -> &'static [&'static str] {
         "currents-storage" => &["currents-types", "currents-accounting", "currents-cipher"],
         "currents-service" => &[
             "currents-types",
+            "currents-protocol",
             "currents-domain",
             "currents-planning",
             "currents-storage",
@@ -357,6 +358,134 @@ fn ticket(name: &str) -> Result<Value> {
     }
     if name == "CUR-047" {
         return crate::readiness::qualify();
+    }
+    if name == "CUR-007" {
+        let assertions = ["cur_007_1", "cur_007_2", "cur_007_3", "cur_007_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_007",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR007 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-storage",
+            "--test",
+            "cur_007",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR007 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic encrypted multi-operation authority; not service admission or physical power-loss qualification"}),
+        );
+    }
+    if name == "CUR-025" {
+        let assertions = ["cur_025_1", "cur_025_2", "cur_025_3", "cur_025_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-planning",
+            "--test",
+            "cur_025",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR025 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-planning",
+            "--test",
+            "cur_025",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR025 incomplete qualification".into());
+        }
+        let durable = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_025",
+        ])?;
+        if !durable.contains("1 passed; 0 failed; 0 ignored") {
+            return Err("CUR025 incomplete durable qualification".into());
+        }
+        let source_paths = [
+            "crates/currents-planning/src/calendar.rs",
+            "crates/currents-planning/src/commitments.rs",
+            "crates/currents-planning/tests/cur_025.rs",
+            "crates/currents-service/tests/cur_025.rs",
+            "fixtures/planning/calendar/edges.json",
+            "fixtures/contracts/v1/records.json",
+        ];
+        let source_hashes: Vec<_> = source_paths
+            .iter()
+            .map(|path| {
+                fs::read(root().join(path)).map(|bytes| json!({"path":path,"sha256":sha(&bytes)}))
+            })
+            .collect::<std::io::Result<_>>()
+            .map_err(|error| error.to_string())?;
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"durable_output_sha256":sha(durable.as_bytes()),"source_hashes":source_hashes,"scope":"portable planning and durable synthetic C03 history, no production activation or financial recognition"}),
+        );
+    }
+    if name == "CUR-010" {
+        let assertions = ["cur_010_1", "cur_010_2", "cur_010_3", "cur_010_4"];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_010",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR010 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_010",
+        ])?;
+        if !text.contains("4 passed; 0 failed; 0 ignored") {
+            return Err("CUR010 incomplete qualification".into());
+        }
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic serialized C03 lifecycle through encrypted C04/C05; not signed-host production or sibling domain semantics","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
+        );
     }
     if name == "CUR-009" {
         let assertions = ["cur_009_1", "cur_009_2", "cur_009_3", "cur_009_4"];
@@ -665,6 +794,16 @@ pub fn run(args: Vec<String>) -> Result<()> {
 #[cfg(test)]
 mod cipher_direction_tests {
     use super::sqlite_dependency_allowed;
+    #[test]
+    fn service_consumes_c03_without_native_access() {
+        assert!(super::allowed_internal("currents-service").contains(&"currents-protocol"));
+        assert_eq!(
+            super::allowed_internal("currents-protocol"),
+            ["currents-types"]
+        );
+        assert!(!super::allowed_internal("currents-service").contains(&"currents-accounting"));
+        assert!(!sqlite_dependency_allowed("currents-service", "sqlx"));
+    }
     #[test]
     fn private_adapter_sqlx_edges_only() {
         for name in ["currents-storage", "currents-accounting"] {

@@ -1,6 +1,6 @@
 //! Private storage boundary. Financial behavior is implemented by its owning tickets.
 mod writer;
-pub use writer::{CommitFailure, Writer};
+pub use writer::{CommitControl, CommitFailure, CommitReceipt, PreparedCommit, Writer};
 mod cipher;
 mod schema;
 pub use cipher::EncryptedStore;

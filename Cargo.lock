@@ -454,6 +454,8 @@ dependencies = [
  "currents-types",
  "jiff",
  "jiff-tzdb",
+ "serde_json",
+ "sha2 0.11.1",
 ]
 
 [[package]]
@@ -471,13 +473,22 @@ dependencies = [
 name = "currents-service"
 version = "0.0.0"
 dependencies = [
+ "currents-accounting",
+ "currents-cipher",
  "currents-domain",
  "currents-planning",
+ "currents-protocol",
+ "currents-service",
  "currents-storage",
  "currents-types",
+ "jiff-tzdb",
+ "serde",
  "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -600,6 +611,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "time",
+ "tokio",
  "unicode-normalization",
 ]
 

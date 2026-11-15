@@ -37,6 +37,34 @@ fn atomic(e: AtomicFailure) -> CommitFailure {
 fn failed(e: EngineError) -> CommitFailure {
     CommitFailure::DefinitelyRolledBack(e)
 }
+fn checked_record(bytes: &[u8], command: CommandId) -> Result<DomainCommitV1, EngineError> {
+    let mut value: DomainCommitV1 = serde_json::from_slice(bytes).map_err(|_| schema::failure())?;
+    if canonical(&value)? != bytes
+        || value.command_result.command_id != command
+        || value.command_result.state != CommandState::Committed
+        || value.command_result.commit != Some(value.seq)
+    {
+        return Err(schema::failure());
+    }
+    let saved = value.digest;
+    value.digest = Digest::default();
+    if hash(&canonical(&value)?) != saved {
+        return Err(schema::failure());
+    }
+    value.digest = saved;
+    Ok(value)
+}
+fn checked_command(
+    bytes: &[u8],
+    command: CommandId,
+    digest: Digest,
+) -> Result<DomainCommitV1, EngineError> {
+    let value = checked_record(bytes, command)?;
+    if value.command_result.digest != digest {
+        return Err(EngineError::invalid());
+    }
+    Ok(value)
+}
 // The same provenance bindings apply to admission and persisted authority audit.
 fn decision_bindings_match(
     decision: &DecisionEnvelopeV1,
@@ -59,6 +87,30 @@ fn item_counts_within_limits(
             .count()
             <= MAX_OBSERVATIONS
 }
+fn closure_manifest(
+    records: &[AuthoritativeRecordV1],
+) -> Result<&FrozenAccountingManifestV1, EngineError> {
+    let mut manifests = records.iter().filter_map(|record| match record {
+        AuthoritativeRecordV1::FrozenAccountingManifest(manifest) => Some(manifest),
+        _ => None,
+    });
+    let manifest = manifests.next().ok_or_else(EngineError::invalid)?;
+    if manifests.next().is_some() {
+        return Err(EngineError::invalid());
+    }
+    Ok(manifest)
+}
+fn closure_retry_matches(
+    input: &HistoryAppend,
+    previous: &DomainCommitV1,
+) -> Result<(), EngineError> {
+    if canonical(&input.records)? != canonical(&previous.records)?
+        || canonical(&input.decisions)? != canonical(&previous.decisions)?
+    {
+        return Err(EngineError::invalid());
+    }
+    Ok(())
+}
 /// Storage-ready typed inputs only. C05 freezing and C03 command lifecycle are separate.
 pub struct HistoryAppend {
     pub prior_head: CommitSeq,
@@ -70,6 +122,105 @@ pub struct HistoryAppend {
 }
 impl Writer {
     pub async fn append(&self, input: HistoryAppend) -> Result<DomainCommitV1, CommitFailure> {
+        if input
+            .records
+            .iter()
+            .any(|record| matches!(record, AuthoritativeRecordV1::FrozenAccountingManifest(_)))
+        {
+            return Err(failed(EngineError::invalid()));
+        }
+        if let Some(previous) = self
+            .command_result(input.result.command_id, input.result.digest)
+            .await
+            .map_err(failed)?
+        {
+            return Ok(previous);
+        }
+        self.append_inner(input, None).await
+    }
+    /// Lookup is evidence of a committed result only. Absence is not proof that
+    /// admitted work settled; callers must await it or reopen/audit after a crash.
+    pub async fn command_result(
+        &self,
+        command: CommandId,
+        digest: Digest,
+    ) -> Result<Option<DomainCommitV1>, EngineError> {
+        let value = self.command_record(command).await?;
+        if value
+            .as_ref()
+            .is_some_and(|commit| commit.command_result.digest != digest)
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(value)
+    }
+    /// Trusted service lookup. Authorize the returned scope before comparing the
+    /// caller's digest, so an unauthorized caller cannot probe command identity.
+    pub async fn command_record(
+        &self,
+        command: CommandId,
+    ) -> Result<Option<DomainCommitV1>, EngineError> {
+        let bytes: Option<Vec<u8>> =
+            sqlx::query_scalar("SELECT canonical FROM currents_commits WHERE command_id=?")
+                .bind(command.0.as_bytes().as_slice())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|_| schema::failure())?;
+        bytes
+            .map(|bytes| checked_record(&bytes, command))
+            .transpose()
+    }
+    /// C04 closure execution; C05 supplies the opaque validated instructions.
+    pub async fn append_closure(
+        &self,
+        mut input: HistoryAppend,
+        batch: currents_accounting::PreparedNativeOperations,
+        control: &currents_accounting::ClosureControl,
+    ) -> Result<DomainCommitV1, CommitFailure> {
+        control.claim().map_err(failed)?;
+        let result = async {
+            batch.validate_limits().map_err(failed)?;
+            let manifest = closure_manifest(&input.records).map_err(failed)?;
+            let frozen = currents_accounting::AccountingAdapter::from_manifest(
+                manifest,
+                batch.instruction_bytes(),
+            )
+            .map_err(failed)?;
+            if frozen.result_expectations.native_operation_count.0
+                != batch.operation_count().map_err(failed)? as u64
+            {
+                return Err(failed(EngineError::invalid()));
+            }
+            if input.native.is_some() {
+                return Err(failed(EngineError::invalid()));
+            }
+            if let Some(previous) = self
+                .command_result(input.result.command_id, input.result.digest)
+                .await
+                .map_err(failed)?
+            {
+                closure_retry_matches(&input, &previous).map_err(failed)?;
+                return Ok(previous);
+            }
+            control.check_cancelled().map_err(failed)?;
+            let staged = staging::stage(&self.pool, batch.instruction_bytes())
+                .await
+                .map_err(failed)?;
+            input.staged.push(staged);
+            self.append_inner(input, Some((&batch, control))).await
+        }
+        .await;
+        control.settle();
+        result
+    }
+    async fn append_inner(
+        &self,
+        input: HistoryAppend,
+        closure: Option<(
+            &currents_accounting::PreparedNativeOperations,
+            &currents_accounting::ClosureControl,
+        )>,
+    ) -> Result<DomainCommitV1, CommitFailure> {
         if !item_counts_within_limits(&input.records, &input.decisions) {
             return Err(failed(EngineError::invalid()));
         }
@@ -78,9 +229,28 @@ impl Writer {
         }
         let mut tx = self
             .accounting
-            .begin_authority(input.result.command_id, input.native.as_ref())
+            .begin_authority(input.result.command_id, None)
             .await
             .map_err(atomic)?;
+        // Retry resolution precedes stale-head validation and every native effect.
+        let retry = tx.command(input.result.command_id).await;
+        match retry {
+            Ok(Some(bytes)) => {
+                let previous =
+                    checked_command(&bytes, input.result.command_id, input.result.digest);
+                tx.rollback().await.map_err(atomic)?;
+                let previous = previous.map_err(failed)?;
+                if closure.is_some() {
+                    closure_retry_matches(&input, &previous).map_err(failed)?;
+                }
+                return Ok(previous);
+            }
+            Err(error) => {
+                tx.rollback().await.map_err(atomic)?;
+                return Err(failed(error));
+            }
+            Ok(None) => {}
+        }
         let work = async {
             let previous = tx.tip().await?;
             let previous: Option<DomainCommitV1> = previous
@@ -89,6 +259,23 @@ impl Writer {
             let prior = previous.as_ref().map_or(CommitSeq(0), |c| c.seq);
             if prior != input.prior_head {
                 return Err(EngineError::invalid());
+            }
+            if let Some(operation) = &input.native {
+                tx.apply_native(operation).await?;
+            }
+            if let Some((batch, control)) = closure {
+                let manifest = closure_manifest(&input.records)?;
+                let prefix = AccountingPrefixV1 {
+                    through: prior,
+                    domain_digest: previous
+                        .as_ref()
+                        .map_or(Digest::default(), |commit| commit.digest),
+                    native_head: tx.native_head(),
+                };
+                if manifest.preconditions != prefix {
+                    return Err(EngineError::invalid());
+                }
+                tx.apply_closure(batch, control).await?;
             }
             let next = CommitSeq(prior.0.checked_add(1).ok_or_else(EngineError::invalid)?);
             let number = seq(next)?;
@@ -232,12 +419,20 @@ impl Writer {
                         .await?;
                 }
             }
+            if let Some((_, control)) = closure {
+                control.before_commit().await?;
+                control.submit_commit()?;
+            }
             Ok::<_, EngineError>(commit)
         }
         .await;
         match work {
             Ok(commit) => {
-                tx.commit().await.map_err(atomic)?;
+                if let Some((_, control)) = closure {
+                    tx.commit_controlled(control).await.map_err(atomic)?;
+                } else {
+                    tx.commit().await.map_err(atomic)?;
+                }
                 Ok(commit)
             }
             Err(e) => {
@@ -256,6 +451,9 @@ impl HistoryReader {
         Self { pool }
     }
     pub(crate) async fn audit(&self) -> Result<(), EngineError> {
+        self.audited_tip().await.map(|_| ())
+    }
+    pub(crate) async fn audited_tip(&self) -> Result<Option<DomainCommitV1>, EngineError> {
         let head: i64 = sqlx::query_scalar("SELECT coalesce(max(seq),0) FROM currents_commits")
             .fetch_one(&self.pool)
             .await
@@ -265,8 +463,11 @@ impl HistoryReader {
                 u64::try_from(head).map_err(|_| schema::failure())?,
             ))
             .await?;
-        while stream.next().await?.is_some() {}
-        Ok(())
+        let mut tip = None;
+        while let Some(commit) = stream.next().await? {
+            tip = Some(commit);
+        }
+        Ok(tip)
     }
     /// A fixed database snapshot. Each next() holds at most one bounded commit.
     pub async fn stream_prefix(&self, through: CommitSeq) -> Result<HistoryStream, EngineError> {
@@ -702,3 +903,6 @@ mod decision_bindings_tests;
 mod effects_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod lookup_tests;

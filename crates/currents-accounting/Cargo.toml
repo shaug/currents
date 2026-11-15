@@ -9,7 +9,7 @@ workspace = true
 
 [features]
 # Fixed synthetic inputs for downstream integration tests; never enabled by default.
-synthetic-test-fixtures = []
+synthetic-test-fixtures = ["doubleentry/testing"]
 
 [dependencies]
 serde.workspace = true

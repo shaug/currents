@@ -32,6 +32,13 @@ CUR-008 structural reference clarification (new foundational contract): `Decisio
 
 ## C03: Protocol, preview and service, owners CUR-002, CUR-010
 
+The implemented synthetic C03 lifecycle and private trusted-host/planning seams
+are specified in [serialized commands](../serialized-commands.md). Service consumes
+the existing protocol DTOs through service→protocol→types; it has no direct
+accounting, SQLx or native dependency. Public wire DTOs are unchanged. Actual
+financial planners, signed-host authority and production activation remain with
+their named owners.
+
 `CommandBodyV1 { protocol_version, dataset_id, command_id, expected_head, operation:OperationV1 }`; `AuthorizationEnvelope { session, capability, approval }` is nonserializable into history. Operation variants are the command families in design section 10 plus explicit setup/intake variants `SetAccountCatalog(SetAccountCatalogV1)`, `SetDatasetPolicy(SetDatasetPolicyV1)`, `RecordManualPosition(ManualPositionV1)` and `RecordLoanPayment(LoanPaymentV1)`; their payloads use the typed contract below. `RequestV1 = Preview(CommandBodyV1) | Submit { body, authorization } | Query(QueryV1) | GetCommandResult { dataset_id, command_id, digest } | Cancel { command_id }`. Queries carry `ReadBasis` and scope. `CommandResultV1 { command_id, digest, state:Committed|Pending|ResultUnknown|DefinitelyNotCommitted, commit:Option<CommitSeq>, effects, health }`. `PreviewV1 { digest, expected_head, effects, warnings, approval_scope, closure_digest }`. `RequestContext { authenticated_client, session, grant_id, instance_id }` is supplied by the trusted host, not caller DTOs. `TrustedClock::now()->OffsetDateTime` is a host adapter sampled freshly for authorization at admission and queued execution. Bind-time timestamps and saved ReadBasis evaluation_instant cannot establish current capability/preview expiry. Test clock injection is private synthetic-only.
 
 `Service::preview(ctx:RequestContext,body:CommandBodyV1)->Result<PreviewV1,EngineError>`; `async Service::submit(ctx,body,authorization)->Result<CommandResultV1,EngineError>`; `async Service::command_result(ctx,id:CommandId,digest:Digest)->Result<CommandResultV1,EngineError>`; `async Service::cancel(ctx,id)->Result<CommandResultV1,EngineError>`; `async Service::query(ctx,query:QueryV1)->Result<QueryResponseV1,EngineError>`. `QueryResponseV1` is a tagged union of the typed outputs below with processed head, basis and health. Admission records distinguish queued/running/commit-submitted/settled. Missing result is not definite noncommit until admitted work settles and restart audit completes. Identical-ID retry precedes stale-head check after authorization; changed digest errors. All DTOs have canonical golden vectors, depth/size limits and no lossy JSON numeric sequences.
@@ -113,6 +120,8 @@ Files: `crates/currents-domain/src/investments/{quantity,basis,valuation}.rs`, `
 <a id="c12"></a>
 
 ## C12: Portable planning, owners CUR-025–028
+
+CUR025 implements the commitment/calendar subset in [portable commitments](../portable-commitments.md). `CommitmentV1` additionally retains `series_generation:u32`, `calendar_data:Box<ForecastCalendarDataV1>`, and `supersession:Option<CommitmentSupersessionV1 { prior_version:u32,prior_generation:u32,from_ordinal:CommitSeq,not_before:CivilDateV1,remaps:Vec<OccurrenceRemapV1 { old:OccurrenceKeyV1,new:Option<OccurrenceKeyV1> }> }>`. `not_before` is the immutable exact inclusive predecessor boundary: the maximum of the inherited boundary, the nominal prior cutoff date, and one civil day after each still-active pre-cutoff exception. An unrepresentable successor fails visibly. Every revision must start at or after this bound; later transitions inherit it. `recurrence_version` remains the algorithm version. Snapshot/scalar timezone fields must agree. `CalendarEngine::new(zone:&str,version:&str,retained_tzif:&[u8])` validates the bounded retained bytes; its `expand(&self,commitment,start,months)` uses only that exact evidence. `CommitmentEngine::new(calendar)` supplies the pure `set(&self,state,commitment)` and `expand_history`; `resolve_occurrence` resolves explicit retirement/remapping across immutable accepted revisions. This adds no matching allocations, forecasts or accounting authority.
 
 Files: `crates/currents-planning/src/{commitments,calendar,matches,forecast,recurrence,compare}.rs`.
 

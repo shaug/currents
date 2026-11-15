@@ -1,1 +1,3 @@
-//! Private planning boundary. Financial behavior is implemented by its owning tickets.
+//! Portable planning without accounting or persistence authority.
+pub mod calendar;
+pub mod commitments;

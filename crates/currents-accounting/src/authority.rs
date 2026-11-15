@@ -50,6 +50,72 @@ impl AtomicStore {
     }
 }
 impl AuthorityTransaction<'_> {
+    pub async fn command(&mut self, command: CommandId) -> Result<Option<Vec<u8>>, EngineError> {
+        self.inner
+            .command(command.0.as_bytes())
+            .await
+            .map_err(|_| EngineError::invalid())
+    }
+    pub async fn apply_native(
+        &mut self,
+        operation: &PreparedNativeOperation,
+    ) -> Result<(), EngineError> {
+        self.inner
+            .apply_native(&operation.operation)
+            .await
+            .map_err(|_| EngineError::invalid())
+    }
+    pub async fn apply_closure(
+        &mut self,
+        batch: &crate::PreparedNativeOperations,
+        control: &crate::ClosureControl,
+    ) -> Result<(), EngineError> {
+        batch.validate_limits()?;
+        for operation in &batch.operations {
+            control.check_cancelled()?;
+            self.inner
+                .apply_native(&operation.operation)
+                .await
+                .map_err(|error| {
+                    #[cfg(feature = "synthetic-test-fixtures")]
+                    {
+                        use std::error::Error;
+                        if error
+                            .source()
+                            .and_then(|source| source.downcast_ref::<sqlx::Error>())
+                            .and_then(sqlx::Error::as_database_error)
+                            .and_then(|error| error.code())
+                            .is_some_and(|code| code == "13")
+                        {
+                            control
+                                .observed_full
+                                .store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                    let _ = error;
+                    EngineError::invalid()
+                })?;
+            control.advance(match &operation.operation {
+                doubleentry::store::Op::Batch(items) => items.len(),
+                _ => 1,
+            });
+            #[cfg(feature = "synthetic-test-fixtures")]
+            {
+                let fault = control.test_fault.load(std::sync::atomic::Ordering::SeqCst);
+                let count = control.completed_operations();
+                if fault == 1 && count == 600 {
+                    self.inner
+                        .test_exhaust_pages()
+                        .await
+                        .map_err(|_| EngineError::invalid())?;
+                }
+                if (fault == 2 && count == 600) || (fault == 3 && count == 1200) {
+                    control.test_pause().await;
+                }
+            }
+        }
+        control.check_cancelled()
+    }
     pub fn native_head(&self) -> NativeHead {
         NativeHead {
             semantics_version: 1,
@@ -159,6 +225,23 @@ impl AuthorityTransaction<'_> {
             .insert_content_reference(seq, position, digest)
             .await
             .map_err(|_| EngineError::invalid())
+    }
+    pub async fn commit_controlled(
+        self,
+        control: &crate::ClosureControl,
+    ) -> Result<(), AtomicFailure> {
+        #[cfg(feature = "synthetic-test-fixtures")]
+        if control.test_fault.load(std::sync::atomic::Ordering::SeqCst) == 4 {
+            control.test_pause().await;
+        }
+        let command = self.command;
+        self.commit().await?;
+        #[cfg(feature = "synthetic-test-fixtures")]
+        if control.test_fault.load(std::sync::atomic::Ordering::SeqCst) == 4 {
+            return Err(AtomicFailure::Unknown(command));
+        }
+        let _ = (control, command);
+        Ok(())
     }
     pub async fn commit(self) -> Result<(), AtomicFailure> {
         self.inner

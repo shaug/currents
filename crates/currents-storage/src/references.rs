@@ -182,7 +182,15 @@ impl Metadata {
             self.unsupported = true;
         }
     }
-    fn commitment(&mut self, v: &Value) {
+    fn commitment(&mut self, v: &Value) -> Result<(), EngineError> {
+        self.content(&v["calendar_data"]["timezone_data"])?;
+        if !v["supersession"].is_null() {
+            self.reference(
+                &["Commitment"],
+                &v["id"],
+                v["supersession"]["prior_version"].as_i64(),
+            );
+        }
         self.planned_legs(&v["legs"], &v["id"]);
         self.settlement(&v["settlement"]);
         self.interpretation(&v["provenance"]);
@@ -191,6 +199,7 @@ impl Metadata {
                 self.planned_legs(&e["legs"], &v["id"]);
             }
         }
+        Ok(())
     }
     fn occurrence_match(&mut self, v: &Value) {
         self.reference(&["Commitment"], &v["occurrence"]["commitment_id"], None);
@@ -344,7 +353,7 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
         }
         AuthoritativeRecordV1::Rule(_) => m.many(&["Account"], &v["accounts"]),
         AuthoritativeRecordV1::Review(_) => m.many(RECORDS, &v["targets"]),
-        AuthoritativeRecordV1::Commitment(_) => m.commitment(v),
+        AuthoritativeRecordV1::Commitment(_) => m.commitment(v)?,
         AuthoritativeRecordV1::OccurrenceMatch(_) => m.occurrence_match(v),
         AuthoritativeRecordV1::Scenario(_) => {
             m.many(&["Commitment"], &v["commitments"]);
@@ -372,7 +381,7 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             if let Some(cs) = expanded["commitments"].as_array() {
                 for c in cs {
                     m.reference(&["Commitment"], &c["id"], c["version"].as_i64());
-                    m.commitment(c);
+                    m.commitment(c)?;
                 }
             }
             if let Some(cs) = expanded["occurrences"].as_array() {

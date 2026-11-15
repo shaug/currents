@@ -751,6 +751,19 @@
             "00000000-0000-0000-0000-000000000001"
           ],
           "reason": "synthetic commitment"
+        },
+        "series_generation": 1,
+        "supersession": null,
+        "calendar_data": {
+          "timezone": "Etc/UTC",
+          "timezone_data_version": "synthetic-2026",
+          "calendar_version": 1,
+          "holidays": [],
+          "timezone_data": {
+            "digest": "a4d26868017c0ccffe2efe50944ef4211834660cca834c6e9f86dec6a88246fa",
+            "byte_count": "6",
+            "media_type": "application/tzif"
+          }
         }
       }
     }
@@ -897,6 +910,19 @@
                   "00000000-0000-0000-0000-000000000001"
                 ],
                 "reason": "synthetic commitment"
+              },
+              "series_generation": 1,
+              "supersession": null,
+              "calendar_data": {
+                "timezone": "Etc/UTC",
+                "timezone_data_version": "synthetic-2026",
+                "calendar_version": 1,
+                "holidays": [],
+                "timezone_data": {
+                  "digest": "a4d26868017c0ccffe2efe50944ef4211834660cca834c6e9f86dec6a88246fa",
+                  "byte_count": "6",
+                  "media_type": "application/tzif"
+                }
               }
             }
           ],
