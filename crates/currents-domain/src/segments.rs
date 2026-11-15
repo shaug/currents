@@ -76,6 +76,14 @@ pub(crate) fn initial(
     {
         return Err(EngineError::invalid());
     }
+    // C05 freezes posting.effective as the native value date, independently of
+    // the adopted leg date. Initial anchors support explicit civil boundaries;
+    // an instant needing policy conversion is not silently compared as a date.
+    for posting in &terms.postings {
+        if civil(&posting.effective)? != cutoff {
+            return Err(EngineError::invalid());
+        }
+    }
     let mut facts = BTreeSet::new();
     for source in &opening.included_activity {
         if source.amount.unit_id != c.unit_id
@@ -143,10 +151,16 @@ pub(crate) fn activity_boundary(
         else {
             return Err(incomplete());
         };
+        let cutoff = civil(&opening.cutoff)?;
+        if let Some(terms) = &request.financial {
+            for posting in &terms.postings {
+                if posting.account_id == c.account_id && civil(&posting.effective)? <= cutoff {
+                    return Err(incomplete());
+                }
+            }
+        }
         for leg in &request.legs {
-            if leg.leg.account_id == c.account_id
-                && civil(&leg.leg.effective)? <= civil(&opening.cutoff)?
-            {
+            if leg.leg.account_id == c.account_id && civil(&leg.leg.effective)? <= cutoff {
                 return Err(incomplete());
             }
         }

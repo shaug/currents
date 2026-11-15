@@ -699,3 +699,183 @@ fn replay_recognition_rejects_future_policy_and_orphan_authority_atomically() {
         assert_eq!(unchanged.domain_digest, prior.domain_digest);
     }
 }
+
+#[test]
+fn anchor_posting_date_opening_must_equal_cutoff() {
+    use currents_domain::recognition::RecognitionEngine;
+    let mut state = monetary_state();
+    let valid = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &valid).unwrap();
+    for effective in [date("2026-10-31"), date("2026-11-02")] {
+        let mut bad = valid.clone();
+        for posting in &mut bad.financial.as_mut().unwrap().postings {
+            posting.effective = effective.clone();
+        }
+        assert!(
+            RecognitionEngine::adopt(&state, &bad).is_err(),
+            "opening native date must equal its cutoff"
+        );
+        let mut corrupted = state.clone();
+        let mut stored = plan.clone();
+        for record in &mut stored.records {
+            if let AuthoritativeRecordV1::Recognition(r) = record {
+                for posting in &mut r.postings {
+                    posting.effective = effective.clone();
+                }
+            }
+        }
+        apply(&mut corrupted, &stored);
+        assert!(RecognitionEngine::audit(&corrupted).is_err());
+    }
+}
+
+#[test]
+fn anchor_posting_date_activity_must_follow_cutoff() {
+    use currents_domain::recognition::RecognitionEngine;
+    let mut state = monetary_state();
+    let opening = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    apply(&mut state, &plan);
+    let source = evidence(&mut state, 280, -96, None);
+    let mut valid = posted(source, 800, 30);
+    valid.legs[0].leg.effective = date("2026-11-02");
+    for p in &mut valid.financial.as_mut().unwrap().postings {
+        p.effective = date("2026-11-02");
+    }
+    assert!(RecognitionEngine::adopt(&state, &valid).is_ok());
+    for effective in [date("2026-10-31"), date("2026-11-01")] {
+        let mut bad = valid.clone();
+        for p in &mut bad.financial.as_mut().unwrap().postings {
+            p.effective = effective.clone();
+        }
+        assert!(
+            RecognitionEngine::adopt(&state, &bad).is_err(),
+            "native activity must be strictly after the anchor"
+        );
+    }
+}
+
+fn reject_replayed_anchor_date(opening: bool) {
+    use currents_domain::{ReplayEngine, recognition::RecognitionEngine};
+    let mut prior = monetary_state();
+    let anchor = supported_opening(&mut prior);
+    let anchor_plan = RecognitionEngine::adopt(&prior, &anchor).unwrap();
+    let plan = if opening {
+        anchor_plan
+    } else {
+        apply(&mut prior, &anchor_plan);
+        let source = evidence(&mut prior, 280, -96, None);
+        let mut request = posted(source, 800, 30);
+        request.legs[0].leg.effective = date("2026-11-02");
+        for p in &mut request.financial.as_mut().unwrap().postings {
+            p.effective = date("2026-11-02");
+        }
+        RecognitionEngine::adopt(&prior, &request).unwrap()
+    };
+    let seq = CommitSeq(prior.through.0 + 1);
+    let mut commit = DomainCommitV1 {
+        seq,
+        previous_digest: prior.domain_digest,
+        records: plan.records,
+        decisions: vec![],
+        native_head_after: prior
+            .accounting
+            .as_ref()
+            .unwrap()
+            .prefix
+            .native_head
+            .clone(),
+        digest: Digest([77; 32]),
+        command_result: CommandResultV1 {
+            command_id: CommandId(id(999).0),
+            digest: Digest([88; 32]),
+            state: CommandState::Committed,
+            commit: Some(seq),
+            effects: EffectsV1 {
+                records: vec![],
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: vec![],
+            },
+            health: vec![],
+        },
+    };
+    let mut positive = prior.clone();
+    ReplayEngine::apply(&mut positive, &commit).unwrap();
+    for r in &mut commit.records {
+        if let AuthoritativeRecordV1::Recognition(r) = r {
+            for p in &mut r.postings {
+                p.effective = date("2026-10-31");
+            }
+            let TemporalValue::Date { civil, .. } = date("2026-10-31") else {
+                panic!()
+            };
+            r.scope.start = Some(civil);
+            r.scope.end = Some(civil);
+        }
+    }
+    let mut unchanged = prior.clone();
+    assert!(ReplayEngine::apply(&mut unchanged, &commit).is_err());
+    assert_eq!(unchanged.records, prior.records);
+    assert_eq!(unchanged.dataset_policies, prior.dataset_policies);
+    assert_eq!(unchanged.through, prior.through);
+    assert_eq!(unchanged.domain_digest, prior.domain_digest);
+    assert_eq!(
+        unchanged.accounting.as_ref().unwrap().prefix,
+        prior.accounting.as_ref().unwrap().prefix
+    );
+    assert_eq!(
+        unchanged.accounting.as_ref().unwrap().recognitions,
+        prior.accounting.as_ref().unwrap().recognitions
+    );
+}
+
+#[test]
+fn anchor_posting_date_replay_opening_rejects_atomically() {
+    reject_replayed_anchor_date(true);
+}
+#[test]
+fn anchor_posting_date_replay_activity_rejects_atomically() {
+    reject_replayed_anchor_date(false);
+}
+
+#[test]
+fn anchor_posting_date_instant_conversion_is_not_guessed() {
+    use currents_domain::recognition::RecognitionEngine;
+    let mut state = monetary_state();
+    state
+        .accounting
+        .as_mut()
+        .unwrap()
+        .date_policies
+        .get_mut(&(id(103), 1))
+        .unwrap()
+        .conversion = DateConversionV1::Instants(InstantConversionV1::FixedOffset(FixedOffsetV1 {
+        offset: "+00:00".into(),
+    }));
+    let mut request = supported_opening(&mut state);
+    let TemporalValue::Date { civil, .. } = date("2026-11-01") else {
+        panic!()
+    };
+    let instant = TemporalValue::Instant {
+        utc: civil.with_hms(12, 0, 0).unwrap().assume_utc(),
+        original_offset: Some("+00:00".into()),
+        original_zone: None,
+        precision: TemporalPrecision::Second,
+        original_text: "synthetic noon".into(),
+    };
+    for p in &mut request.financial.as_mut().unwrap().postings {
+        p.effective = instant.clone();
+    }
+    assert!(RecognitionEngine::adopt(&state, &request).is_err());
+    let valid = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &valid).unwrap();
+    apply(&mut state, &plan);
+    let source = evidence(&mut state, 280, -96, None);
+    let mut request = posted(source, 800, 30);
+    request.legs[0].leg.effective = date("2026-11-02");
+    for p in &mut request.financial.as_mut().unwrap().postings {
+        p.effective = instant.clone();
+    }
+    assert!(RecognitionEngine::adopt(&state, &request).is_err());
+}

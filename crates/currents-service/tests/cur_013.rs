@@ -944,3 +944,94 @@ async fn coherent_catalog_corruption_cannot_activate_replay_projection() {
     assert!(f.service.verified_projection().is_err());
     f.service.close().await.unwrap();
 }
+
+fn anchor_opening_request() -> ActivityRequestV1 {
+    let mut request = data::posted(binding(260, 3300), 700, 50);
+    request.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: data::id(707),
+        component_id: data::id(11),
+        amount: data::amount(3300),
+        cutoff: data::date("2026-11-01"),
+        evidence: binding(260, 3300),
+        included_activity: vec![binding(210, -96)],
+    });
+    request
+}
+
+async fn reject_anchor_dates(f: &mut Fixture, request: ActivityRequestV1, n: u128) {
+    let before = f.prefix().await;
+    let mut body = f.body(n);
+    body.expected_head = before.through;
+    body.operation = OperationV1::AdoptActivity(request);
+    assert!(
+        f.service.preview(f.ctx(), body.clone()).is_err(),
+        "mismatched native posting dates must not receive an approvable preview"
+    );
+    assert!(f.service.submit(f.ctx(), body, f.auth(None)).await.is_err());
+    assert_eq!(f.prefix().await, before);
+}
+
+#[tokio::test]
+async fn anchor_posting_date_service_opening_rejects_mismatch() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("anchor-opening-dates.db");
+    let (mut f, empty) = bootstrap(&path).await;
+    declare_activity_accounts(&mut f, &path, &empty).await;
+    let before = f.prefix().await;
+    for (i, day) in ["2026-10-31", "2026-11-02"].into_iter().enumerate() {
+        let mut bad = anchor_opening_request();
+        for p in &mut bad.financial.as_mut().unwrap().postings {
+            p.effective = data::date(day);
+        }
+        reject_anchor_dates(&mut f, bad, 410 + i as u128).await;
+    }
+    refresh(&mut f, &path, empty.clone()).await;
+    assert_eq!(f.prefix().await, before);
+    submit(
+        &mut f,
+        420,
+        OperationV1::AdoptActivity(anchor_opening_request()),
+    )
+    .await;
+    let accepted = f.prefix().await;
+    let state = refresh(&mut f, &path, empty).await;
+    assert_eq!(f.prefix().await, accepted);
+    assert_eq!(state.accounting.as_ref().unwrap().recognitions.len(), 1);
+    f.service.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn anchor_posting_date_service_activity_rejects_before_or_at_cutoff() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("anchor-activity-dates.db");
+    let (mut f, empty) = bootstrap(&path).await;
+    declare_activity_accounts(&mut f, &path, &empty).await;
+    submit(
+        &mut f,
+        430,
+        OperationV1::AdoptActivity(anchor_opening_request()),
+    )
+    .await;
+    refresh(&mut f, &path, empty.clone()).await;
+    let before = f.prefix().await;
+    let mut valid = data::posted(binding(230, -96), 800, 30);
+    valid.legs[0].leg.effective = data::date("2026-11-02");
+    for p in &mut valid.financial.as_mut().unwrap().postings {
+        p.effective = data::date("2026-11-02");
+    }
+    for (i, day) in ["2026-10-31", "2026-11-01"].into_iter().enumerate() {
+        let mut bad = valid.clone();
+        for p in &mut bad.financial.as_mut().unwrap().postings {
+            p.effective = data::date(day);
+        }
+        reject_anchor_dates(&mut f, bad, 440 + i as u128).await;
+    }
+    refresh(&mut f, &path, empty.clone()).await;
+    assert_eq!(f.prefix().await, before);
+    submit(&mut f, 450, OperationV1::AdoptActivity(valid)).await;
+    let accepted = f.prefix().await;
+    let state = refresh(&mut f, &path, empty).await;
+    assert_eq!(f.prefix().await, accepted);
+    assert_eq!(state.accounting.as_ref().unwrap().recognitions.len(), 2);
+    f.service.close().await.unwrap();
+}
