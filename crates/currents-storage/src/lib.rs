@@ -10,3 +10,11 @@ mod references;
 mod staging;
 pub use history::{ContentStream, HistoryAppend, HistoryReader, HistoryStream};
 pub use staging::StagedBatchHandle;
+
+mod audit;
+pub use audit::{ReplayEvidence, ReplayReport};
+
+mod rebuild;
+
+mod forensic;
+pub use forensic::{ForensicStore, ReadOnlyStore};

@@ -83,6 +83,7 @@ async fn initialize(
     connection: &mut SqliteConnection,
     key: &RetainedKey,
     profile: CipherProfileV1,
+    read_only: bool,
 ) -> Result<(), CipherError> {
     let version: String = sqlx::query_scalar("PRAGMA cipher_version")
         .fetch_one(&mut *connection)
@@ -123,8 +124,13 @@ async fn initialize(
         .fetch_one(&mut *connection)
         .await
         .map_err(|_| CipherError)?;
-    sqlx::raw_sql("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA recursive_triggers=ON;")
-        .execute(&mut *connection).await.map_err(|_| CipherError)?;
+    if read_only {
+        sqlx::raw_sql("PRAGMA query_only=ON; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA recursive_triggers=ON;")
+            .execute(&mut *connection).await.map_err(|_| CipherError)?;
+    } else {
+        sqlx::raw_sql("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA recursive_triggers=ON;")
+            .execute(&mut *connection).await.map_err(|_| CipherError)?;
+    }
     let flags: (i64, i64, i64, i64) = sqlx::query_as("SELECT foreign_keys, recursive_triggers, synchronous, temp_store FROM pragma_foreign_keys, pragma_recursive_triggers, pragma_synchronous, pragma_temp_store")
         .fetch_one(&mut *connection).await.map_err(|_| CipherError)?;
     let journal: String = sqlx::query_scalar("PRAGMA journal_mode")
@@ -145,6 +151,25 @@ pub async fn open_pool(
     profile: CipherProfileV1,
     max_connections: u32,
 ) -> Result<CipherPool, CipherError> {
+    open_pool_mode(path, key, profile, max_connections, false).await
+}
+/// Existing-file evidence access. SQLite enforces read-only and query-only on
+/// every connection; no database creation or journal-mode mutation is requested.
+pub async fn open_pool_read_only(
+    path: &Path,
+    key: DatasetKey,
+    profile: CipherProfileV1,
+    max_connections: u32,
+) -> Result<CipherPool, CipherError> {
+    open_pool_mode(path, key, profile, max_connections, true).await
+}
+async fn open_pool_mode(
+    path: &Path,
+    key: DatasetKey,
+    profile: CipherProfileV1,
+    max_connections: u32,
+    read_only: bool,
+) -> Result<CipherPool, CipherError> {
     profile.crypto_provider()?;
     if !(1..=16).contains(&max_connections) {
         return Err(CipherError);
@@ -157,12 +182,16 @@ pub async fn open_pool(
         .after_connect(move |connection, _| {
             let key = retained.clone();
             Box::pin(async move {
-                initialize(connection, &key, profile)
+                initialize(connection, &key, profile, read_only)
                     .await
                     .map_err(|_| sqlx::Error::Protocol("encrypted initialization rejected".into()))
             })
         })
-        .connect_lazy_with(connection_options(path));
+        .connect_lazy_with(
+            connection_options(path)
+                .create_if_missing(!read_only)
+                .read_only(read_only),
+        );
     match pool.acquire().await {
         Ok(connection) => drop(connection),
         Err(_) => {

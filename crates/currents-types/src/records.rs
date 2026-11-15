@@ -312,6 +312,8 @@ dto!(DecisionPlan { records:Vec<AuthoritativeRecordV1>, invalidations:Vec<Record
 /// A nonauthoritative in-memory replay index. It deliberately has no wire/history serialization.
 #[derive(Clone, Debug, Default)]
 pub struct DomainState {
+    /// Exact accepted ordered prefix, not a hash of the lossy latest-ID index.
+    pub domain_digest: Digest,
     pub accounting: Option<AccountingIndexV1>,
     pub records: BTreeMap<RecordId, AuthoritativeRecordV1>,
     pub through: CommitSeq,

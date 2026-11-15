@@ -38,6 +38,7 @@ impl EncryptedStore {
                 schema::initialize_authority(pool.pool()).await?;
             }
             let attestation = schema::attest(pool.pool()).await?;
+            accounting.audit_history().await?;
             crate::HistoryReader::new(pool.pool().clone())
                 .audit()
                 .await?;

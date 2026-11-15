@@ -380,6 +380,70 @@ impl AccountingAdapter {
         Self::validate_limits(&batch)?;
         Ok(batch)
     }
+    /// Check authoritative domain facts against the original frozen operations.
+    /// No current policy selection or new freezing occurs during verification.
+    pub fn verify_correspondence(
+        commit: &DomainCommitV1,
+        batch: Option<&AccountingBatchV1>,
+        index: &AccountingIndexV1,
+    ) -> Result<(), EngineError> {
+        let entries: Vec<_> = batch
+            .into_iter()
+            .flat_map(|b| &b.operations)
+            .filter_map(|op| match op {
+                FrozenNativeOperationV1::Entry(e) if e.reverses.is_none() => Some(e),
+                _ => None,
+            })
+            .collect();
+        let recognitions: Vec<_> = commit
+            .records
+            .iter()
+            .filter_map(|record| match record {
+                AuthoritativeRecordV1::Recognition(r) => Some(r),
+                _ => None,
+            })
+            .collect();
+        if entries.len() != recognitions.len() {
+            return Err(EngineError::invalid());
+        }
+        for (r, e) in recognitions.into_iter().zip(entries) {
+            if r.id != e.recognition_id
+                || r.date_policy.id != e.date_policy.id
+                || r.date_policy.version != e.date_policy.version
+                || dates::mapping(r, &e.date_policy)?
+                    != (e.booking_date.clone(), e.value_date.clone())
+                || r.postings.len() != e.postings.len()
+            {
+                return Err(EngineError::invalid());
+            }
+            for (domain, frozen) in r.postings.iter().zip(&e.postings) {
+                let mut original = domain.clone();
+                original.amount = original.amount.normalized()?;
+                if original != frozen.original {
+                    return Err(EngineError::invalid());
+                }
+            }
+        }
+        for record in &commit.records {
+            match record {
+                AuthoritativeRecordV1::UnitCatalog(catalog) => {
+                    for unit in &catalog.units {
+                        if index.units.get(&unit.id) != Some(unit) {
+                            return Err(EngineError::invalid());
+                        }
+                    }
+                }
+                AuthoritativeRecordV1::AccountComponent(account)
+                    if index.accounts.get(&account.account_id)
+                        != Some(&catalog::mapping(account)?) =>
+                {
+                    return Err(EngineError::invalid());
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
     pub fn advance_index(
         state: &mut DomainState,
         commit: &DomainCommitV1,
@@ -534,6 +598,7 @@ impl AccountingAdapter {
             native_head: commit.native_head_after.clone(),
         };
         state.through = commit.seq;
+        state.domain_digest = commit.digest;
         state.accounting = Some(index);
         Ok(())
     }

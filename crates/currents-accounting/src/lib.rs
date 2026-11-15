@@ -19,3 +19,5 @@ mod multi_op;
 pub use multi_op::{
     ClosureControl, MAX_CLOSURE_BYTES, MAX_CLOSURE_OPERATIONS, PreparedNativeOperations,
 };
+
+mod audit;

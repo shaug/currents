@@ -363,7 +363,7 @@ impl Fixture {
         .await
         .unwrap();
         if recover {
-            service.recover().await.unwrap();
+            recover_service(&service).await;
         }
         Self {
             _dir: dir,
@@ -545,4 +545,17 @@ pub async fn wait_pending(s: &Service, c: RequestContext, id: CommandId, digest:
     })
     .await
     .expect("admission not observed");
+}
+
+/// C06 requires a real host-supplied encrypted shadow, never a status-only audit.
+pub async fn recover_service(service: &Service) {
+    let dir = tempfile::tempdir().unwrap();
+    let destination = EncryptedStore::open(
+        &dir.path().join("replay.db"),
+        DatasetKey::new([0x55; 32]),
+        CipherProfileV1,
+    )
+    .await
+    .unwrap();
+    service.recover_into(destination).await.unwrap();
 }

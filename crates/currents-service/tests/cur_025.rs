@@ -426,7 +426,7 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
         )
         .await
         .unwrap();
-        f.service.recover().await.unwrap();
+        support::recover_service(&f.service).await;
         let mut body = f.body(60_000 + i as u128);
         body.expected_head = head;
         body.operation = OperationV1::SetCommitment(revision.clone());
@@ -490,7 +490,7 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
     )
     .await
     .unwrap();
-    f.service.recover().await.unwrap();
+    support::recover_service(&f.service).await;
     for (body, result) in submitted {
         assert_eq!(
             f.service
@@ -675,7 +675,7 @@ async fn durable_boundary_regressions(
             )
             .await
             .unwrap();
-            f.service.recover().await.unwrap();
+            support::recover_service(&f.service).await;
             if i >= 2 {
                 let mut unsafe_edit = history.last().unwrap().clone();
                 unsafe_edit.version += 1;

@@ -59,7 +59,7 @@ fn failed_open_waits_for_locked_initializer() {
         runtime().block_on(async {
             let key = Arc::new(Mutex::new(Some(DatasetKey::new([19; 32]))));
             let mut conn = connection_options(&controller_path).connect().await.unwrap();
-            initialize(&mut conn, &key, CipherProfileV1).await.unwrap();
+            initialize(&mut conn, &key, CipherProfileV1, false).await.unwrap();
             conn.execute("CREATE TABLE payload(value INTEGER); INSERT INTO payload VALUES(7); PRAGMA journal_mode=DELETE;")
                 .await.unwrap();
             let journal: String = sqlx::query_scalar("PRAGMA journal_mode")
