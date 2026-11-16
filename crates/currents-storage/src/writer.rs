@@ -22,6 +22,7 @@ pub struct Writer {
 /// Private service-to-storage input. Stable command identity is in `result`;
 /// live authorization is deliberately absent. C05 owns the frozen instructions.
 pub struct PreparedCommit {
+    pub evidence: Vec<EvidenceContentV1>,
     pub decision_plan: DecisionPlan,
     pub frozen_batch: AccountingBatchV1,
     pub prior_head: CommitSeq,
@@ -51,6 +52,34 @@ impl Writer {
         {
             return Err(CommitFailure::DefinitelyRolledBack(EngineError::invalid()));
         }
+        // This private path accepts only exactly referenced, bounded content.
+        let mut required = std::collections::BTreeMap::new();
+        for record in &prepared.decision_plan.records {
+            for content in crate::references::describe(record)
+                .map_err(CommitFailure::DefinitelyRolledBack)?
+                .contents
+            {
+                required.entry(content.digest).or_insert(content.size);
+            }
+        }
+        if !prepared.evidence.is_empty() {
+            use sha2::{Digest as _, Sha256};
+            let mut supplied = std::collections::BTreeSet::new();
+            for content in &prepared.evidence {
+                if content.bytes.len() > crate::staging::MAX_FILE
+                    || Digest(Sha256::digest(&content.bytes).into()) != content.digest
+                    || !supplied.insert(content.digest)
+                    || !required.contains_key(&content.digest)
+                    || required[&content.digest]
+                        .is_some_and(|n| n < 0 || n as usize != content.bytes.len())
+                {
+                    return Err(CommitFailure::DefinitelyRolledBack(EngineError::invalid()));
+                }
+            }
+            if supplied.len() != required.len() {
+                return Err(CommitFailure::DefinitelyRolledBack(EngineError::invalid()));
+            }
+        }
         let mut records = prepared.decision_plan.records;
         records.push(AuthoritativeRecordV1::FrozenAccountingManifest(
             currents_accounting::AccountingAdapter::manifest(
@@ -61,20 +90,49 @@ impl Writer {
         ));
         let batch = currents_accounting::AccountingAdapter::prepare_closure(&prepared.frozen_batch)
             .map_err(CommitFailure::DefinitelyRolledBack)?;
-        let commit = self
+        let mut staged = Vec::new();
+        let mut tokens = Vec::new();
+        for content in &prepared.evidence {
+            if let Err(error) = prepared.control.check_cancelled() {
+                crate::staging::discard(&self.pool, &tokens)
+                    .await
+                    .map_err(CommitFailure::DefinitelyRolledBack)?;
+                return Err(CommitFailure::DefinitelyRolledBack(error));
+            }
+            match crate::staging::stage(&self.pool, &content.bytes).await {
+                Ok(handle) => {
+                    tokens.push(handle.token);
+                    staged.push(handle);
+                }
+                Err(error) => {
+                    crate::staging::discard(&self.pool, &tokens)
+                        .await
+                        .map_err(CommitFailure::DefinitelyRolledBack)?;
+                    return Err(CommitFailure::DefinitelyRolledBack(error));
+                }
+            }
+        }
+        let command_id = prepared.result.command_id;
+        let outcome = self
             .append_closure(
                 crate::HistoryAppend {
                     prior_head: prepared.prior_head,
                     records,
                     decisions: prepared.decisions,
                     result: prepared.result,
-                    staged: vec![],
+                    staged,
                     native: None,
                 },
                 batch,
                 &prepared.control,
             )
-            .await?;
+            .await;
+        // Published immutable blobs are distinct from temporary staging tokens.
+        // Failure to clean after a submitted commit must never imply rollback.
+        if crate::staging::discard(&self.pool, &tokens).await.is_err() {
+            return Err(CommitFailure::OutcomeUnknown(command_id));
+        }
+        let commit = outcome?;
         Ok(CommitReceipt {
             commit: commit.seq,
             native_head: commit.native_head_after,

@@ -78,6 +78,7 @@ impl CommandPlanner for PlanningFixture {
             CommitSeq(0)
         );
         Ok(CommandPlan {
+            import: None,
             effects: EffectsV1 {
                 records: vec![RecordId(c.id.0)],
                 accounts: c.legs.iter().map(|l| l.account_id).collect(),

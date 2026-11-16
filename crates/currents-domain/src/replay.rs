@@ -65,22 +65,14 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::ImportReceipt(v) => Some(v.id),
                 AuthoritativeRecordV1::ObservationVersion(v) => Some(v.id),
                 AuthoritativeRecordV1::FinancialEvent(v) => Some(v.id),
-                AuthoritativeRecordV1::FinancialLeg(v) => {
-                    if !v.allocations.is_empty() {
-                        return Err(EngineError::version());
-                    }
-                    Some(RecordId(v.id.0))
-                }
-                AuthoritativeRecordV1::Recognition(v) => {
-                    if !v.evidence_allocations.is_empty() || !v.leg_ids.is_empty() {
-                        return Err(EngineError::version());
-                    }
-                    Some(RecordId(v.id.0))
-                }
+                AuthoritativeRecordV1::FinancialLeg(v) => Some(RecordId(v.id.0)),
+                AuthoritativeRecordV1::Recognition(v) => Some(RecordId(v.id.0)),
+                AuthoritativeRecordV1::AccountCatalogRevision(v) => Some(v.id),
+                AuthoritativeRecordV1::ActivityAdoption(v) => Some(v.id),
+                AuthoritativeRecordV1::AccountingSegment(v) => Some(v.id),
                 // These owners have not delivered semantic validation yet. Full
                 // structural closure alone must never certify financial trust.
                 AuthoritativeRecordV1::Association(_)
-                | AuthoritativeRecordV1::AccountingSegment(_)
                 | AuthoritativeRecordV1::Allocation(_)
                 | AuthoritativeRecordV1::OccurrenceMatch(_) => return Err(EngineError::version()),
                 AuthoritativeRecordV1::ReconciliationClaim(v) => Some(v.id),
@@ -105,7 +97,13 @@ impl ReplayEngine {
                 records.insert(id, record);
             }
         }
-        state.records = records;
+        let mut projection = state.clone();
+        projection.records = records;
+        projection.dataset_policies =
+            crate::policy_history::PolicyHistory::project(state, &commit.records)?;
+        crate::recognition_replay::validate_transition(state, &projection, commit)?;
+        state.records = projection.records;
+        state.dataset_policies = projection.dataset_policies;
         state.through = commit.seq;
         state.domain_digest = commit.digest;
         Ok(())

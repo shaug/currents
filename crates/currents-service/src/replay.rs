@@ -43,6 +43,7 @@ impl ReplayCoordinator {
             currents_domain::ReplayEngine::apply(&mut projection, &commit)?;
             let next = source.rebuild_commit(destination, &state, &commit).await?;
             projection.accounting = Some(next);
+            currents_domain::recognition::RecognitionEngine::audit(&projection)?;
             state = projection;
         }
         let mut after = destination.history().audit_report().await?;

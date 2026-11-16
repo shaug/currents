@@ -23,3 +23,6 @@ pub use accounting::*;
 
 pub mod acquisition_contracts;
 pub use acquisition_contracts::*;
+
+pub mod recognition_contracts;
+pub use recognition_contracts::*;

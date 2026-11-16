@@ -4,6 +4,8 @@ use currents_types::*;
 
 #[derive(Clone, serde::Serialize)]
 pub struct CommandPlan {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub import: Option<crate::ImportEvidence>,
     pub decision_plan: DecisionPlan,
     pub frozen_batch: AccountingBatchV1,
     pub effects: EffectsV1,

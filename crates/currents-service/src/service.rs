@@ -250,6 +250,27 @@ impl Service {
         }
         let plan = self.inner.planner.prepare(&body, &prefix)?;
         plan.validate_scope()?;
+        match (&body.operation, &plan.import) {
+            (OperationV1::PublishImport(request), Some(evidence)) => {
+                if *request != evidence.request() {
+                    return Err(EngineError::invalid());
+                }
+                let expected = evidence.plan(&self.verified_projection()?)?;
+                let limits = CanonicalLimits {
+                    max_bytes: 64 * 1_048_576,
+                    max_collection_items: 65_536,
+                };
+                if canonical_bytes_with_limits(&expected, limits)?
+                    != canonical_bytes_with_limits(&plan.decision_plan, limits)?
+                {
+                    return Err(EngineError::invalid());
+                }
+            }
+            (OperationV1::PublishImport(_), None) | (_, Some(_)) => {
+                return Err(EngineError::invalid());
+            }
+            (_, None) => {}
+        }
         if plan.frozen_batch.preconditions != prefix
             || plan.decision_plan.invalidations != plan.effects.invalidations
             || plan.decision_plan.records.iter().any(|r| {
@@ -269,7 +290,9 @@ impl Service {
                 max_collection_items: 65_536,
             },
         )?;
-        let retained_bytes = bytes.len();
+        let retained_bytes = bytes
+            .len()
+            .saturating_add(plan.import.as_ref().map_or(0, |e| e.retained_bytes()));
         let preview = PreviewV1 {
             digest,
             expected_head: body.expected_head,
@@ -552,6 +575,9 @@ impl Service {
             .ok_or_else(|| error(ErrorClass::Locked))?
             .writer()
             .commit(PreparedCommit {
+                evidence: plan
+                    .import
+                    .map_or_else(Vec::new, |e| e.contents(&plan.decision_plan.records)),
                 decision_plan: plan.decision_plan,
                 frozen_batch: plan.frozen_batch,
                 prior_head: prefix.through,
