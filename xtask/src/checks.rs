@@ -358,6 +358,7 @@ fn ticket(name: &str) -> Result<Value> {
         return crate::readiness::qualify();
     }
     if name == "CUR-007" {
+        // Later tickets share the target; retain this ticket's exact original inventory.
         let assertions = ["cur_007_1", "cur_007_2", "cur_007_3", "cur_007_4"];
         let list = cargo(&[
             "test",
@@ -366,6 +367,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-storage",
             "--test",
             "cur_007",
+            "cur_007_",
             "--",
             "--list",
         ])?;
@@ -383,6 +385,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-storage",
             "--test",
             "cur_007",
+            "cur_007_",
         ])?;
         if !text.contains("4 passed; 0 failed; 0 ignored") {
             return Err("CUR007 incomplete qualification".into());
@@ -715,6 +718,7 @@ fn ticket(name: &str) -> Result<Value> {
         );
     }
     if name == "CUR-009" {
+        // Later tickets share the target; retain this ticket's exact original inventory.
         let assertions = ["cur_009_1", "cur_009_2", "cur_009_3", "cur_009_4"];
         let list = cargo(&[
             "test",
@@ -723,6 +727,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-accounting",
             "--test",
             "cur_009",
+            "cur_009_",
             "--",
             "--list",
         ])?;
@@ -740,6 +745,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-accounting",
             "--test",
             "cur_009",
+            "cur_009_",
         ])?;
         if !text.contains("4 passed; 0 failed; 0 ignored") {
             return Err("CUR009 incomplete qualification".into());
