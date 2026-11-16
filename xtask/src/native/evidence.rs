@@ -100,7 +100,46 @@ fn keys(value: &Value, expected: &[&str]) -> Result<()> {
         "missing or unexpected evidence fields",
     )
 }
-fn destination(lock: &Value) -> Result<(&str, &str, &str)> {
+fn simulator_runtime(lock: &Value) -> Result<Option<&str>> {
+    let pin = &lock["native_platform"]["requested_ios_simulator_runtime"];
+    if pin.is_null() {
+        return Ok(None);
+    }
+    let version = pin
+        .as_str()
+        .ok_or("BLOCKED: malformed requested simulator runtime")?;
+    require(
+        ios_18_runtime(version),
+        "requested simulator runtime must be canonical iOS 18.x",
+    )?;
+    require(
+        lock["native_platform"]["qualified_ios_destination"].is_null(),
+        "fixed and runtime-pinned iOS modes conflict",
+    )?;
+    Ok(Some(version))
+}
+fn destination(lock: &Value, commands: &Value) -> Result<(String, String, String)> {
+    if let Some(version) = simulator_runtime(lock)? {
+        let runtimes: Value = serde_json::from_str(receipt(
+            &commands["simulator_runtimes"],
+            "/usr/bin/xcrun",
+            &["simctl", "list", "runtimes", "-j"],
+        )?)
+        .map_err(|e| format!("BLOCKED: malformed runtime inventory: {e}"))?;
+        let devices: Value = serde_json::from_str(receipt(
+            &commands["simulator_devices"],
+            "/usr/bin/xcrun",
+            &["simctl", "list", "devices", "-j"],
+        )?)
+        .map_err(|e| format!("BLOCKED: malformed device inventory: {e}"))?;
+        let id = super::simulator::select(version, &runtimes, &devices)?;
+        return Ok((
+            format!("platform=iOS Simulator,id={id}"),
+            "iOS Simulator".into(),
+            id,
+        ));
+    }
+
     let text = lock["native_platform"]["qualified_ios_destination"]
         .as_str()
         .ok_or("BLOCKED: tools/versions.lock.json has no qualified iOS 18.x destination")?;
@@ -110,10 +149,26 @@ fn destination(lock: &Value) -> Result<(&str, &str, &str)> {
                 !id.is_empty() && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-'),
                 "invalid locked iOS identifier",
             )?;
-            return Ok((text, platform, id));
+            return Ok((text.into(), platform.into(), id.into()));
         }
     }
     Err("BLOCKED: qualified_ios_destination must be exactly platform=iOS Simulator,id=<qualified ID> or platform=iOS,id=<qualified ID>".into())
+}
+fn minimum_os(lock: &Value) -> Result<&str> {
+    let value = lock["native_platform"]["requested_macos_runtime_baseline"]
+        .as_str()
+        .ok_or("BLOCKED: missing requested macOS runtime baseline")?;
+    let parts: Vec<_> = value.split('.').collect();
+    require(
+        parts.len() == 3
+            && parts[0] == "15"
+            && parts.iter().all(|part| {
+                part.parse::<u32>()
+                    .is_ok_and(|number| number.to_string() == *part)
+            }),
+        "requested macOS runtime baseline must be a canonical 15.minor.patch version",
+    )?;
+    Ok(value)
 }
 fn current_os(lock: &Value) -> Result<&str> {
     lock["native_platform"]["observed"]["runner_os"]
@@ -239,7 +294,7 @@ fn summary_valid(
     summary: &Value,
     count: usize,
     platform: &str,
-    exact_macos_version: Option<&str>,
+    exact_runtime_version: Option<&str>,
     id: Option<&str>,
     build: Option<&str>,
 ) -> Result<()> {
@@ -278,7 +333,7 @@ fn summary_valid(
     }
     let device = &run["device"];
     let actual_version = string(device, "osVersion")?;
-    let version_matches = match exact_macos_version {
+    let version_matches = match exact_runtime_version {
         Some(expected) => actual_version == expected,
         None => ios_18_runtime(actual_version),
     };
@@ -348,7 +403,7 @@ fn apple_environment(commands: &Value, role: &str, lock: &Value) -> Result<()> {
     if role != "ios" {
         require(
             os == if role == "macos-minimum" {
-                "15.0"
+                minimum_os(lock)?
             } else {
                 current_os(lock)?
             },
@@ -392,7 +447,7 @@ fn apple_environment(commands: &Value, role: &str, lock: &Value) -> Result<()> {
         .and_then(|s| s.split('.').next())
         .and_then(|s| s.parse::<u32>().ok());
     require(major.is_some_and(|n| n >= 6), "Swift 6 or newer required")?;
-    let sdk = if role == "ios" && destination(lock)?.1 == "iOS Simulator" {
+    let sdk = if role == "ios" && destination(lock, commands)?.1 == "iOS Simulator" {
         "iphonesimulator"
     } else if role == "ios" {
         "iphoneos"
@@ -462,16 +517,21 @@ fn evaluate_entry(entry: &Value, candidate: &str, tree: &str, lock: &Value) -> R
             json!({"source":"native-evidence-receipt","role":role,"test":{"name":"cur_004_3","outcome":"Passed"}}),
         ]);
     }
-    keys(
-        c,
-        &["kernel", "os", "os_build", "arch", "xcode", "swift", "sdk"],
-    )?;
+    let mut command_keys = vec!["kernel", "os", "os_build", "arch", "xcode", "swift", "sdk"];
+    if role == "ios" && simulator_runtime(lock)?.is_some() {
+        command_keys.extend(["simulator_runtimes", "simulator_devices"]);
+    }
+    keys(c, &command_keys)?;
     apple_environment(c, role, lock)?;
     let ios = role == "ios";
     let (dest, platform, id) = if ios {
-        destination(lock)?
+        destination(lock, c)?
     } else {
-        ("platform=macOS,arch=arm64", "macOS", "")
+        (
+            "platform=macOS,arch=arm64".into(),
+            "macOS".into(),
+            String::new(),
+        )
     };
     let (scheme, plan) = if ios {
         ("CurrentsCapture", "CurrentsCaptureSynthetic")
@@ -495,7 +555,7 @@ fn evaluate_entry(entry: &Value, candidate: &str, tree: &str, lock: &Value) -> R
         receipt(
             &run["build"],
             "/usr/bin/xcodebuild",
-            &apple_args(scheme, plan, dest, configuration, &derived, &bundle),
+            &apple_args(scheme, plan, &dest, configuration, &derived, &bundle),
         )?;
         let tests: Value = serde_json::from_str(receipt(
             &run["tests"],
@@ -514,9 +574,9 @@ fn evaluate_entry(entry: &Value, candidate: &str, tree: &str, lock: &Value) -> R
         summary_valid(
             &summary,
             names.len(),
-            platform,
-            exact_macos_version,
-            ios.then_some(id),
+            &platform,
+            exact_macos_version.or(if ios { simulator_runtime(lock)? } else { None }),
+            ios.then_some(id.as_str()),
             (!ios).then_some(c["os_build"]["stdout"].as_str().unwrap_or("").trim()),
         )?;
         observations.extend(names.into_iter().map(|name| json!({"source":"native-evidence-receipt","role":role,"configuration":configuration,"test":{"name":name,"outcome":"Passed"},"runtime":summary["devicesAndConfigurations"][0]["device"],"tests_stdout_sha256":run["tests"]["stdout_sha256"]})));
@@ -536,7 +596,6 @@ pub(super) fn evaluate_matrix(
             && tree.bytes().all(|c| c.is_ascii_hexdigit()),
         "invalid candidate/tree identity",
     )?;
-    destination(lock)?;
     require(
         evidence.len() == ROLES.len(),
         "exactly five matrix roles required",
@@ -610,8 +669,8 @@ fn write_artifact(path: &Path, entry: &Value) -> Result<()> {
 pub(super) fn emit(root: &Path, role: &str) -> Result<PathBuf> {
     require(ROLES.contains(&role), "unknown emit role")?;
     let lock = read_json(&root.join("tools/versions.lock.json"))?;
-    if role == "ios" {
-        destination(&lock)?;
+    if role == "ios" && simulator_runtime(&lock)?.is_none() {
+        destination(&lock, &Value::Null)?;
     }
     let before = snapshot(root, role == "linux")?;
     let candidate = receipt(&before["head"], "git", &["rev-parse", "HEAD"])?
@@ -666,10 +725,23 @@ pub(super) fn emit(root: &Path, role: &str) -> Result<PathBuf> {
                 c[key] = capture(root, program, &args)?;
             }
             let ios = role == "ios";
+            if ios && simulator_runtime(&lock)?.is_some() {
+                c["simulator_runtimes"] = capture(
+                    root,
+                    "/usr/bin/xcrun",
+                    &["simctl", "list", "runtimes", "-j"],
+                )?;
+                c["simulator_devices"] =
+                    capture(root, "/usr/bin/xcrun", &["simctl", "list", "devices", "-j"])?;
+            }
             let (dest, platform, _) = if ios {
-                destination(&lock)?
+                destination(&lock, c)?
             } else {
-                ("platform=macOS,arch=arm64", "macOS", "")
+                (
+                    "platform=macOS,arch=arm64".into(),
+                    "macOS".into(),
+                    String::new(),
+                )
             };
             let sdk = if platform == "iOS Simulator" {
                 "iphonesimulator"
@@ -695,7 +767,7 @@ pub(super) fn emit(root: &Path, role: &str) -> Result<PathBuf> {
                 let build = capture(
                     root,
                     "/usr/bin/xcodebuild",
-                    &apple_args(scheme, plan, dest, configuration, &derived, &bundle),
+                    &apple_args(scheme, plan, &dest, configuration, &derived, &bundle),
                 )?;
                 let mut run = json!({"configuration":configuration,"build":build});
                 let succeeded = run["build"]["exit"] == 0;

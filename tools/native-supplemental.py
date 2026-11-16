@@ -100,7 +100,7 @@ def test_command(role, configuration, destination, output):
 def new_report():
     return {"schema": "SupplementalNativeObservationV1", "schema_version": 1,
             "scope": "unsigned hosted patched-OS observations only; not CUR-004 matrix evidence",
-            "native_qualification": "Blocked", "exact_macos_15_0": "Pending", "production_qualification": "Blocked",
+            "native_qualification": "Blocked", "minimum_runtime_qualification": "Pending", "production_qualification": "Blocked",
             "collection_status": "Blocked", "commands": [], "runs": []}
 
 
@@ -209,7 +209,7 @@ def main():
         collector.save()
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 1
-    print("Supplemental observations collected. Native qualification remains Blocked; exact macOS 15.0 remains pending.")
+    print("Supplemental observations collected. Native qualification remains Blocked; locked runtime baseline and full matrix remain pending.")
     return 0
 
 

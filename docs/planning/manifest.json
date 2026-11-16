@@ -607,7 +607,7 @@
         "P04"
       ],
       "why": "Create minimal Swift 6 strict-concurrency build fixture and C-header roundtrip, targeting macOS 15.0 arm64 and iOS 18.0 capture proposal.",
-      "scope": "Create minimal Swift 6 strict-concurrency build fixture and C-header roundtrip, targeting macOS 15.0 arm64 and iOS 18.0 capture proposal. Inspect installed full Xcode without assuming CLT selection proves absence; record exact Xcode/SDK/runner build. Test target availability on minimum/current OS. Intel Mac is explicitly unsupported until its own CI/signing qualification. Establish named Xcode schemes CurrentsApp, CurrentsOwner, CurrentsCapture, CurrentsPlatformTests and test plans CurrentsSynthetic/CurrentsProductionQualification. Native xtask runners invoke xcodebuild test -project native/Currents.xcodeproj -scheme CurrentsPlatformTests -testPlan CurrentsSynthetic -destination platform=macOS, arch=arm64 for ordinary synthetic suites; iOS uses CurrentsCapture with exact qualified simulator/device identifier from tools/versions.lock.json. Production qualification uses the signed installed targets and CurrentsProductionQualification, not a synthetic scheme.",
+      "scope": "Create minimal Swift 6 strict-concurrency build fixture and C-header roundtrip, targeting macOS 15.0 arm64 and iOS 18.0 capture proposal. Inspect installed full Xcode without assuming CLT selection proves absence; record exact Xcode/SDK/runner build. Test target availability on the exact requested patched macOS runtime baseline (initially 15.8.2 arm64) and current OS. The macOS 15.0 compilation/API floor is not a runtime-support claim. Intel Mac is explicitly unsupported until its own CI/signing qualification. Establish named Xcode schemes CurrentsApp, CurrentsOwner, CurrentsCapture, CurrentsPlatformTests and test plans CurrentsSynthetic/CurrentsProductionQualification. Native xtask runners invoke xcodebuild test -project native/Currents.xcodeproj -scheme CurrentsPlatformTests -testPlan CurrentsSynthetic -destination platform=macOS, arch=arm64 for ordinary synthetic suites; iOS uses CurrentsCapture with either the exact fixed qualified simulator/device identifier or a requested simulator runtime from tools/versions.lock.json; runtime mode captures actual inventories and binds the selected available UUID/runtime/platform to both Debug and Release results. Production qualification uses the signed installed targets and CurrentsProductionQualification, not a synthetic scheme.",
       "non_goals": "No application work is authorized by this planning payload. During later authorized implementation: no institutional financial mutations, unapproved live credential use or external publication, or scope beyond the named deliverable. Shared global constraints and explicit disabled gate behavior apply.",
       "files": [
         "native/CurrentsPlatform/Package.swift",
@@ -627,7 +627,7 @@
       "tests": [
         {
           "name": "cur_004_1",
-          "assertion": "native_minimum: minimal bundle and Swift actor/C roundtrip build and launch on actual macOS 15.0 arm64 plus current OS; record Xcode build/SDK"
+          "assertion": "native_minimum: minimal bundle and Swift actor/C roundtrip build and launch on the exact requested patched macOS runtime baseline (initially 15.8.2 arm64) plus current OS; record actual Xcode build/SDK/OS and reject missing/mismatched baseline; macOS 15.0 compile target is not tested-runtime support"
         },
         {
           "name": "cur_004_2",

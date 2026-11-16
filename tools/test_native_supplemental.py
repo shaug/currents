@@ -102,7 +102,7 @@ class SupplementalTests(unittest.TestCase):
         report = sut.new_report()
         self.assertEqual(report["schema"], "SupplementalNativeObservationV1")
         self.assertEqual(report["native_qualification"], "Blocked")
-        self.assertEqual(report["exact_macos_15_0"], "Pending")
+        self.assertEqual(report["minimum_runtime_qualification"], "Pending")
         self.assertNotIn("qualified_ios_destination", report)
 
     def test_failed_command_retains_raw_logs_without_promoting_qualification(self):
@@ -128,8 +128,14 @@ class SupplementalTests(unittest.TestCase):
         job = workflow["jobs"]["observe"]
         self.assertEqual(job["runs-on"], "macos-15")
         self.assertLessEqual(job["timeout-minutes"], 30)
-        checkout, _, _, upload = job["steps"]
+        checkout, upload = job["steps"][0], job["steps"][-1]
         self.assertFalse(checkout["with"]["persist-credentials"])
+        self.assertEqual(checkout["with"]["ref"], "${{ github.event.pull_request.head.sha || github.sha }}")
+        self.assertEqual(job["env"]["CURRENTS_CANDIDATE_SHA"], checkout["with"]["ref"])
+        self.assertNotIn("DerivedData", upload["with"]["path"])
+        runs = [step.get("run", "") for step in job["steps"]]
+        self.assertIn("python3 tools/native-canonical.py", runs)
+        self.assertNotIn("python3 tools/native-supplemental.py", runs)
         self.assertEqual(checkout["uses"], "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1")
         self.assertEqual(upload["uses"], "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02")
         self.assertEqual(upload["if"], "${{ always() }}")

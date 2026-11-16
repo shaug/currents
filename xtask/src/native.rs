@@ -1,6 +1,7 @@
 //! Native prerequisites are independent of a working CLT/Rust installation.
 //! This partial gate intentionally cannot certify an untested Xcode/OS matrix.
 mod evidence;
+mod simulator;
 use crate::checks::checked;
 #[cfg(test)]
 use evidence::evaluate_matrix;
@@ -92,12 +93,12 @@ pub fn qualify(root: &Path) -> Result<Value, String> {
     if full_selected && arch.trim() == "arm64" && !xcode.is_empty() {
         let observation = current_host(root)?;
         return Err(format!(
-            "BLOCKED: current-host native assertions passed; evidence: {}. cur_004_1 still requires actual macOS 15.0 arm64 plus current-OS evidence at the same candidate; cur_004_2 requires a same-candidate Linux core build with native unavailable; cur_004_3 is the separate CLT-only public counterexample; cur_004_4 still requires the qualified iOS 18.x destination. Observed OS: {os}; Swift: {swift}; SDK: {sdk}; Xcode: {xcode}. No production or minimum-OS qualification is implied.",
+            "BLOCKED: current-host native assertions passed; evidence: {}. cur_004_1 still requires actual locked macOS runtime baseline arm64 plus current-OS evidence at the same candidate; cur_004_2 requires a same-candidate Linux core build with native unavailable; cur_004_3 is the separate CLT-only public counterexample; cur_004_4 still requires the qualified iOS 18.x destination. Observed OS: {os}; Swift: {swift}; SDK: {sdk}; Xcode: {xcode}. No production or minimum-OS qualification is implied.",
             observation.display()
         ));
     }
     Err(format!(
-        "BLOCKED: native-platform requires full Xcode with Swift 6, actual macOS 15.0 arm64 and current-OS build/launch evidence, and a qualified iOS 18.x destination. Selected developer directory: {selected:?}; discovered full Xcode: {installations:?}; discovery scope: /Applications and ~/Applications (3 levels), selected developer directory, Spotlight. OS: {os}; architecture: {arch}; Swift: {swift}; selected SDK: {sdk}; selected full Xcode: {xcode}. A usable selected full Xcode, minimum-OS runner and qualified iOS destination are required. CLT Swift/C synthetic probes do not qualify a native app. No signing, entitlement acquisition or developer-directory setting was changed."
+        "BLOCKED: native-platform requires full Xcode with Swift 6, actual locked macOS runtime baseline arm64 and current-OS build/launch evidence, and a qualified iOS 18.x destination. Selected developer directory: {selected:?}; discovered full Xcode: {installations:?}; discovery scope: /Applications and ~/Applications (3 levels), selected developer directory, Spotlight. OS: {os}; architecture: {arch}; Swift: {swift}; selected SDK: {sdk}; selected full Xcode: {xcode}. A usable selected full Xcode, minimum-OS runner and qualified iOS destination are required. CLT Swift/C synthetic probes do not qualify a native app. No signing, entitlement acquisition or developer-directory setting was changed."
     ))
 }
 
@@ -165,7 +166,7 @@ mod tests {
         let candidate = "a".repeat(40);
         let tree = "b".repeat(40);
         let destination = "platform=iOS Simulator,id=UNIT-TEST-ONLY";
-        let lock = json!({"native_platform":{"observed":{"runner_os":"macOS 27.0.1"},"qualified_ios_destination":destination}});
+        let lock = json!({"native_platform":{"requested_macos_runtime_baseline":"15.8.2","observed":{"runner_os":"macOS 27.0.1"},"qualified_ios_destination":destination}});
         let snapshot = json!({
             "head":receipt("git", &["rev-parse","HEAD"], &candidate),
             "tree":receipt("git", &["rev-parse","HEAD^{tree}"], &tree),
@@ -237,7 +238,7 @@ mod tests {
                 );
             } else {
                 let os = if role == "macos-minimum" {
-                    "15.0"
+                    "15.8.2"
                 } else {
                     "27.0.1"
                 };
@@ -296,6 +297,136 @@ mod tests {
         (candidate, tree, lock, evidence)
     }
 
+    fn simulator_matrix() -> (String, String, Value, Vec<Value>) {
+        let (candidate, tree, mut lock, mut entries) = synthetic_matrix();
+        lock["native_platform"]["qualified_ios_destination"] = Value::Null;
+        lock["native_platform"]["requested_ios_simulator_runtime"] = json!("18.6");
+        let id = "00000000-0000-4000-8000-000000000001";
+        let runtime = "com.apple.CoreSimulator.SimRuntime.iOS-18-6";
+        entries[2]["commands"]["simulator_runtimes"] = receipt(
+            "/usr/bin/xcrun",
+            &["simctl", "list", "runtimes", "-j"],
+            &json!({"runtimes":[{"identifier":runtime,"version":"18.6","isAvailable":true}]})
+                .to_string(),
+        );
+        entries[2]["commands"]["simulator_devices"] = receipt(
+            "/usr/bin/xcrun",
+            &["simctl", "list", "devices", "-j"],
+            &json!({"devices":{runtime:[{"udid":id,"isAvailable":true}]}}).to_string(),
+        );
+        for run in entries[2]["runs"].as_array_mut().unwrap() {
+            for arg in run["build"]["args"].as_array_mut().unwrap() {
+                if arg == "platform=iOS Simulator,id=UNIT-TEST-ONLY" {
+                    *arg = json!(format!("platform=iOS Simulator,id={id}"));
+                }
+            }
+            let mut summary: Value =
+                serde_json::from_str(run["summary"]["stdout"].as_str().unwrap()).unwrap();
+            summary["devicesAndConfigurations"][0]["device"]["deviceId"] = json!(id);
+            summary["devicesAndConfigurations"][0]["device"]["osVersion"] = json!("18.6");
+            run["summary"]["stdout"] = json!(summary.to_string());
+        }
+        entries.iter_mut().for_each(rehash_receipts);
+        (candidate, tree, lock, entries)
+    }
+
+    #[test]
+    fn matrix_binds_runtime_pinned_simulator_inventory_to_both_runs() {
+        let (candidate, tree, lock, entries) = simulator_matrix();
+        assert!(evaluate_matrix(&candidate, &tree, &lock, &entries).is_ok());
+        let mut multiple = entries.clone();
+        let inventory = json!({"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-18-6":[
+            {"udid":"00000000-0000-4000-8000-000000000002","isAvailable":true},
+            {"udid":"00000000-0000-4000-8000-000000000001","isAvailable":true}]}});
+        multiple[2]["commands"]["simulator_devices"]["stdout"] = json!(inventory.to_string());
+        multiple.iter_mut().for_each(rehash_receipts);
+        assert!(evaluate_matrix(&candidate, &tree, &lock, &multiple).is_ok());
+        let mut wrong_destination = entries.clone();
+        for arg in wrong_destination[2]["runs"][0]["build"]["args"]
+            .as_array_mut()
+            .unwrap()
+        {
+            if arg
+                .as_str()
+                .is_some_and(|a| a.starts_with("platform=iOS Simulator,id="))
+            {
+                *arg = json!("platform=iOS Simulator,id=00000000-0000-4000-8000-000000000002");
+            }
+        }
+        wrong_destination.iter_mut().for_each(rehash_receipts);
+        assert!(evaluate_matrix(&candidate, &tree, &lock, &wrong_destination).is_err());
+        for pin in [
+            json!("17.6"),
+            json!("18.05"),
+            json!("18.6 extra"),
+            json!(18.6),
+            Value::Null,
+        ] {
+            let mut bad_lock = lock.clone();
+            bad_lock["native_platform"]["requested_ios_simulator_runtime"] = pin;
+            assert!(evaluate_matrix(&candidate, &tree, &bad_lock, &entries).is_err());
+        }
+        let mut conflict = lock.clone();
+        conflict["native_platform"]["qualified_ios_destination"] = json!("platform=iOS,id=FIXED");
+        assert!(evaluate_matrix(&candidate, &tree, &conflict, &entries).is_err());
+        for (field, value) in [
+            ("deviceId", "00000000-0000-4000-8000-000000000002"),
+            ("osVersion", "18.5"),
+            ("platform", "iOS"),
+        ] {
+            let mut bad = entries.clone();
+            let run = &mut bad[2]["runs"][1];
+            let mut summary: Value =
+                serde_json::from_str(run["summary"]["stdout"].as_str().unwrap()).unwrap();
+            summary["devicesAndConfigurations"][0]["device"][field] = json!(value);
+            run["summary"]["stdout"] = json!(summary.to_string());
+            bad.iter_mut().for_each(rehash_receipts);
+            assert!(
+                evaluate_matrix(&candidate, &tree, &lock, &bad).is_err(),
+                "{field}"
+            );
+        }
+        for pointer in ["/before/head/stdout", "/after/tree/stdout"] {
+            let mut bad = entries.clone();
+            *bad[2].pointer_mut(pointer).unwrap() = json!("c".repeat(40));
+            bad.iter_mut().for_each(rehash_receipts);
+            assert!(evaluate_matrix(&candidate, &tree, &lock, &bad).is_err());
+        }
+    }
+
+    #[test]
+    fn matrix_rejects_ambiguous_missing_unavailable_simulator_inventory() {
+        let (candidate, tree, lock, entries) = simulator_matrix();
+        let runtime = "com.apple.CoreSimulator.SimRuntime.iOS-18-6";
+        let row = json!({"udid":"00000000-0000-4000-8000-000000000001","isAvailable":true});
+        for inventory in [
+            json!({}),
+            json!({"devices":{runtime:[]}}),
+            json!({"devices":{runtime:[row.clone(),row.clone()]}}),
+            json!({"devices":{runtime:[{"udid":row["udid"],"isAvailable":false}]}}),
+            json!({"devices":{runtime:[{"udid":"invalid","isAvailable":true}]}}),
+        ] {
+            let mut bad = entries.clone();
+            bad[2]["commands"]["simulator_devices"]["stdout"] = json!(inventory.to_string());
+            bad.iter_mut().for_each(rehash_receipts);
+            assert!(evaluate_matrix(&candidate, &tree, &lock, &bad).is_err());
+        }
+        let row = json!({"identifier":runtime,"version":"18.6","isAvailable":true});
+        for inventory in [
+            json!({}),
+            json!({"runtimes":[]}),
+            json!({"runtimes":[row.clone(),row.clone()]}),
+            json!({"runtimes":[{"identifier":runtime,"version":"18.6","isAvailable":false}]}),
+            json!({"runtimes":[{"identifier":runtime,"version":"18.5","isAvailable":true}]}),
+            json!({"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-18-5","version":"18.6","isAvailable":true}]}),
+        ] {
+            let mut bad = entries.clone();
+            bad[2]["commands"]["simulator_runtimes"]["stdout"] = json!(inventory.to_string());
+            bad.iter_mut().for_each(rehash_receipts);
+            assert!(evaluate_matrix(&candidate, &tree, &lock, &bad).is_err());
+        }
+    }
+
     // Synthetic evaluator fixtures only. These do not run or qualify Apple targets.
     #[test]
     fn matrix_accepts_complete_candidate_bound_command_evidence() {
@@ -310,6 +441,58 @@ mod tests {
         different_xcode[0]["commands"]["sdk"]["stdout"] = json!("15.2\n");
         different_xcode.iter_mut().for_each(rehash_receipts);
         assert!(evaluate_matrix(&candidate, &tree, &lock, &different_xcode).is_ok());
+    }
+
+    #[test]
+    fn matrix_requires_exact_explicit_patched_runtime_baseline() {
+        let (candidate, tree, lock, evidence) = synthetic_matrix();
+        assert!(evaluate_matrix(&candidate, &tree, &lock, &evidence).is_ok());
+        for actual in ["15.0", "15.8.1", "15.8.3", "27.0.1"] {
+            let mut wrong = evidence.clone();
+            wrong[0]["commands"]["os"]["stdout"] = json!(actual);
+            for run in wrong[0]["runs"].as_array_mut().unwrap() {
+                let mut summary: Value =
+                    serde_json::from_str(run["summary"]["stdout"].as_str().unwrap()).unwrap();
+                summary["devicesAndConfigurations"][0]["device"]["osVersion"] = json!(actual);
+                run["summary"]["stdout"] = json!(summary.to_string());
+            }
+            wrong.iter_mut().for_each(rehash_receipts);
+            assert!(
+                evaluate_matrix(&candidate, &tree, &lock, &wrong).is_err(),
+                "{actual}"
+            );
+        }
+        let mut missing_lock = lock.clone();
+        missing_lock["native_platform"]
+            .as_object_mut()
+            .unwrap()
+            .remove("requested_macos_runtime_baseline");
+        assert!(evaluate_matrix(&candidate, &tree, &missing_lock, &evidence).is_err());
+        for baseline in [
+            Value::Null,
+            json!(""),
+            json!("15"),
+            json!("15.x.2"),
+            json!("15.8.2 extra"),
+            json!("14.9.9"),
+            json!("27.0.1"),
+            json!("15.08.2"),
+        ] {
+            let mut bad_lock = lock.clone();
+            bad_lock["native_platform"]["requested_macos_runtime_baseline"] = baseline.clone();
+            let mut matching_invalid = evidence.clone();
+            if let Some(actual) = baseline.as_str() {
+                matching_invalid[0]["commands"]["os"]["stdout"] = json!(actual);
+                for run in matching_invalid[0]["runs"].as_array_mut().unwrap() {
+                    let mut summary: Value =
+                        serde_json::from_str(run["summary"]["stdout"].as_str().unwrap()).unwrap();
+                    summary["devicesAndConfigurations"][0]["device"]["osVersion"] = json!(actual);
+                    run["summary"]["stdout"] = json!(summary.to_string());
+                }
+                matching_invalid.iter_mut().for_each(rehash_receipts);
+            }
+            assert!(evaluate_matrix(&candidate, &tree, &bad_lock, &matching_invalid).is_err());
+        }
     }
 
     #[test]
