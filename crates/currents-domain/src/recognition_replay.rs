@@ -37,6 +37,83 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::ActivityAdoption(adoption) => {
                 Some(RecognitionEngine::adopt(prior, &restore(next, adoption)?)?)
             }
+            AuthoritativeRecordV1::PendingExpiry(expiry) => {
+                Some(crate::expiry::PendingExpiryEngine::expire(prior, expiry)?)
+            }
+            AuthoritativeRecordV1::RelationshipCapture(capture) => {
+                let Some(AuthoritativeRecordV1::ImportReceipt(receipt)) =
+                    next.records.get(&capture.receipt_id)
+                else {
+                    return Err(EngineError::invalid());
+                };
+                crate::relationship_evidence::validate_metadata(capture, receipt)?;
+                if prior.records.contains_key(&capture.id)
+                    || prior.records.contains_key(&receipt.id)
+                {
+                    return Err(EngineError::invalid());
+                }
+                Some(DecisionPlan {
+                    records: vec![
+                        AuthoritativeRecordV1::ImportReceipt(receipt.clone()),
+                        record.clone(),
+                    ],
+                    invalidations: vec![],
+                    accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                        reason: "Retained descriptive relationship source only".into(),
+                    }),
+                })
+            }
+            AuthoritativeRecordV1::AssociationRevision(revision)
+                if revision.kind == RelationshipKind::Duplicate =>
+            {
+                Some(crate::associations::IdentityEngine::associate(
+                    prior,
+                    &CompleteAssociationRequestV1 {
+                        revision: revision.clone(),
+                        events: vec![],
+                        legs: vec![],
+                        recognitions: vec![],
+                    },
+                )?)
+            }
+            AuthoritativeRecordV1::AssociationRevision(revision) => {
+                let mut legs = Vec::new();
+                let mut events = Vec::new();
+                for id in &revision.legs {
+                    let Some(AuthoritativeRecordV1::FinancialLeg(leg)) =
+                        next.records.get(&RecordId(id.0))
+                    else {
+                        return Err(EngineError::invalid());
+                    };
+                    let Some(AuthoritativeRecordV1::FinancialEvent(event)) =
+                        next.records.get(&leg.event_id)
+                    else {
+                        return Err(EngineError::invalid());
+                    };
+                    if !events.contains(event) {
+                        events.push(event.clone());
+                    }
+                    legs.push(leg.clone());
+                }
+                let mut recognitions = Vec::new();
+                for id in &revision.recognitions {
+                    let Some(AuthoritativeRecordV1::Recognition(recognition)) =
+                        next.records.get(&RecordId(id.0))
+                    else {
+                        return Err(EngineError::invalid());
+                    };
+                    recognitions.push(recognition.clone());
+                }
+                Some(crate::associations::IdentityEngine::associate(
+                    prior,
+                    &CompleteAssociationRequestV1 {
+                        revision: revision.clone(),
+                        events,
+                        legs,
+                        recognitions,
+                    },
+                )?)
+            }
             _ => None,
         };
         if let Some(plan) = plan {
@@ -52,6 +129,9 @@ pub(crate) fn validate_transition(
         let requires_owner = match record {
             AuthoritativeRecordV1::AccountCatalogRevision(_)
             | AuthoritativeRecordV1::ActivityAdoption(_)
+            | AuthoritativeRecordV1::RelationshipCapture(_)
+            | AuthoritativeRecordV1::AssociationRevision(_)
+            | AuthoritativeRecordV1::PendingExpiry(_)
             | AuthoritativeRecordV1::AccountingSegment(_) => true,
             AuthoritativeRecordV1::FinancialLeg(l) => !l.allocations.is_empty(),
             AuthoritativeRecordV1::Recognition(r) => {

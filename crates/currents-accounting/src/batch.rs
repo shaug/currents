@@ -82,37 +82,14 @@ impl AccountingAdapter {
             AccountingIntent::Recognition(r) => {
                 operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?))
             }
+            AccountingIntent::Recognitions(recognitions) => {
+                Self::recognitions(recognitions, state, &mut operations)?;
+            }
             AccountingIntent::Correction(c) => {
-                if index.reversed.contains(&c.active_recognition) {
-                    return Err(EngineError::invalid());
-                }
-                let original = index
-                    .recognitions
-                    .get(&c.active_recognition)
-                    .ok_or_else(EngineError::invalid)?;
-                let correction = digest(&canonical(c)?);
-                for (position, old) in original.iter().enumerate() {
-                    let mut reversal = old.clone();
-                    reversal.key = format!(
-                        "reverse/{}/{position}",
-                        correction
-                            .0
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect::<String>()
-                    );
-                    reversal.reverses = Some(old.key.clone());
-                    reversal.generated_document = Digest([0; 32]);
-                    for p in &mut reversal.postings {
-                        p.original.amount = p.original.amount.checked_neg()?;
-                        p.native_coefficient =
-                            numbers::native_amount(&p.original.amount, &p.unit)?.to_string();
-                    }
-                    operations.push(FrozenNativeOperationV1::Entry(reversal));
-                }
-                for r in &c.replacement {
-                    operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
-                }
+                Self::corrections(std::slice::from_ref(c), state, &mut operations)?;
+            }
+            AccountingIntent::Corrections(corrections) => {
+                Self::corrections(corrections, state, &mut operations)?;
             }
         }
         let financial = operations
@@ -138,6 +115,131 @@ impl AccountingAdapter {
         }
         Self::validate_limits(&batch)?;
         Ok(batch)
+    }
+    fn recognitions(
+        recognitions: &[RecognitionV1],
+        state: &DomainState,
+        operations: &mut Vec<FrozenNativeOperationV1>,
+    ) -> Result<(), EngineError> {
+        if recognitions.is_empty() || recognitions.len() > 20_000 {
+            return Err(EngineError::invalid());
+        }
+        let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
+        let mut ids = BTreeSet::new();
+        let mut postings: BTreeSet<_> = index
+            .recognitions
+            .values()
+            .flatten()
+            .flat_map(|entry| entry.postings.iter().map(|p| p.original.id))
+            .collect();
+        let mut legs = BTreeSet::new();
+        let mut lineages: BTreeSet<_> = state
+            .records
+            .values()
+            .filter_map(|record| match record {
+                AuthoritativeRecordV1::Recognition(r) => Some(r.lineage),
+                _ => None,
+            })
+            .collect();
+        for r in recognitions {
+            if r.id.0.is_nil()
+                || r.lineage.0.is_nil()
+                || !ids.insert(r.id)
+                || state.records.contains_key(&RecordId(r.id.0))
+                || !lineages.insert(r.lineage)
+                || r.postings
+                    .iter()
+                    .any(|p| p.id.0.is_nil() || !postings.insert(p.id))
+                || r.leg_ids
+                    .iter()
+                    .any(|id| id.0.is_nil() || !legs.insert(*id))
+            {
+                return Err(EngineError::invalid());
+            }
+            operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
+        }
+        Ok(())
+    }
+    // Every original and replacement is checked against the SAME accepted
+    // prefix. No intent can reverse a replacement from this batch.
+    fn corrections(
+        corrections: &[CorrectionV1],
+        state: &DomainState,
+        operations: &mut Vec<FrozenNativeOperationV1>,
+    ) -> Result<(), EngineError> {
+        if corrections.is_empty() || corrections.len() > 20_000 {
+            return Err(EngineError::invalid());
+        }
+        let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
+        let mut originals = BTreeSet::new();
+        let mut replacements = BTreeSet::new();
+        let mut posting_ids: BTreeSet<_> = index
+            .recognitions
+            .values()
+            .flatten()
+            .flat_map(|entry| entry.postings.iter().map(|p| p.original.id))
+            .collect();
+        let mut leg_ids = BTreeSet::new();
+        for correction in corrections {
+            if !originals.insert(correction.active_recognition)
+                || index.reversed.contains(&correction.active_recognition)
+                || !index
+                    .recognitions
+                    .contains_key(&correction.active_recognition)
+            {
+                return Err(EngineError::invalid());
+            }
+            for replacement in &correction.replacement {
+                if replacement.id.0.is_nil()
+                    || !replacements.insert(replacement.id)
+                    || index.recognitions.contains_key(&replacement.id)
+                    || state.records.contains_key(&RecordId(replacement.id.0))
+                    || replacement
+                        .postings
+                        .iter()
+                        .any(|p| p.id.0.is_nil() || !posting_ids.insert(p.id))
+                    || replacement
+                        .leg_ids
+                        .iter()
+                        .any(|id| id.0.is_nil() || !leg_ids.insert(*id))
+                {
+                    return Err(EngineError::invalid());
+                }
+            }
+        }
+        for c in corrections {
+            let original = index
+                .recognitions
+                .get(&c.active_recognition)
+                .ok_or_else(EngineError::invalid)?;
+            let correction = digest(&canonical(c)?);
+            for (position, old) in original.iter().enumerate() {
+                let mut reversal = old.clone();
+                reversal.key = format!(
+                    "reverse/{}/{position}",
+                    correction
+                        .0
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                );
+                reversal.reverses = Some(old.key.clone());
+                reversal.generated_document = Digest([0; 32]);
+                for p in &mut reversal.postings {
+                    p.original.amount = p.original.amount.checked_neg()?;
+                    p.native_coefficient =
+                        numbers::native_amount(&p.original.amount, &p.unit)?.to_string();
+                }
+                operations.push(FrozenNativeOperationV1::Entry(reversal));
+            }
+            for r in &c.replacement {
+                operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
+            }
+            if operations.len() > 20_000 {
+                return Err(EngineError::invalid());
+            }
+        }
+        Ok(())
     }
     fn recognition(r: &RecognitionV1, state: &DomainState) -> Result<FrozenEntryV1, EngineError> {
         let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
@@ -387,6 +489,38 @@ impl AccountingAdapter {
         batch: Option<&AccountingBatchV1>,
         index: &AccountingIndexV1,
     ) -> Result<(), EngineError> {
+        let associations: Vec<_> = commit
+            .records
+            .iter()
+            .filter_map(|r| match r {
+                AuthoritativeRecordV1::AssociationRevision(v) => Some(v),
+                _ => None,
+            })
+            .collect();
+        if !associations.is_empty() {
+            let mut expected = BTreeSet::new();
+            for id in associations.iter().flat_map(|v| &v.retired_recognitions) {
+                if !expected.insert(*id) {
+                    return Err(EngineError::invalid());
+                }
+            }
+            let mut actual = BTreeSet::new();
+            for entry in batch
+                .into_iter()
+                .flat_map(|b| &b.operations)
+                .filter_map(|op| match op {
+                    FrozenNativeOperationV1::Entry(e) if e.reverses.is_some() => Some(e),
+                    _ => None,
+                })
+            {
+                if !actual.insert(entry.recognition_id) {
+                    return Err(EngineError::invalid());
+                }
+            }
+            if actual != expected {
+                return Err(EngineError::invalid());
+            }
+        }
         let entries: Vec<_> = batch
             .into_iter()
             .flat_map(|b| &b.operations)

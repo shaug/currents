@@ -1,0 +1,3 @@
+[
+  {"source_record":"deposit-only","source_revision":"original","prior_revision":null,"status":"Posted","effective":"2026-11-01","facets":[{"lineage":"net","role":"NetPay","group":"payroll-unknown","amount":"3300","unit":"USD"}]}
+]

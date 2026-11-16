@@ -385,6 +385,11 @@ fn monetary(
                 }
                 ControlRoleV1::OpeningEquity if terms.opening.is_some() => {}
                 ControlRoleV1::OpeningEquity => return Err(EngineError::invalid()),
+                // Complete associations own quantified clearing/payroll terms;
+                // enabling catalog roles does not relax the old activity route.
+                ControlRoleV1::Clearing | ControlRoleV1::TaxPrepayment => {
+                    return Err(EngineError::version());
+                }
             },
         }
     }
@@ -573,6 +578,14 @@ fn consumed(
             owners.entry(fact(state, source)?).or_default().push(a);
         }
     }
+    for record in state.records.values() {
+        if let AuthoritativeRecordV1::PendingExpiry(expiry) = record {
+            crate::expiry::validate(state, expiry)?;
+            if !consumed.insert(expiry.pending_adoption) {
+                return Err(duplicate());
+            }
+        }
+    }
     for list in owners.values() {
         if list.len() == 1 {
             continue;
@@ -737,7 +750,7 @@ impl RecognitionEngine {
         consumed(state, &adoptions)?;
         Ok(adoptions)
     }
-    /// Clock-free projection; only an exact accepted posted link consumes pending.
+    /// Clock-free projection; an accepted posted link or explicit expiry consumes pending.
     pub fn pending(state: &DomainState) -> Result<Vec<ActivityAdoptionV1>, EngineError> {
         let all = Self::audit(state)?;
         let consumed = consumed(state, &all)?;

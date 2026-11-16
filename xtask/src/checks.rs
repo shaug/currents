@@ -425,6 +425,32 @@ fn ticket(name: &str) -> Result<Value> {
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic complete frozen replay through encrypted C04/C05/C06; no production host or generation activation","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
         );
     }
+    if name == "CUR-015" {
+        let mut evidence = Vec::new();
+        for (package, target, filter, required) in [
+            ("currents-acquisition", "cur_015_source", "", ["relationship_source_keeps_payroll_facets_and_net_only_unknowns", "relationship_source_rejects_ambiguous_identity_and_secret_bodies", "relationship_profile_is_explicit_bounded_and_never_orders_by_arrival", "relationship_capture_retains_exact_bytes_and_separate_times_without_money"].as_slice()),
+            ("currents-domain", "cur_015", "", ["explicit_clearing_and_prepayment_are_declared_assets_not_external_openings", "cur_015_4_explicit_owner_expiry_is_nonmonetary_and_absence_is_not_expiry", "quantified_source_capacity_is_not_multiplied_by_many_to_many_edges", "corroborating_evidence_does_not_double_the_economic_leg", "association_revision_prefixes_are_immutable_and_forks_are_rejected", "captured_facets_have_exact_typed_identity_and_explicit_revision_order", "cur_015_1_complete_transfer_preserves_dates_and_separate_fee", "transfer_source_arrival_permutations_have_identical_financial_plan", "cur_015_2_payroll_requires_distinct_facets_and_explicit_withholding_choice", "complete_association_replay_rejects_balanced_wrong_role_atomically", "cur_015_3_source_revision_replaces_all_old_claims_without_mutating_history", "cur_015_4_source_tombstone_retains_history_and_never_reverses_money", "explicit_n_way_duplicates_keep_chosen_survivor_and_reverse_every_redundant_original", "cur_015_4_reconnect_is_an_explicit_stable_account_alias_not_new_money"].as_slice()),
+            ("currents-protocol", "cur_015_contracts", "", ["complete_association_is_additive_and_rejects_incomplete_bindings"].as_slice()),
+            ("currents-service", "cur_015", "", ["relationship_import_identity_binds_complete_retained_metadata", "relationship_capture_uses_real_service_staging_and_reopens_exactly", "cur_015_1_real_service_transfer_keeps_dates_and_only_separate_fee_is_spending", "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings", "cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice", "cur_015_3_real_service_remap_cancellation_reopen_and_tombstone", "cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect"].as_slice()),
+            ("currents-accounting", "cur_009", "cur_015", ["cur_015_atomic_multiple_corrections_use_one_prior_prefix", "cur_015_initial_recognition_set_preserves_each_effective_date", "cur_015_remap_requires_exact_native_retirement_set"].as_slice()),
+            ("currents-storage", "cur_007", "cur_015", ["cur_015_multiple_corrections_never_publish_a_partial_native_prefix", "cur_015_initial_multidate_batch_is_atomic_and_replayable", "cur_015_revision_family_preserves_prefix_and_rejects_forks", "cur_015_replay_checks_retained_capture_bytes_before_activation"].as_slice()),
+        ] {
+            let list = cargo(&["test", "--locked", "-p", package, "--test", target, filter, "--", "--list"])?;
+            let actual: BTreeSet<_> = list.lines().filter_map(|line| line.strip_suffix(": test")).collect();
+            if actual != required.iter().copied().collect() {
+                return Err(format!("CUR015 assertion inventory mismatch in {package}/{target}: {list}"));
+            }
+            let text = cargo(&["test", "--locked", "-p", package, "--test", target, filter])?;
+            if !text.contains(&format!("{} passed; 0 failed; 0 ignored;", required.len()))
+                || required.iter().any(|test| !text.contains(&format!("test {test} ... ok"))) {
+                return Err(format!("CUR015 incomplete qualification in {package}/{target}: {text}"));
+            }
+            evidence.push(json!({"package":package,"target":target,"assertions":required,"output_sha256":sha(text.as_bytes())}));
+        }
+        return Ok(
+            json!({"ticket":name,"suites":evidence,"scope":"synthetic explicit transfer/payroll/duplicate and immutable source revision associations through encrypted Service/native replay; no production activation or arbitrary segment correction"}),
+        );
+    }
     if name == "CUR-014" {
         let assertions = [
             "cur_014_1_import_retains_real_parsed_evidence",

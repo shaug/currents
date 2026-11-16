@@ -1,0 +1,9 @@
+[
+  {"source_record":"paystub-1","source_revision":"original","prior_revision":null,"status":"Posted","effective":"2026-11-01","facets":[
+    {"lineage":"gross","role":"GrossPay","group":"payroll-1","amount":"5000","unit":"USD"},
+    {"lineage":"withholding","role":"Withholding","group":"payroll-1","amount":"1000","unit":"USD"},
+    {"lineage":"retirement","role":"Retirement","group":"payroll-1","amount":"500","unit":"USD"},
+    {"lineage":"hsa","role":"HealthSavings","group":"payroll-1","amount":"200","unit":"USD"},
+    {"lineage":"net","role":"NetPay","group":"payroll-1","amount":"3300","unit":"USD"}
+  ]}
+]

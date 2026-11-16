@@ -77,13 +77,48 @@ Files: `crates/currents-domain/src/replay.rs`, `crates/currents-service/src/repl
 
 ## C07: Acquisition and source identity, owners CUR-012, CUR-015, CUR-041
 
-Files: `crates/currents-acquisition/src/{adapter,capture,parse,identity,refresh}.rs`, `crates/currents-domain/src/evidence.rs`.
+Files: `crates/currents-acquisition/src/{adapter,capture,parse,identity,refresh}.rs`, `crates/currents-domain/src/{evidence,relationship_evidence,associations,association_admission,association_duplicates,expiry}.rs`.
 
 `AdapterCapabilitiesV1` defines endpoint allowlist, credential scopes, IDs/revision order, deletion/lifecycle, history, units/components/balance semantics, paging and freshness; unknown is explicit. `CaptureBatchV1 { connection_id, source_identity, parser_version, coverage, cursor, observations, sanitized_contract, original_capture_time }`; `ParseProductV1 { source_version_id, parser_id, parser_version, facets:Vec<MovementFacetV1> }`; `MovementFacetV1 { lineage_key, kind, amount, relationships, temporal }`. Facet lineage survives parse/provider revisions; payroll has separate net/gross/withholding/contribution facets.
 
 CUR012 adds the compatible authoritative `AddressedParseProductV1 { id:RecordId, schema_version:u32, product:ParseProductV1 }` under the `AddressedParseProduct` record kind. Only schema version 1 is supported. IDs are frozen trusted acceptance input and distinct from source/facet IDs. This is a new explicit decision/evidence reference role with same/prior-prefix closure; legacy unaddressed `ParseProductV1` remains unchanged and gains no fabricated address. The bounded in-process profile/context/batch types and rejection policy are documented in [synthetic import profiles](../formats/import-profiles.md). No provider precedence policy is introduced.
 
 `FileParser::parse(input:BoundedEvidence,profile:ParserProfileV1)->Result<CaptureBatchV1,EngineError>`; `EvidenceEngine::publish(state:&DomainState,batch:ValidatedEvidenceBatchV1)->Result<DecisionPlan,EngineError>`; `IdentityEngine::associate(state:&DomainState,request:AssociationRequestV1)->Result<DecisionPlan,EngineError>`. `AssociationRequestV1` specifies relationship type, legs/facets, exact allocations, survivor/corrections and reasons. `ReadOnlyAdapter` methods `describe_capabilities()->AdapterCapabilitiesV1`, `async fetch_changes(cursor:Option<String>)->Result<CaptureBatchV1,EngineError>`, `async fetch_snapshot(scope:SourceScopeV1)->Result<CaptureBatchV1,EngineError>`, `async resume_import(receipt:RecordId)->Result<CaptureBatchV1,EngineError>`; source scope is explicit accounts/time/type. No write institution methods. `RefreshCoordinator::next_attempt(state:&ConnectionState,now:OffsetDateTime)->RefreshDecision` is deterministic; 24 hours schedule opt-in,1/5/30 minutes retry then next scheduled, Retry-After, lock/auth failures suppress attempts.
+
+### CUR015 complete relationship route
+
+Financial `IdentityEngine::associate(state, &CompleteAssociationRequestV1)` lives
+in **currents-domain**, not acquisition. Acquisition owns only the explicit
+bounded `RelationshipSourceParser` profile and immutable descriptive capture.
+`RelationshipCaptureV1` binds source/receipt identity, exact retained raw content,
+original capture time, typed facets, and explicit revision/predecessor links.
+C03's opaque `ImportEvidence::new_relationship` uses the same encrypted staged
+content closure as ordinary imports; no wire bytes or provider authority leak
+through this trusted in-process seam. C06 checks original bytes before projection
+activation. Existing ordinary capture identities and legacy wire records remain
+unchanged.
+
+`AssociationRevisionV1` records immutable root/prior revision, kind, exact
+captured-facet allocations, leg and recognition IDs, retired originals, residuals,
+explicit survivor where applicable, owner interpretation and governing policy.
+`CompleteAssociationRequestV1` supplies the explicit new events/legs/recognitions.
+Transfer/payroll admission checks one prior prefix, source capacity, role, dated
+postings, declared account/unit ownership and current allocation exclusivity.
+Fresh finite `Recognitions` and `Corrections` batches retain original per-entry
+dates in one bounded C05 manifest/C04 closure; declared retired originals equal
+the native reversal set. No within-batch reversal chains, recursive scripts or
+arbitrary segment replacement are introduced. Duplicate admission selects one
+existing C08 posted single-leg survivor and reverses all other approved originals.
+Same-family transfer/payroll remaps replace the entire current revision with fresh
+identities; historical legs and evidence are never overwritten.
+
+Explicit Clearing and TaxPrepayment internal roles are declared Asset accounts
+with known creation boundaries, not inferred external openings. Payroll withholding
+requires the owner to choose expense versus prepayment. `PendingExpiryV1` names
+an existing pending adoption and explicit owner interpretation; absence, time and
+tombstones cannot invoke it implicitly or reverse money. Reconnect reuses explicit
+catalog aliases. Unsupported legacy multi-facet and general segment semantics
+continue to reject. See [qualification and limits](../qualification/associations.md).
 
 <a id="c08"></a>
 

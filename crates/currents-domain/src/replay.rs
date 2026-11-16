@@ -69,6 +69,9 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::Recognition(v) => Some(RecordId(v.id.0)),
                 AuthoritativeRecordV1::AccountCatalogRevision(v) => Some(v.id),
                 AuthoritativeRecordV1::ActivityAdoption(v) => Some(v.id),
+                AuthoritativeRecordV1::PendingExpiry(v) => Some(v.id),
+                AuthoritativeRecordV1::AssociationRevision(v) => Some(v.id),
+                AuthoritativeRecordV1::RelationshipCapture(v) => Some(v.id),
                 AuthoritativeRecordV1::AccountingSegment(v) => Some(v.id),
                 // These owners have not delivered semantic validation yet. Full
                 // structural closure alone must never certify financial trust.

@@ -651,3 +651,244 @@ async fn cur_009_4() {
     replay_pool.close().await;
     reopened.close().await.unwrap();
 }
+
+#[test]
+fn cur_015_atomic_multiple_corrections_use_one_prior_prefix() {
+    let mut s = declared();
+    for n in [10, 11] {
+        let batch =
+            AccountingAdapter::freeze(&AccountingIntent::Recognition(recognition(n, 100, 2)), &s)
+                .unwrap();
+        apply(
+            &mut s,
+            &batch,
+            NativeHead {
+                semantics_version: 1,
+                checkpoint: Digest([n as u8; 32]),
+            },
+        );
+    }
+    let corrections: Vec<_> = [10, 11]
+        .into_iter()
+        .map(|n| CorrectionV1 {
+            active_recognition: RecognitionId(id(n).0),
+            replacement: vec![recognition(n + 2, 120, 2)],
+            remapping: vec![],
+            reason: "Synthetic explicit source revision".into(),
+        })
+        .collect();
+    let intent = |items: &[CorrectionV1]| -> AccountingIntent {
+        serde_json::from_value(serde_json::json!({"kind":"Corrections", "value":items})).unwrap()
+    };
+    assert_eq!(
+        AccountingAdapter::freeze(&AccountingIntent::Correction(corrections[0].clone()), &s)
+            .unwrap(),
+        AccountingAdapter::freeze(&intent(&corrections[..1]), &s).unwrap(),
+        "legacy single-correction canonical batch must be unchanged"
+    );
+    let before = s.clone();
+    let batch = AccountingAdapter::freeze(&intent(&corrections), &s).unwrap();
+    assert_eq!(batch.operations.len(), 4);
+    assert_eq!(batch.preconditions, s.accounting.as_ref().unwrap().prefix);
+    for (operation, original) in batch.operations.iter().step_by(2).zip([10, 11]) {
+        let FrozenNativeOperationV1::Entry(entry) = operation else {
+            panic!("entry required")
+        };
+        assert_eq!(
+            entry.reverses,
+            Some(format!("recognition/{}", id(original).0))
+        );
+        assert_eq!(entry.booking_date, "2024-07-02");
+        assert_eq!(entry.value_date, "2024-06-30");
+        assert_eq!(entry.postings[0].original.amount.coefficient, -1);
+    }
+    let mut duplicate = corrections.clone();
+    duplicate[1].active_recognition = duplicate[0].active_recognition;
+    assert!(AccountingAdapter::freeze(&intent(&duplicate), &s).is_err());
+    let mut collision = corrections.clone();
+    collision[1].replacement = collision[0].replacement.clone();
+    assert!(AccountingAdapter::freeze(&intent(&collision), &s).is_err());
+    let mut posting_collision = corrections.clone();
+    posting_collision[1].replacement[0].postings[0].id =
+        posting_collision[0].replacement[0].postings[0].id;
+    assert!(AccountingAdapter::freeze(&intent(&posting_collision), &s).is_err());
+    let mut chain = corrections.clone();
+    chain[1].active_recognition = chain[0].replacement[0].id;
+    assert!(AccountingAdapter::freeze(&intent(&chain), &s).is_err());
+    let mut existing = corrections.clone();
+    existing[0].replacement = vec![recognition(11, 120, 2)];
+    assert!(AccountingAdapter::freeze(&intent(&existing), &s).is_err());
+    assert!(AccountingAdapter::freeze(&intent(&[]), &s).is_err());
+    assert_eq!(
+        s.accounting.as_ref().unwrap().prefix,
+        before.accounting.as_ref().unwrap().prefix
+    );
+    assert_eq!(
+        s.accounting.as_ref().unwrap().reversed,
+        before.accounting.as_ref().unwrap().reversed
+    );
+    assert_eq!(
+        s.accounting.as_ref().unwrap().recognitions,
+        before.accounting.as_ref().unwrap().recognitions
+    );
+    assert_eq!(s.records, before.records);
+    assert_eq!(s.through, before.through);
+    apply(
+        &mut s,
+        &batch,
+        NativeHead {
+            semantics_version: 1,
+            checkpoint: Digest([20; 32]),
+        },
+    );
+    assert!(AccountingAdapter::freeze(&intent(&corrections), &s).is_err());
+    assert!(
+        s.accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&RecognitionId(id(10).0))
+    );
+    assert!(
+        s.accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&RecognitionId(id(11).0))
+    );
+}
+
+#[test]
+fn cur_015_initial_recognition_set_preserves_each_effective_date() {
+    let s = declared();
+    let first = recognition(10, 600, 2);
+    let mut second = recognition(11, 400, 2);
+    for posting in &mut second.postings {
+        posting.effective = date("2024-07-01");
+    }
+    let intent = |items: &[RecognitionV1]| -> AccountingIntent {
+        serde_json::from_value(serde_json::json!({"kind":"Recognitions", "value":items})).unwrap()
+    };
+    assert_eq!(
+        AccountingAdapter::freeze(&AccountingIntent::Recognition(first.clone()), &s).unwrap(),
+        AccountingAdapter::freeze(&intent(std::slice::from_ref(&first)), &s).unwrap(),
+        "legacy single-recognition canonical batch must be unchanged"
+    );
+    let batch = AccountingAdapter::freeze(&intent(&[first.clone(), second.clone()]), &s).unwrap();
+    assert_eq!(batch.operations.len(), 2);
+    let dates: Vec<_> = batch
+        .operations
+        .iter()
+        .map(|op| match op {
+            FrozenNativeOperationV1::Entry(entry) => {
+                assert!(entry.reverses.is_none());
+                entry.value_date.as_str()
+            }
+            _ => panic!("entry required"),
+        })
+        .collect();
+    assert_eq!(dates, ["2024-06-30", "2024-07-01"]);
+    let mut colliding = second.clone();
+    colliding.postings[0].id = first.postings[0].id;
+    assert!(AccountingAdapter::freeze(&intent(&[first.clone(), colliding]), &s).is_err());
+    assert!(AccountingAdapter::freeze(&intent(&[first.clone(), first]), &s).is_err());
+    assert!(AccountingAdapter::freeze(&intent(&[]), &s).is_err());
+    second.postings[0].amount.coefficient = 401;
+    assert!(AccountingAdapter::freeze(&intent(&[second]), &s).is_err());
+}
+
+#[test]
+fn cur_015_remap_requires_exact_native_retirement_set() {
+    let mut s = declared();
+    let old = recognition(10, 100, 2);
+    let initial =
+        AccountingAdapter::freeze(&AccountingIntent::Recognition(old.clone()), &s).unwrap();
+    apply(
+        &mut s,
+        &initial,
+        NativeHead {
+            semantics_version: 1,
+            checkpoint: Digest([10; 32]),
+        },
+    );
+    let replacement = recognition(12, 120, 2);
+    let revision = AssociationRevisionV1 {
+        id: id(9001),
+        schema_version: 1,
+        root: id(9000),
+        prior_revision: Some(id(9000)),
+        kind: RelationshipKind::Transfer,
+        legs: vec![],
+        allocations: vec![],
+        captured_allocations: vec![],
+        recognitions: vec![replacement.id],
+        residuals: vec![],
+        superseded_adoptions: vec![],
+        survivor: None,
+        retired_recognitions: vec![old.id],
+        interpretation: InterpretationV1 {
+            kind: DecisionKind::Interpretation,
+            authority: AuthorityKind::Owner,
+            evidence: vec![],
+            reason: "synthetic native correspondence only".into(),
+        },
+        governing_policy: PolicyReferenceV1 {
+            id: id(2),
+            version: 1,
+        },
+    };
+    let mut commit = DomainCommitV1 {
+        seq: CommitSeq(s.through.0 + 1),
+        previous_digest: s.domain_digest,
+        records: vec![
+            AuthoritativeRecordV1::Recognition(replacement.clone()),
+            AuthoritativeRecordV1::AssociationRevision(revision),
+        ],
+        decisions: vec![],
+        native_head_after: s.accounting.as_ref().unwrap().prefix.native_head.clone(),
+        command_result: result(s.through.0 + 1),
+        digest: Digest([0; 32]),
+    };
+    let omitted =
+        AccountingAdapter::freeze(&AccountingIntent::Recognition(replacement.clone()), &s).unwrap();
+    assert!(
+        AccountingAdapter::verify_correspondence(
+            &commit,
+            Some(&omitted),
+            s.accounting.as_ref().unwrap()
+        )
+        .is_err(),
+        "balanced replacement without required reversal must not be accepted"
+    );
+    let correct = AccountingAdapter::freeze(
+        &AccountingIntent::Corrections(vec![CorrectionV1 {
+            active_recognition: old.id,
+            replacement: vec![replacement],
+            remapping: vec![],
+            reason: "synthetic".into(),
+        }]),
+        &s,
+    )
+    .unwrap();
+    assert!(
+        AccountingAdapter::verify_correspondence(
+            &commit,
+            Some(&correct),
+            s.accounting.as_ref().unwrap()
+        )
+        .is_ok()
+    );
+    let AuthoritativeRecordV1::AssociationRevision(v) = &mut commit.records[1] else {
+        panic!()
+    };
+    v.retired_recognitions.clear();
+    assert!(
+        AccountingAdapter::verify_correspondence(
+            &commit,
+            Some(&correct),
+            s.accounting.as_ref().unwrap()
+        )
+        .is_err(),
+        "unclaimed extra reversal must not pass"
+    );
+}
