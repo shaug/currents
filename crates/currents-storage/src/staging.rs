@@ -90,3 +90,21 @@ pub(crate) async fn verify(
     }
     Ok(())
 }
+
+/// Discard only tokens created by this writer operation, never another intake.
+pub(crate) async fn discard(pool: &SqlitePool, tokens: &[uuid::Uuid]) -> Result<(), EngineError> {
+    let mut tx = pool.begin().await.map_err(|_| crate::schema::failure())?;
+    for token in tokens {
+        sqlx::query("DELETE FROM currents_staging_chunks WHERE token=?")
+            .bind(token.as_bytes().as_slice())
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| crate::schema::failure())?;
+        sqlx::query("DELETE FROM currents_staging WHERE token=?")
+            .bind(token.as_bytes().as_slice())
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| crate::schema::failure())?;
+    }
+    tx.commit().await.map_err(|_| crate::schema::failure())
+}

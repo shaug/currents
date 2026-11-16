@@ -61,6 +61,7 @@ impl CommandPlanner for Planner {
             })
             .collect();
         Ok(CommandPlan {
+            import: None,
             effects: EffectsV1 {
                 records,
                 accounts: accounts.clone(),

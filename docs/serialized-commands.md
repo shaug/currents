@@ -104,3 +104,17 @@ rollback, close races, lost COMMIT acknowledgment and subprocess death before
 COMMIT settles. Reopen checks native/domain prefixes and durable results. Fixed
 fault controls are absent from default production features. Process kill is not
 physical power-loss qualification. Synthetic passes enable no production gates.
+
+## CUR014 bounded evidence intake
+
+An optional opaque `ImportEvidence` in the trusted CommandPlan supplies validated
+C07 capture content without placing bytes on the wire. Its canonical descriptor
+binds full batch identity, receipt and all retained content hashes/lengths.
+PublishImport must match the descriptor, and its decision plan must match the
+production EvidenceEngine at the verified prefix. Unrelated commands cannot carry
+content. Raw content and retained metadata count against existing admission bounds.
+PreparedCommit carries the validated bytes only through private storage; the writer
+stages and atomically promotes exact referenced content with the result/records,
+then discards only that operation's staging tokens. A completed or uncertain commit
+is never reported rolled back because later staging cleanup failed. Existing
+commands without import descriptors retain their canonical plan shape.
