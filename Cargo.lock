@@ -486,6 +486,7 @@ name = "currents-service"
 version = "0.0.0"
 dependencies = [
  "currents-accounting",
+ "currents-acquisition",
  "currents-cipher",
  "currents-domain",
  "currents-planning",

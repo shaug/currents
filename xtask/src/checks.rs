@@ -425,6 +425,69 @@ fn ticket(name: &str) -> Result<Value> {
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic complete frozen replay through encrypted C04/C05/C06; no production host or generation activation","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
         );
     }
+    if name == "CUR-014" {
+        let assertions = [
+            "cur_014_1_import_retains_real_parsed_evidence",
+            "cur_014_1_slice_end_to_end",
+            "cur_014_2_slice_fault",
+            "cur_014_2_import_rejection_and_cancel",
+            "cur_014_3_synthetic_enforcement",
+        ];
+        let list = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_014",
+            "--",
+            "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != assertions.into_iter().collect() {
+            return Err(format!("CUR014 missing assertions: {list}"));
+        }
+        let text = cargo(&[
+            "test",
+            "--locked",
+            "-p",
+            "currents-service",
+            "--test",
+            "cur_014",
+        ])?;
+        if !text.contains("5 passed; 0 failed; 0 ignored;")
+            || assertions
+                .iter()
+                .any(|name| !text.contains(&format!("test {name} ... ok")))
+        {
+            return Err(format!("CUR014 incomplete qualification: {text}"));
+        }
+        let paths = [
+            "crates/currents-service/tests/cur_014.rs",
+            "crates/currents-service/src/import.rs",
+            "crates/currents-service/src/commands.rs",
+            "crates/currents-service/src/service.rs",
+            "crates/currents-storage/src/writer.rs",
+            "crates/currents-storage/src/staging.rs",
+            "fixtures/journeys/s1/authorization.csv",
+            "fixtures/journeys/s1/posted.csv",
+            "fixtures/journeys/s1/enrichment.csv",
+            "docs/qualification/synthetic-slice.md",
+        ];
+        let sources: Vec<_> = paths
+            .iter()
+            .map(|path| {
+                fs::read(root().join(path)).map(|bytes| json!({"path":path,"sha256":sha(&bytes)}))
+            })
+            .collect::<std::io::Result<_>>()
+            .map_err(|error| error.to_string())?;
+        return Ok(
+            json!({"ticket":name,"assertions":assertions,"sources":sources,"output_sha256":sha(text.as_bytes()),"scope":"synthetic-only encrypted import/recognition/current history/replay/crash and retry; not household MVP or production activation"}),
+        );
+    }
     if name == "CUR-013" {
         let domain = [
             "cur_013_1",

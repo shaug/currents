@@ -194,6 +194,7 @@ impl CommandPlanner for Planner {
             });
             let record = id(body.command_id.0.as_u128() + 100_000);
             return Ok(CommandPlan {
+                import: None,
                 frozen_batch: AccountingAdapter::freeze(&accounting, &state)?,
                 decision_plan: DecisionPlan {
                     records: vec![AuthoritativeRecordV1::Review(ReviewRecordV1 {
@@ -275,6 +276,7 @@ impl CommandPlanner for Planner {
             frozen_batch
         );
         Ok(CommandPlan {
+            import: None,
             decision_plan: DecisionPlan {
                 records,
                 invalidations: vec![id(700)],
