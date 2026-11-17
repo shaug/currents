@@ -1095,5 +1095,30 @@
     "manifest": "patches/sqlx-sqlite/manifest.json",
     "patch": "patches/sqlx-sqlite/worker-lifetime.patch",
     "scope": "Default-off native worker ownership; enabled only at the private cipher boundary; no SQLx core or provider changes."
+  },
+  "native_platform": {
+    "status": "unqualified",
+    "observed": {
+      "xcode_version": "27.2",
+      "xcode_build": "27B52",
+      "macos_sdk": "27.2",
+      "ios_sdk": "27.2",
+      "runner_os": "macOS 27.0.1",
+      "runner_build": "26A434",
+      "runner_arch": "arm64",
+      "source": "xcodebuild -version; xcodebuild -showsdks; sw_vers; uname -m"
+    },
+    "minimum_macos_runner": null,
+    "qualified_ios_destination": null,
+    "limitations": [
+      "Observed tools are not minimum-OS or shipping qualification.",
+      "No iOS simulator runtime or device was available at observation.",
+      "Native production qualification remains blocked.",
+      "Requested runtime baseline 15.8.2 is a qualification input, not a passing result; compile floor15.0 does not imply tested 15.0 support.",
+      "Requested simulator runtime 18.6 is not a qualified destination; actual available simulator identity must be captured and bound to both executed configurations."
+    ],
+    "requested_macos_runtime_baseline": "15.8.2",
+    "compilation_deployment_floor": "15.0",
+    "requested_ios_simulator_runtime": "18.6"
   }
 }

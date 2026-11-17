@@ -1,0 +1,33 @@
+{
+  "configurations": [
+    {
+      "id": "6D78D4A0-5647-45C5-9E57-183F867D054A",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "CURRENTS_BUILT_PRODUCTS_DIR",
+        "value": "$(BUILT_PRODUCTS_DIR)"
+      }
+    ],
+    "targetForVariableExpansion": {
+      "containerPath": "container:Currents.xcodeproj",
+      "identifier": "7680B6CE5332B917A622291A",
+      "name": "CurrentsPlatformTests"
+    }
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:Currents.xcodeproj",
+        "identifier": "7680B6CE5332B917A622291A",
+        "name": "CurrentsPlatformTests"
+      },
+      "parallelizable": false
+    }
+  ],
+  "version": 1
+}
