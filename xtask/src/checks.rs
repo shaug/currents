@@ -348,6 +348,9 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     )
 }
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-044" {
+        return crate::financekit_gate::ticket();
+    }
     if name == "CUR-004" {
         return crate::native::qualify(&root());
     }
@@ -959,6 +962,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
         ("qualify","native-platform")=>crate::native::command(&root(), &args[2..]),
+        ("qualify","financekit")=>crate::financekit_gate::qualify(&args[2..]),
         ("qualify","household-inputs")=>crate::readiness::qualify(),
         ("qualify","native-source")=>native_source(),
         ("qualify","cipher")=>crate::cipher::qualify(),
@@ -975,7 +979,17 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let dirty = checked(Path::new("git"), &["status", "--porcelain"], &root(), None)
         .map(|s| !s.is_empty())
         .unwrap_or(true);
-    let report = crate::report::build(&root(), &args, &head, dirty, &result);
+    // FinanceKit accepts no private input; do not persist rejected argument values.
+    let report_args = if command == "qualify" && gate == "financekit" && args.len() > 2 {
+        vec![
+            "qualify".into(),
+            "financekit".into(),
+            "[unsupported arguments redacted]".into(),
+        ]
+    } else {
+        args.clone()
+    };
+    let report = crate::report::build(&root(), &report_args, &head, dirty, &result);
     let report_dir = root().join("target/qualification");
     fs::create_dir_all(&report_dir).map_err(|e| e.to_string())?;
     let report_bytes = serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?;
