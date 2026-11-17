@@ -20,7 +20,14 @@ fn cur_004_3() {
     let report = String::from_utf8_lossy(&out.stdout);
     assert!(report.contains("\"status\": \"Blocked\""));
     assert!(report.contains("full Xcode"), "{report}");
-    assert!(report.contains("macOS 15.0 arm64"), "{report}");
+    assert!(
+        report.contains("locked macOS runtime baseline arm64"),
+        "{report}"
+    );
+    assert!(
+        report.contains("CLT Swift/C synthetic probes do not qualify a native app."),
+        "{report}"
+    );
 }
 
 #[test]
