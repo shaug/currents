@@ -370,6 +370,9 @@ async fn submit(
 }
 
 async fn bootstrap(path: &Path) -> (Fixture, NativeHead) {
+    bootstrap_with_balance(path, false).await
+}
+async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixture, NativeHead) {
     let f = Fixture::at_path(path.to_path_buf()).await;
     let empty = f.prefix().await.native_head;
     f.service.close().await.unwrap();
@@ -394,6 +397,47 @@ async fn bootstrap(path: &Path) -> (Fixture, NativeHead) {
         }
     }
     let mut staged = Vec::new();
+    if balance {
+        // Trusted synthetic history, as in CUR013; the file adapter only emits movements.
+        fixture::evidence(&mut fixture, 250, -96, None);
+        let bytes = "synthetic opening balance";
+        let content = store.stage(bytes.as_bytes()).await.unwrap();
+        let Some(AuthoritativeRecordV1::ObservationVersion(o)) =
+            fixture.records.get_mut(&fixture::id(250))
+        else {
+            panic!()
+        };
+        o.content_digest = content.digest();
+        o.sanitized_representation = bytes.into();
+        o.semantic_kind = ObservationKind::Balance;
+        records.push(AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {
+            id: fixture::id(252),
+            source: o.source.clone(),
+            adapter_version: "cur015-synthetic-history/1".into(),
+            parser_version: "1".into(),
+            requested_coverage: vec![],
+            reported_coverage: vec![],
+            received_time: serde_json::from_str("\"2026-11-01T12:00:00Z\"").unwrap(),
+            result: ImportResult::Complete,
+            cursor: SourceValue::Absent,
+            truncated: false,
+            complete: true,
+            contents: vec![ContentReferenceV1 {
+                digest: content.digest(),
+                byte_count: CommitSeq(bytes.len() as u64),
+                media_type: "text/plain".into(),
+            }],
+        }));
+        let Some(AuthoritativeRecordV1::AddressedParseProduct(p)) =
+            fixture.records.get_mut(&fixture::id(251))
+        else {
+            panic!()
+        };
+        p.product.facets[0].kind = ObservationKind::Balance;
+        records.push(fixture.records[&fixture::id(250)].clone());
+        records.push(fixture.records[&fixture::id(251)].clone());
+        staged.push(content);
+    }
     let units = records
         .iter()
         .filter_map(|r| match r {
@@ -1093,4 +1137,79 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
         state.records
     );
     f.service.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
+    let mut failures = vec![];
+    use association_fixtures::{association_date, boundary_rows, revised_transfer};
+    use currents_protocol::OperationV1;
+    for remap in [false, true] {
+        for day in ["2026-10-31", "2026-11-01", "2026-11-03"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("boundary.db");
+            let (mut f, _) = bootstrap_with_balance(&path, true).await;
+            let (template, mut original) = association_fixtures::transfer_request();
+            declare_template(&mut f, &path, &template).await;
+            let binding = legacy_binding(250);
+            let mut opening = fixture::posted(binding.clone(), 700, 50);
+            opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+                segment_id: fixture::id(707),
+                component_id: fixture::id(11),
+                amount: binding.amount,
+                cutoff: fixture::date("2026-11-01"),
+                evidence: binding,
+                included_activity: vec![],
+            });
+            submit(&mut f, 21001, OperationV1::AdoptActivity(opening)).await;
+            refresh_financial(&mut f, &path, None).await;
+            let request = if remap {
+                association_date(&mut original, "2026-11-03");
+                publish_relationship_rows(&mut f, &path, 1500, boundary_rows("2026-11-03", false))
+                    .await;
+                submit(
+                    &mut f,
+                    21002,
+                    OperationV1::AssociateLegsComplete(original.clone()),
+                )
+                .await;
+                refresh_financial(&mut f, &path, None).await;
+                publish_relationship_rows(&mut f, &path, 1700, boundary_rows(day, true)).await;
+                let mut next = revised_transfer(&original, fixture::id(1701));
+                association_date(&mut next, day);
+                next
+            } else {
+                publish_relationship_rows(&mut f, &path, 1500, boundary_rows(day, false)).await;
+                association_date(&mut original, day);
+                original
+            };
+            let before = f.prefix().await;
+            let before_records = f.service.verified_projection().unwrap().records.clone();
+            if day == "2026-11-03" {
+                submit(&mut f, 21003, OperationV1::AssociateLegsComplete(request)).await;
+                refresh_financial(&mut f, &path, None).await;
+                assert_ne!(f.prefix().await.native_head, before.native_head);
+            } else {
+                let mut body = f.body(21003);
+                body.expected_head = before.through;
+                body.operation = OperationV1::AssociateLegsComplete(request);
+                if f.service.preview(f.ctx(), body.clone()).is_ok() {
+                    failures.push(format!("accepted remap={remap}, day={day}"));
+                }
+                assert!(f.service.submit(f.ctx(), body, f.auth(None)).await.is_err());
+                assert_eq!(f.prefix().await, before);
+                assert_eq!(
+                    f.service.verified_projection().unwrap().records,
+                    before_records
+                );
+            }
+            let expected = f.service.verified_projection().unwrap().records.clone();
+            f.service.close().await.unwrap();
+            f.service = f.reopen().await;
+            support::recover_service(&f.service).await;
+            assert_eq!(f.service.verified_projection().unwrap().records, expected);
+            f.service.close().await.unwrap();
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

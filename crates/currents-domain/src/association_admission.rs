@@ -52,6 +52,20 @@ pub(crate) fn initial(
     state: &DomainState,
     request: &CompleteAssociationRequestV1,
 ) -> Result<DecisionPlan, EngineError> {
+    crate::segments::movement_boundary(
+        state,
+        request
+            .legs
+            .iter()
+            .map(|l| (l.account_id, &l.effective))
+            .chain(
+                request
+                    .recognitions
+                    .iter()
+                    .flat_map(|r| &r.postings)
+                    .map(|p| (p.account_id, &p.effective)),
+            ),
+    )?;
     let revision = &request.revision;
     let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
     for record in state.records.values() {

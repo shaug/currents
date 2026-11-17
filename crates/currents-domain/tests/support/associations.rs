@@ -329,3 +329,33 @@ pub(crate) fn revised_transfer(
     next.revision.recognitions = next.recognitions.iter().map(|r| r.id).collect();
     next
 }
+
+/// Keep explicit economic dates and retained source dates aligned for boundary tests.
+pub(crate) fn boundary_rows(day: &str, revised: bool) -> Vec<RelationshipSourceRowV1> {
+    let mut rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(include_bytes!(
+        "../../../../fixtures/journeys/s2/relationship-source.json"
+    ))
+    .unwrap();
+    for (i, row) in rows.iter_mut().enumerate() {
+        row.effective = day.into();
+        if revised {
+            row.source_revision = "revised".into();
+            row.prior_revision = Some("original".into());
+            row.facets[0].amount = ["-1100", "700", "400", "-10"][i].into();
+        }
+    }
+    rows
+}
+pub(crate) fn association_date(request: &mut CompleteAssociationRequestV1, day: &str) {
+    for leg in &mut request.legs {
+        leg.effective = fixture::date(day);
+        leg.posting = fixture::date(day);
+    }
+    for recognition in &mut request.recognitions {
+        recognition.bookkeeping_date = fixture::date(day);
+        for posting in &mut recognition.postings {
+            posting.effective = fixture::date(day);
+            posting.posting = fixture::date(day);
+        }
+    }
+}

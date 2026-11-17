@@ -141,6 +141,27 @@ pub(crate) fn activity_boundary(
     {
         return Ok(());
     }
+    movement_boundary(
+        state,
+        request
+            .financial
+            .iter()
+            .flat_map(|terms| &terms.postings)
+            .map(|p| (p.account_id, &p.effective))
+            .chain(
+                request
+                    .legs
+                    .iter()
+                    .map(|l| (l.leg.account_id, &l.leg.effective)),
+            ),
+    )
+}
+/// Check new movements against the exact prior prefix. Association remaps do
+/// not replace opening segments and must obey the same strict cutoff.
+pub(crate) fn movement_boundary<'a>(
+    state: &DomainState,
+    movements: impl Iterator<Item = (AccountId, &'a TemporalValue)> + Clone,
+) -> Result<(), EngineError> {
     for record in state.records.values() {
         let AuthoritativeRecordV1::ActivityAdoption(a) = record else {
             continue;
@@ -152,15 +173,8 @@ pub(crate) fn activity_boundary(
             return Err(incomplete());
         };
         let cutoff = civil(&opening.cutoff)?;
-        if let Some(terms) = &request.financial {
-            for posting in &terms.postings {
-                if posting.account_id == c.account_id && civil(&posting.effective)? <= cutoff {
-                    return Err(incomplete());
-                }
-            }
-        }
-        for leg in &request.legs {
-            if leg.leg.account_id == c.account_id && civil(&leg.leg.effective)? <= cutoff {
+        for (account, effective) in movements.clone() {
+            if account == c.account_id && civil(effective)? <= cutoff {
                 return Err(incomplete());
             }
         }

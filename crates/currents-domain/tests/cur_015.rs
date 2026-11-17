@@ -796,3 +796,37 @@ fn cur_015_4_reconnect_is_an_explicit_stable_account_alias_not_new_money() {
     inferred.revision_id = id(8004);
     assert!(CatalogEngine::set_complete(&projection, &inferred).is_err());
 }
+
+#[test]
+fn cur_015_opening_boundary_initial_and_remap() {
+    let mut failures = vec![];
+    use currents_domain::{associations::IdentityEngine, recognition::RecognitionEngine};
+    for remap in [false, true] {
+        for day in ["2026-10-31", "2026-11-01", "2026-11-03"] {
+            let (mut state, mut original) = transfer_request();
+            let opening = supported_opening(&mut state);
+            let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+            apply(&mut state, &plan);
+            association_date(&mut original, "2026-11-03");
+            retained_relationships(&mut state, 1500, boundary_rows("2026-11-03", false));
+            let request = if remap {
+                retain_association(&mut state, &original);
+                let capture = retained_relationships(&mut state, 1700, boundary_rows(day, true));
+                let mut next = revised_transfer(&original, capture);
+                association_date(&mut next, day);
+                next
+            } else {
+                retained_relationships(&mut state, 1500, boundary_rows(day, false));
+                association_date(&mut original, day);
+                original
+            };
+            let before = state.records.clone();
+            let result = IdentityEngine::associate(&state, &request);
+            if result.is_ok() != (day == "2026-11-03") {
+                failures.push(format!("remap={remap}, day={day}: {result:?}"));
+            }
+            assert_eq!(state.records, before);
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
