@@ -332,10 +332,19 @@ pub(crate) fn initial(
     }
     let mut recognized = BTreeSet::new();
     let mut recognition_ids = BTreeSet::new();
+    let retained_lineages: BTreeSet<_> = state
+        .records
+        .values()
+        .filter_map(|record| match record {
+            AuthoritativeRecordV1::Recognition(value) => Some(value.lineage),
+            _ => None,
+        })
+        .collect();
     for recognition in &request.recognitions {
         insert(RecordId(recognition.id.0))?;
         insert(recognition.lineage)?;
-        if !recognition_ids.insert(recognition.id)
+        if retained_lineages.contains(&recognition.lineage)
+            || !recognition_ids.insert(recognition.id)
             || !revision.recognitions.contains(&recognition.id)
             || recognition.leg_ids.len() != 1
             || !recognized.insert(recognition.leg_ids[0])

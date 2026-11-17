@@ -1213,3 +1213,73 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[tokio::test]
+async fn cur_015_remap_lineage_rejection_preserves_encrypted_replay() {
+    use association_fixtures::{association_date, boundary_rows, revised_transfer};
+    use currents_protocol::OperationV1;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("lineage.db");
+    let (mut f, _) = bootstrap_with_balance(&path, true).await;
+    let (template, mut original) = association_fixtures::transfer_request();
+    declare_template(&mut f, &path, &template).await;
+    let binding = legacy_binding(250);
+    let mut opening = fixture::posted(binding.clone(), 700, 50);
+    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: fixture::id(707),
+        component_id: fixture::id(11),
+        amount: binding.amount,
+        cutoff: fixture::date("2026-11-01"),
+        evidence: binding,
+        included_activity: vec![],
+    });
+    submit(&mut f, 21001, OperationV1::AdoptActivity(opening)).await;
+    refresh_financial(&mut f, &path, None).await;
+    let opening_lineage = f
+        .service
+        .verified_projection()
+        .unwrap()
+        .records
+        .values()
+        .find_map(|record| match record {
+            AuthoritativeRecordV1::Recognition(value) => Some(value.lineage),
+            _ => None,
+        })
+        .unwrap();
+    association_date(&mut original, "2026-11-03");
+    publish_relationship_rows(&mut f, &path, 1500, boundary_rows("2026-11-03", false)).await;
+    submit(
+        &mut f,
+        21002,
+        OperationV1::AssociateLegsComplete(original.clone()),
+    )
+    .await;
+    refresh_financial(&mut f, &path, None).await;
+    publish_relationship_rows(&mut f, &path, 1700, boundary_rows("2026-11-03", true)).await;
+    let mut next = revised_transfer(&original, fixture::id(1701));
+    association_date(&mut next, "2026-11-03");
+    for (offset, lineage) in [opening_lineage, original.recognitions[0].lineage]
+        .into_iter()
+        .enumerate()
+    {
+        let mut colliding = next.clone();
+        colliding.recognitions[0].lineage = lineage;
+        let before = f.prefix().await;
+        let records = f.service.verified_projection().unwrap().records.clone();
+        let mut body = f.body(21100 + offset as u128);
+        body.expected_head = before.through;
+        body.operation = OperationV1::AssociateLegsComplete(colliding);
+        assert!(f.service.preview(f.ctx(), body.clone()).is_err());
+        assert!(f.service.submit(f.ctx(), body, f.auth(None)).await.is_err());
+        assert_eq!(f.prefix().await, before);
+        assert_eq!(f.service.verified_projection().unwrap().records, records);
+    }
+    submit(&mut f, 21003, OperationV1::AssociateLegsComplete(next)).await;
+    refresh_financial(&mut f, &path, None).await;
+    let expected = f.service.verified_projection().unwrap().records.clone();
+    f.service.close().await.unwrap();
+    f.service = f.reopen().await;
+    support::recover_service(&f.service).await;
+    assert_eq!(f.service.verified_projection().unwrap().records, expected);
+    f.service.close().await.unwrap();
+}

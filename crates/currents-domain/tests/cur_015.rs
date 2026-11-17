@@ -830,3 +830,32 @@ fn cur_015_opening_boundary_initial_and_remap() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn cur_015_remap_preserves_existing_recognition_lineage() {
+    use currents_domain::{associations::IdentityEngine, recognition::RecognitionEngine};
+    let (mut state, mut original) = transfer_request();
+    let opening = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    apply(&mut state, &plan);
+    let existing_lineage = state
+        .records
+        .values()
+        .find_map(|record| match record {
+            AuthoritativeRecordV1::Recognition(value) => Some(value.lineage),
+            _ => None,
+        })
+        .unwrap();
+    association_date(&mut original, "2026-11-03");
+    retained_relationships(&mut state, 1500, boundary_rows("2026-11-03", false));
+    retain_association(&mut state, &original);
+    let capture = retained_relationships(&mut state, 1700, boundary_rows("2026-11-03", true));
+    let mut next = revised_transfer(&original, capture);
+    association_date(&mut next, "2026-11-03");
+    assert!(IdentityEngine::associate(&state, &next).is_ok());
+    next.recognitions[0].lineage = existing_lineage;
+    assert!(
+        IdentityEngine::associate(&state, &next).is_err(),
+        "remap must not reuse a retained C08 recognition lineage"
+    );
+}
