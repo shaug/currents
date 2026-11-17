@@ -96,3 +96,86 @@ impl RelationshipSourceParser {
         })
     }
 }
+
+impl RelationshipSourceParser {
+    /// Apply an explicitly supplied synthetic amount-correction profile. This
+    /// does not claim a new provider observation or adopt any financial effect.
+    pub fn correct(
+        original: &RelationshipCaptureV1,
+        prior: Option<&RelationshipParseRevisionV1>,
+        profile_bytes: Vec<u8>,
+        context: ImportContextV1,
+        id: RecordId,
+    ) -> Result<RelationshipParseBatchV1, EngineError> {
+        use sha2::{Digest as _, Sha256};
+        if profile_bytes.len() > 1_048_576
+            || context.source != original.source
+            || !context.row_ids.is_empty()
+            || context.coverage.len() > 16
+            || id.0.is_nil()
+            || context.receipt_id.0.is_nil()
+            || id == context.receipt_id
+        {
+            return Err(EngineError::invalid());
+        }
+        let correction: RelationshipCorrectionProfileV1 =
+            serde_json::from_slice(&profile_bytes).map_err(|_| EngineError::invalid())?;
+        let base = original
+            .rows
+            .iter()
+            .find(|r| {
+                r.source_record == correction.source_record
+                    && r.source_revision == correction.source_revision
+            })
+            .ok_or_else(EngineError::invalid)?;
+        let previous = match prior {
+            Some(p)
+                if p.capture == original.id
+                    && p.row.source_record == base.source_record
+                    && p.row.source_revision == base.source_revision =>
+            {
+                &p.row
+            }
+            Some(_) => return Err(EngineError::invalid()),
+            None => base,
+        };
+        let row = correction.apply(previous)?;
+        let profile = ContentReferenceV1 {
+            digest: Digest(Sha256::digest(&profile_bytes).into()),
+            byte_count: CommitSeq(profile_bytes.len() as u64),
+            media_type: RELATIONSHIP_CORRECTION_MEDIA.into(),
+        };
+        let receipt = ImportReceiptV1 {
+            id: context.receipt_id,
+            source: context.source,
+            adapter_version: "synthetic-relationships/1".into(),
+            parser_version: RELATIONSHIP_CORRECTION_PARSER.into(),
+            requested_coverage: context.coverage.clone(),
+            reported_coverage: context.coverage,
+            received_time: context.received_at,
+            result: ImportResult::Complete,
+            cursor: SourceValue::Absent,
+            truncated: false,
+            complete: true,
+            contents: vec![profile.clone()],
+        };
+        let revision = RelationshipParseRevisionV1 {
+            id,
+            schema_version: 1,
+            receipt_id: receipt.id,
+            capture: original.id,
+            prior_parse: prior.map(|p| p.id),
+            profile: profile.clone(),
+            correction,
+            row,
+        };
+        Ok(RelationshipParseBatchV1 {
+            receipt,
+            revision,
+            contents: vec![EvidenceContentV1 {
+                digest: profile.digest,
+                bytes: profile_bytes,
+            }],
+        })
+    }
+}

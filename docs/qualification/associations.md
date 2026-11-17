@@ -42,3 +42,35 @@ explicit alias on the same account, not a new account or opening. The test-only
 trusted planner is not a production host or a new general query implementation.
 Legacy import/command encodings remain unchanged; complete new DTOs are versioned
 and reject missing or unknown fields.
+
+## Explicit synthetic parser corrections
+
+`RelationshipCaptureV1` remains the immutable original provider-style input. Its
+receipt, raw content and exact decoded rows are unchanged. A separately retained
+`RelationshipParseRevisionV1` describes one row under the fixed
+`amount-correction/1` synthetic profile. The profile bytes are content-addressed;
+its typed corrections contain exact facet keys, expected old amounts and explicit
+replacement amounts. No unit, sign convention, role, date, source identity or
+provider revision is inferred. This is explicit correction input, not a claim
+that a provider emitted new observations or that a real provider parser was run.
+
+Publication is descriptive and has no native monetary effect. The domain verifies
+the deterministic result against the original row and every explicit parse
+predecessor. Authenticated replay verifies profile bytes before semantic replay.
+An owner-approved complete association remap separately retires all current
+original recognitions and creates fresh replacements atomically.
+
+Provider revisions and parse revisions have independent explicit chains. Neither
+parser labels nor arrival time chooses precedence. New bindings must name the
+unique current parse head; ambiguity is retained and blocks new decisions. A
+binding with no `parse_revision` retains its exact legacy wire encoding and names
+the original interpretation. Historical bindings remain reproducible after later
+corrections. Equivalent source recapture cannot restore stale eligibility or add
+capacity: economic identity remains source, source record and facet lineage.
+
+The bounded profile changes amounts only, within one exact provider row, with at
+most 256 distinct corrections. Parsing/retained content remains bounded to 1 MiB;
+parse ancestry and selection are bounded to 1024 revisions. Unsupported profiles,
+wrong preconditions, changed identities, forged derived rows and missing/cyclic
+ancestry are rejected. Independent retained parse forks require explicit future
+resolution; receipt order never silently resolves them.

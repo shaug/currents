@@ -267,6 +267,7 @@ fn captured_facets_have_exact_typed_identity_and_explicit_revision_order() {
     let mut state = state();
     let capture = retained_relationships(&mut state, 1000, rows.clone());
     let binding = CapturedFacetBindingV1 {
+        parse_revision: None,
         capture,
         source_record: "paystub-1".into(),
         source_revision: "original".into(),
@@ -857,5 +858,136 @@ fn cur_015_remap_preserves_existing_recognition_lineage() {
     assert!(
         IdentityEngine::associate(&state, &next).is_err(),
         "remap must not reuse a retained C08 recognition lineage"
+    );
+}
+
+#[test]
+fn cur_015_3_explicit_parser_correction_orders_without_recapture_capacity() {
+    use currents_domain::associations::IdentityEngine;
+    let rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(include_bytes!(
+        "../../../fixtures/journeys/s3/relationship-source.json"
+    ))
+    .unwrap();
+    let mut state = state();
+    let capture = retained_relationships(&mut state, 18000, rows.clone());
+    let baseline = CapturedFacetBindingV1 {
+        capture,
+        source_record: "paystub-1".into(),
+        source_revision: "original".into(),
+        facet: "gross".into(),
+        parse_revision: None,
+    };
+    let first = IdentityEngine::captured_facet(&state, &baseline, UnitId(id(1).0)).unwrap();
+    let mut row = rows[0].clone();
+    row.facets[0].amount = "5200".into();
+    let profile = serde_json::json!({"schema_version":1,"source_record":"paystub-1",
+        "source_revision":"original", "corrections":[{"facet":"gross","expected_amount":"5000","amount":"5200"}]});
+    let content = ContentReferenceV1 {
+        digest: Digest([2; 32]),
+        byte_count: CommitSeq(100),
+        media_type: "application/vnd.currents.synthetic-amount-correction.v1+json".into(),
+    };
+    let Some(AuthoritativeRecordV1::ImportReceipt(mut receipt)) =
+        state.records.get(&id(18000)).cloned()
+    else {
+        panic!()
+    };
+    receipt.id = id(18002);
+    receipt.parser_version = "amount-correction/1".into();
+    receipt.contents = vec![content.clone()];
+    state
+        .records
+        .insert(receipt.id, AuthoritativeRecordV1::ImportReceipt(receipt));
+    let wire = serde_json::json!({"kind":"RelationshipParseRevision","value":{
+        "id":id(18003),"schema_version":1,"receipt_id":id(18002),"capture":capture,
+        "prior_parse":null,"profile":content,"correction":profile,"row":row}});
+    let parsed = serde_json::from_value::<AuthoritativeRecordV1>(wire);
+    assert!(
+        parsed.is_ok(),
+        "explicit retained correction must be supported: {parsed:?}"
+    );
+    state.records.insert(id(18003), parsed.unwrap());
+    let corrected = CapturedFacetBindingV1 {
+        parse_revision: Some(id(18003)),
+        ..baseline.clone()
+    };
+    let result = IdentityEngine::captured_facet(&state, &corrected, UnitId(id(1).0)).unwrap();
+    assert_eq!(result.amount, amount(5200));
+    assert_eq!(result.fact_key, first.fact_key);
+    assert!(IdentityEngine::captured_facet(&state, &baseline, UnitId(id(1).0)).is_err());
+    assert_eq!(
+        IdentityEngine::retained_facet(&state, &baseline, UnitId(id(1).0)).unwrap(),
+        first
+    );
+    let recapture = retained_relationships(&mut state, 18010, rows);
+    let replayed = CapturedFacetBindingV1 {
+        capture: recapture,
+        ..baseline
+    };
+    assert!(
+        IdentityEngine::captured_facet(&state, &replayed, UnitId(id(1).0)).is_err(),
+        "recapture cannot bypass parse ordering"
+    );
+    let Some(AuthoritativeRecordV1::RelationshipParseRevision(mut next)) =
+        state.records.get(&id(18003)).cloned()
+    else {
+        panic!()
+    };
+    let Some(AuthoritativeRecordV1::ImportReceipt(mut next_receipt)) =
+        state.records.get(&id(18002)).cloned()
+    else {
+        panic!()
+    };
+    next.id = id(18021);
+    next.receipt_id = id(18020);
+    next.prior_parse = Some(id(18003));
+    next.correction.corrections[0].expected_amount = "5200".into();
+    next.correction.corrections[0].amount = "5300".into();
+    next.row.facets[0].amount = "5300".into();
+    next_receipt.id = next.receipt_id;
+    state.records.insert(
+        next_receipt.id,
+        AuthoritativeRecordV1::ImportReceipt(next_receipt.clone()),
+    );
+    state.records.insert(
+        next.id,
+        AuthoritativeRecordV1::RelationshipParseRevision(next.clone()),
+    );
+    let latest = CapturedFacetBindingV1 {
+        parse_revision: Some(next.id),
+        ..corrected.clone()
+    };
+    assert_eq!(
+        IdentityEngine::captured_facet(&state, &latest, UnitId(id(1).0))
+            .unwrap()
+            .amount,
+        amount(5300)
+    );
+    assert!(IdentityEngine::captured_facet(&state, &corrected, UnitId(id(1).0)).is_err());
+    assert_eq!(
+        IdentityEngine::retained_facet(&state, &corrected, UnitId(id(1).0))
+            .unwrap()
+            .amount,
+        amount(5200)
+    );
+    // A second branch from the same predecessor remains retained but cannot be
+    // resolved by arrival order, even if its numerical output is identical.
+    next.id = id(18031);
+    next.receipt_id = id(18030);
+    next_receipt.id = next.receipt_id;
+    state.records.insert(
+        next_receipt.id,
+        AuthoritativeRecordV1::ImportReceipt(next_receipt),
+    );
+    state.records.insert(
+        next.id,
+        AuthoritativeRecordV1::RelationshipParseRevision(next),
+    );
+    assert!(IdentityEngine::captured_facet(&state, &latest, UnitId(id(1).0)).is_err());
+    assert_eq!(
+        IdentityEngine::retained_facet(&state, &corrected, UnitId(id(1).0))
+            .unwrap()
+            .amount,
+        amount(5200)
     );
 }

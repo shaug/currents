@@ -176,12 +176,26 @@ pub struct RelationshipCaptureBatchV1 {
 pub const RELATIONSHIP_SOURCE_MEDIA: &str =
     "application/vnd.currents.synthetic-relationships.v1+json";
 
-dto!(CapturedFacetBindingV1 {
-    capture: RecordId,
-    source_record: String,
-    source_revision: String,
-    facet: String
-});
+/// The absent parse reference retains the exact original V1 wire encoding.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapturedFacetBindingV1 {
+    pub capture: RecordId,
+    pub source_record: String,
+    pub source_revision: String,
+    pub facet: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parse_revision: Option<RecordId>,
+}
+impl crate::schema::Schema for CapturedFacetBindingV1 {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","additionalProperties":false,
+            "required":["capture","source_record","source_revision","facet"],
+            "properties":{"capture":RecordId::schema(),"source_record":String::schema(),
+                "source_revision":String::schema(),"facet":String::schema(),
+                "parse_revision":Option::<RecordId>::schema()}})
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedCapturedFacetV1 {
     pub fact_key: String,
@@ -218,3 +232,71 @@ dto!(CapturedFacetAllocationV1 {
     mode: FacetAllocationModeV1
 });
 dto!(CompleteAssociationRequestV1 { revision:AssociationRevisionV1, events:Vec<FinancialEventV1>, legs:Vec<FinancialLegV1>, recognitions:Vec<RecognitionV1> });
+
+// Explicit descriptive input, not a provider revision or accounting instruction.
+dto!(RelationshipAmountCorrectionV1 {
+    facet: String,
+    expected_amount: String,
+    amount: String
+});
+dto!(RelationshipCorrectionProfileV1 {
+    schema_version: u32,
+    source_record: String,
+    source_revision: String,
+    corrections: Vec<RelationshipAmountCorrectionV1>
+});
+pub const RELATIONSHIP_CORRECTION_MEDIA: &str =
+    "application/vnd.currents.synthetic-amount-correction.v1+json";
+pub const RELATIONSHIP_CORRECTION_PARSER: &str = "amount-correction/1";
+impl RelationshipCorrectionProfileV1 {
+    pub fn apply(
+        &self,
+        prior: &RelationshipSourceRowV1,
+    ) -> Result<RelationshipSourceRowV1, EngineError> {
+        RelationshipSourceRowV1::validate_all(std::slice::from_ref(prior))?;
+        if self.schema_version != 1
+            || self.source_record != prior.source_record
+            || self.source_revision != prior.source_revision
+            || self.corrections.is_empty()
+            || self.corrections.len() > 256
+        {
+            return Err(EngineError::invalid());
+        }
+        let mut row = prior.clone();
+        let mut seen = std::collections::BTreeSet::new();
+        for change in &self.corrections {
+            if !seen.insert(&change.facet) || change.amount == change.expected_amount {
+                return Err(EngineError::invalid());
+            }
+            decimal(&change.amount)?;
+            let facet = row
+                .facets
+                .iter_mut()
+                .find(|f| f.lineage == change.facet)
+                .ok_or_else(EngineError::invalid)?;
+            if facet.amount != change.expected_amount {
+                return Err(EngineError::invalid());
+            }
+            facet.amount.clone_from(&change.amount);
+        }
+        RelationshipSourceRowV1::validate_all(std::slice::from_ref(&row))?;
+        Ok(row)
+    }
+}
+// Immutable interpretation ordered by explicit predecessor edges.
+dto!(RelationshipParseRevisionV1 {
+    id: RecordId,
+    schema_version: u32,
+    receipt_id: RecordId,
+    capture: RecordId,
+    prior_parse: Option<RecordId>,
+    profile: ContentReferenceV1,
+    correction: RelationshipCorrectionProfileV1,
+    row: RelationshipSourceRowV1
+});
+#[derive(Clone)]
+pub struct RelationshipParseBatchV1 {
+    pub receipt: ImportReceiptV1,
+    pub revision: RelationshipParseRevisionV1,
+    pub contents: Vec<EvidenceContentV1>,
+}

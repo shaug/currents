@@ -77,7 +77,7 @@ Files: `crates/currents-domain/src/replay.rs`, `crates/currents-service/src/repl
 
 ## C07: Acquisition and source identity, owners CUR-012, CUR-015, CUR-041
 
-Files: `crates/currents-acquisition/src/{adapter,capture,parse,identity,refresh}.rs`, `crates/currents-domain/src/{evidence,relationship_evidence,associations,association_admission,association_duplicates,expiry}.rs`.
+Files: `crates/currents-acquisition/src/{adapter,capture,parse,identity,refresh}.rs`, `crates/currents-domain/src/{evidence,relationship_evidence,relationship_parse,associations,association_admission,association_duplicates,expiry}.rs`.
 
 `AdapterCapabilitiesV1` defines endpoint allowlist, credential scopes, IDs/revision order, deletion/lifecycle, history, units/components/balance semantics, paging and freshness; unknown is explicit. `CaptureBatchV1 { connection_id, source_identity, parser_version, coverage, cursor, observations, sanitized_contract, original_capture_time }`; `ParseProductV1 { source_version_id, parser_id, parser_version, facets:Vec<MovementFacetV1> }`; `MovementFacetV1 { lineage_key, kind, amount, relationships, temporal }`. Facet lineage survives parse/provider revisions; payroll has separate net/gross/withholding/contribution facets.
 
@@ -97,6 +97,20 @@ content closure as ordinary imports; no wire bytes or provider authority leak
 through this trusted in-process seam. C06 checks original bytes before projection
 activation. Existing ordinary capture identities and legacy wire records remain
 unchanged.
+
+The additive `RelationshipParseRevisionV1` retains an exact original capture,
+explicit optional prior parse, content-addressed correction profile and derived
+row. `RelationshipSourceParser::correct` supports only the bounded synthetic
+`amount-correction/1` profile: exact facet, expected prior amount and explicit new
+amount. It never invents provider revisions or alters source identity, units,
+roles or dates. `ImportEvidence::new_relationship_parse` binds this separate
+input; domain and authenticated replay verify its deterministic derivation.
+Publication has no financial effect. `CapturedFacetBindingV1.parse_revision` is
+optional and omitted for existing original bindings, preserving their bytes.
+Provider and parser precedence remain separate explicit chains. New financial
+bindings require a unique current parse head across equivalent recaptures;
+historical bindings retain their exact interpretation. See the
+[qualification contract](../qualification/associations.md#explicit-synthetic-parser-corrections).
 
 `AssociationRevisionV1` records immutable root/prior revision, kind, exact
 captured-facet allocations, leg and recognition IDs, retired originals, residuals,

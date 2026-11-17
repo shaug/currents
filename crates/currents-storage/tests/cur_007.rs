@@ -892,3 +892,144 @@ async fn cur_015_replay_checks_retained_capture_bytes_before_activation() {
         store.close().await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn cur_015_replay_checks_retained_parser_profile_bytes_before_activation() {
+    use sha2::{Digest as _, Sha256};
+    for forged in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(&dir.path().join("source-capture.db")).await;
+        let raw = include_bytes!("../../../fixtures/journeys/s3/relationship-source.json").to_vec();
+        let rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(&raw).unwrap();
+        let content = ContentReferenceV1 {
+            digest: Digest(Sha256::digest(&raw).into()),
+            byte_count: CommitSeq(raw.len() as u64),
+            media_type: RELATIONSHIP_SOURCE_MEDIA.into(),
+        };
+        let source = SourceIdentityV1 {
+            source: "synthetic".into(),
+            connection_id: RecordId(uuid::Uuid::from_u128(8000)),
+            device_id: None,
+        };
+        let receipt = ImportReceiptV1 {
+            id: RecordId(uuid::Uuid::from_u128(8001)),
+            source: source.clone(),
+            adapter_version: "synthetic-relationships/1".into(),
+            parser_version: "1".into(),
+            requested_coverage: vec![],
+            reported_coverage: vec![],
+            received_time: serde_json::from_str("\"2026-11-02T00:00:00Z\"").unwrap(),
+            result: ImportResult::Complete,
+            cursor: SourceValue::Absent,
+            truncated: false,
+            complete: true,
+            contents: vec![content.clone()],
+        };
+        let capture = RelationshipCaptureV1 {
+            id: RecordId(uuid::Uuid::from_u128(8002)),
+            schema_version: 1,
+            receipt_id: receipt.id,
+            source,
+            original_capture_time: serde_json::from_str("\"2026-11-01T00:00:00Z\"").unwrap(),
+            raw: content,
+            rows,
+        };
+        let staged = store.stage(&raw).await.unwrap();
+        let mut empty =
+            fixtures::initial_state(store.writer().audited_prefix().await.unwrap().native_head);
+        let batch = AccountingAdapter::freeze(
+            &AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "synthetic capture".into(),
+            }),
+            &empty,
+        )
+        .unwrap();
+        let mut value = input(
+            8003,
+            &batch,
+            &[
+                AuthoritativeRecordV1::ImportReceipt(receipt.clone()),
+                AuthoritativeRecordV1::RelationshipCapture(capture.clone()),
+            ],
+        );
+        value.staged = vec![staged];
+        let first = store
+            .writer()
+            .append_closure(
+                value,
+                AccountingAdapter::prepare_closure(&batch).unwrap(),
+                &ClosureControl::default(),
+            )
+            .await
+            .unwrap();
+        fixtures::advance(&mut empty, &first, &batch);
+        let profile = RelationshipCorrectionProfileV1 {
+            schema_version: 1,
+            source_record: "paystub-1".into(),
+            source_revision: "original".into(),
+            corrections: vec![RelationshipAmountCorrectionV1 {
+                facet: "gross".into(),
+                expected_amount: "5000".into(),
+                amount: "5200".into(),
+            }],
+        };
+        let bytes = serde_json::to_vec(&profile).unwrap();
+        let content = ContentReferenceV1 {
+            digest: Digest(Sha256::digest(&bytes).into()),
+            byte_count: CommitSeq(bytes.len() as u64),
+            media_type: RELATIONSHIP_CORRECTION_MEDIA.into(),
+        };
+        let mut typed = profile;
+        if forged {
+            typed.corrections[0].amount = "9999".into();
+        }
+        let mut receipt = receipt;
+        receipt.id = RecordId(uuid::Uuid::from_u128(8010));
+        receipt.parser_version = RELATIONSHIP_CORRECTION_PARSER.into();
+        receipt.contents = vec![content.clone()];
+        let revision = RelationshipParseRevisionV1 {
+            id: RecordId(uuid::Uuid::from_u128(8011)),
+            schema_version: 1,
+            receipt_id: receipt.id,
+            capture: capture.id,
+            prior_parse: None,
+            profile: content,
+            row: typed.apply(&capture.rows[0]).unwrap(),
+            correction: typed,
+        };
+        let batch = AccountingAdapter::freeze(
+            &AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "synthetic parse correction".into(),
+            }),
+            &empty,
+        )
+        .unwrap();
+        let mut value = input(
+            8012,
+            &batch,
+            &[
+                AuthoritativeRecordV1::ImportReceipt(receipt),
+                AuthoritativeRecordV1::RelationshipParseRevision(revision),
+            ],
+        );
+        value.staged = vec![store.stage(&bytes).await.unwrap()];
+        store
+            .writer()
+            .append_closure(
+                value,
+                AccountingAdapter::prepare_closure(&batch).unwrap(),
+                &ClosureControl::default(),
+            )
+            .await
+            .unwrap();
+        let destination = open(&dir.path().join("destination.db")).await;
+        let result =
+            currents_service::ReplayCoordinator::rebuild(store.history(), destination).await;
+        assert_eq!(
+            result.is_ok(),
+            !forged,
+            "typed parser profile must match authenticated retained bytes even when derived row is internally consistent"
+        );
+        store.close().await.unwrap();
+    }
+}

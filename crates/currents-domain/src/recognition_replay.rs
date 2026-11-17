@@ -40,6 +40,13 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::PendingExpiry(expiry) => {
                 Some(crate::expiry::PendingExpiryEngine::expire(prior, expiry)?)
             }
+            AuthoritativeRecordV1::RelationshipParseRevision(p) => {
+                let Some(AuthoritativeRecordV1::ImportReceipt(r)) = next.records.get(&p.receipt_id)
+                else {
+                    return Err(EngineError::invalid());
+                };
+                Some(crate::relationship_parse::plan(prior, p, r)?)
+            }
             AuthoritativeRecordV1::RelationshipCapture(capture) => {
                 let Some(AuthoritativeRecordV1::ImportReceipt(receipt)) =
                     next.records.get(&capture.receipt_id)
@@ -130,6 +137,7 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::AccountCatalogRevision(_)
             | AuthoritativeRecordV1::ActivityAdoption(_)
             | AuthoritativeRecordV1::RelationshipCapture(_)
+            | AuthoritativeRecordV1::RelationshipParseRevision(_)
             | AuthoritativeRecordV1::AssociationRevision(_)
             | AuthoritativeRecordV1::PendingExpiry(_)
             | AuthoritativeRecordV1::AccountingSegment(_) => true,

@@ -112,6 +112,7 @@ pub(crate) fn transfer_request() -> (DomainState, CompleteAssociationRequestV1) 
         };
         edges.push(CapturedFacetAllocationV1 {
             source: CapturedFacetBindingV1 {
+                parse_revision: None,
                 capture,
                 source_record: row.source_record.clone(),
                 source_revision: row.source_revision.clone(),
@@ -274,6 +275,7 @@ pub(crate) fn payroll_request() -> (DomainState, CompleteAssociationRequestV1) {
             .captured_allocations
             .push(CapturedFacetAllocationV1 {
                 source: CapturedFacetBindingV1 {
+                    parse_revision: None,
                     capture,
                     source_record: rows[0].source_record.clone(),
                     source_revision: rows[0].source_revision.clone(),

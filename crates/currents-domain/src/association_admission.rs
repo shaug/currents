@@ -154,6 +154,7 @@ pub(crate) fn initial(
             state.records.get(evidence),
             Some(
                 AuthoritativeRecordV1::RelationshipCapture(_)
+                    | AuthoritativeRecordV1::RelationshipParseRevision(_)
                     | AuthoritativeRecordV1::ImportReceipt(_)
             )
         ) {

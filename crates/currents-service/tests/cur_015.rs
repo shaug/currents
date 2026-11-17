@@ -504,6 +504,13 @@ async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixture, NativeH
 
 type EconomicEntry = (RecognitionId, String, String, Vec<FrozenPostingV1>);
 async fn real_service_transfer(order: Option<[usize; 3]>, remap: bool) -> Vec<EconomicEntry> {
+    real_service_transfer_mode(order, remap, false).await
+}
+async fn real_service_transfer_mode(
+    order: Option<[usize; 3]>,
+    remap: bool,
+    parser_correction: bool,
+) -> Vec<EconomicEntry> {
     use currents_protocol::OperationV1;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("transfer.db");
@@ -626,9 +633,87 @@ async fn real_service_transfer(order: Option<[usize; 3]>, remap: bool) -> Vec<Ec
             row.prior_revision = Some("original".into());
             row.facets[0].amount = ["-1100", "700", "400", "-10"][i].into();
         }
-        publish_relationship_rows(&mut f, &path, 1700, revised.clone()).await;
+        let mut next = association_fixtures::revised_transfer(&request, fixture::id(1701));
+        if parser_correction {
+            let Some(AuthoritativeRecordV1::RelationshipCapture(capture)) =
+                after.records.get(&fixture::id(1501)).cloned()
+            else {
+                panic!()
+            };
+            let original_raw = capture.raw.clone();
+            for (i, row) in rows.iter().take(2).enumerate() {
+                let n = 1700 + u32::try_from(i).unwrap() * 10;
+                let context = ImportContextV1 {
+                    receipt_id: fixture::id(n),
+                    source: capture.source.clone(),
+                    captured_at: capture.original_capture_time.clone(),
+                    received_at: serde_json::from_str("\"2026-11-06T00:00:00Z\"").unwrap(),
+                    coverage: vec![],
+                    row_ids: vec![],
+                };
+                let profile = RelationshipCorrectionProfileV1 {
+                    schema_version: 1,
+                    source_record: row.source_record.clone(),
+                    source_revision: row.source_revision.clone(),
+                    corrections: vec![RelationshipAmountCorrectionV1 {
+                        facet: row.facets[0].lineage.clone(),
+                        expected_amount: row.facets[0].amount.clone(),
+                        amount: revised[i].facets[0].amount.clone(),
+                    }],
+                };
+                let batch = currents_acquisition::identity::RelationshipSourceParser::correct(
+                    &capture,
+                    None,
+                    serde_json::to_vec(&profile).unwrap(),
+                    context,
+                    fixture::id(n + 1),
+                )
+                .unwrap();
+                assert_eq!(batch.revision.row.source_revision, "original");
+                let evidence = ImportEvidence::new_relationship_parse(batch).unwrap();
+                let import = evidence.request();
+                refresh_financial(&mut f, &path, Some(evidence)).await;
+                submit(
+                    &mut f,
+                    16000 + u128::from(n),
+                    OperationV1::PublishImport(import),
+                )
+                .await;
+                assert_eq!(f.prefix().await.native_head, native_before);
+                next.revision.captured_allocations[i].source.parse_revision =
+                    Some(fixture::id(n + 1));
+            }
+            for edge in &mut next.revision.captured_allocations {
+                edge.source.capture = capture.id;
+                edge.source.source_revision = "original".into();
+            }
+            next.revision.interpretation.evidence =
+                vec![capture.id, fixture::id(1701), fixture::id(1711)];
+            for event in &mut next.events {
+                event.interpretation = SourceValue::Known(next.revision.interpretation.clone());
+            }
+            for leg in &mut next.legs {
+                leg.interpretation = SourceValue::Known(next.revision.interpretation.clone());
+            }
+            let current = refresh_financial(&mut f, &path, None).await;
+            assert_eq!(
+                current.records.get(&capture.id),
+                Some(&AuthoritativeRecordV1::RelationshipCapture(capture.clone()))
+            );
+            assert_eq!(capture.raw, original_raw);
+            let stale = request.revision.captured_allocations[0].source.clone();
+            assert!(
+                currents_domain::associations::IdentityEngine::captured_facet(
+                    &current,
+                    &stale,
+                    fixture::amount(1).unit_id
+                )
+                .is_err()
+            );
+        } else {
+            publish_relationship_rows(&mut f, &path, 1700, revised.clone()).await;
+        }
         assert_eq!(f.prefix().await.native_head, native_before);
-        let next = association_fixtures::revised_transfer(&request, fixture::id(1701));
         let mut body = f.body(14000);
         body.expected_head = f.prefix().await.through;
         body.operation = OperationV1::AssociateLegsComplete(next.clone());
@@ -691,7 +776,14 @@ async fn real_service_transfer(order: Option<[usize; 3]>, remap: bool) -> Vec<Ec
         let before_tombstone = f.prefix().await.native_head;
         for row in &mut revised {
             row.source_revision = "deleted".into();
-            row.prior_revision = Some("revised".into());
+            row.prior_revision = Some(
+                if parser_correction {
+                    "original"
+                } else {
+                    "revised"
+                }
+                .into(),
+            );
             row.status = RelationshipSourceStatusV1::Tombstone;
             row.facets.clear();
         }
@@ -1282,4 +1374,97 @@ async fn cur_015_remap_lineage_rejection_preserves_encrypted_replay() {
     support::recover_service(&f.service).await;
     assert_eq!(f.service.verified_projection().unwrap().records, expected);
     f.service.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_015_3_real_parser_remap_preserves_raw_cancellation_retry_and_reopen() {
+    real_service_transfer_mode(None, true, true).await;
+}
+
+#[test]
+fn cur_015_3_parser_profile_rejects_forgery_and_preserves_capture_wire() {
+    let capture = relationship_capture();
+    let wire = serde_json::to_vec(&capture.capture).unwrap();
+    let evidence = ImportEvidence::new_relationship(capture.clone()).unwrap();
+    let mut state = DomainState::default();
+    for record in evidence.plan(&state).unwrap().records {
+        let id = match &record {
+            AuthoritativeRecordV1::ImportReceipt(r) => r.id,
+            AuthoritativeRecordV1::RelationshipCapture(c) => c.id,
+            _ => panic!(),
+        };
+        state.records.insert(id, record);
+    }
+    let context = ImportContextV1 {
+        receipt_id: id(200),
+        source: capture.capture.source.clone(),
+        captured_at: capture.capture.original_capture_time.clone(),
+        received_at: capture.receipt.received_time.clone(),
+        coverage: vec![],
+        row_ids: vec![],
+    };
+    let profile = RelationshipCorrectionProfileV1 {
+        schema_version: 1,
+        source_record: "paystub-1".into(),
+        source_revision: "original".into(),
+        corrections: vec![RelationshipAmountCorrectionV1 {
+            facet: "gross".into(),
+            expected_amount: "5000".into(),
+            amount: "5200".into(),
+        }],
+    };
+    let batch = currents_acquisition::identity::RelationshipSourceParser::correct(
+        &capture.capture,
+        None,
+        serde_json::to_vec(&profile).unwrap(),
+        context.clone(),
+        id(201),
+    )
+    .unwrap();
+    let corrected = ImportEvidence::new_relationship_parse(batch.clone()).unwrap();
+    let plan = corrected.plan(&state).unwrap();
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    assert_eq!(batch.revision.row.source_revision, "original");
+    assert_eq!(batch.revision.row.facets[0].amount, "5200");
+    assert_eq!(serde_json::to_vec(&capture.capture).unwrap(), wire);
+    assert_eq!(capture.capture.rows[0].facets[0].amount, "5000");
+    for case in 0..8 {
+        let mut forged = batch.clone();
+        match case {
+            0 => forged.contents[0].bytes.push(b' '),
+            1 => forged.revision.row.facets[0].amount = "9999".into(),
+            2 => forged.revision.row.facets[0].unit = "EUR".into(),
+            3 => forged.revision.row.source_revision = "fabricated".into(),
+            4 => forged.receipt.parser_version = "unsupported".into(),
+            5 => forged.revision.correction.corrections[0].expected_amount = "4999".into(),
+            6 => forged.revision.prior_parse = Some(id(999)),
+            _ => forged.revision.capture = id(999),
+        }
+        assert!(
+            ImportEvidence::new_relationship_parse(forged)
+                .and_then(|e| e.plan(&state))
+                .is_err(),
+            "case {case}"
+        );
+    }
+    for case in 0..5 {
+        let mut p = profile.clone();
+        match case {
+            0 => p.corrections[0].expected_amount = "4999".into(),
+            1 => p.corrections[0].amount = "NaN".into(),
+            2 => p.corrections.push(p.corrections[0].clone()),
+            3 => p.corrections[0].facet = "unknown".into(),
+            _ => p.schema_version = 2,
+        }
+        assert!(
+            currents_acquisition::identity::RelationshipSourceParser::correct(
+                &capture.capture,
+                None,
+                serde_json::to_vec(&p).unwrap(),
+                context.clone(),
+                id(201)
+            )
+            .is_err()
+        );
+    }
 }

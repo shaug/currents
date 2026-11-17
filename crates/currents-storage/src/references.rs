@@ -45,6 +45,7 @@ const RECORDS: &[&str] = &[
     "Association",
     "AssociationRevision",
     "RelationshipCapture",
+    "RelationshipParseRevision",
     "Decision",
     "Recognition",
     "AccountingSegment",
@@ -61,6 +62,7 @@ const EVIDENCE: &[&str] = &[
     "ImportReceipt",
     "AddressedParseProduct",
     "RelationshipCapture",
+    "RelationshipParseRevision",
 ];
 
 /// Result effects use family existence, not changed-record or latest-version semantics.
@@ -274,6 +276,26 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 None,
             );
         }
+        AuthoritativeRecordV1::RelationshipParseRevision(p) => {
+            if p.schema_version != 1 || p.correction.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            RelationshipSourceRowV1::validate_all(std::slice::from_ref(&p.row))?;
+            if p.id.0.is_nil()
+                || p.id == p.receipt_id
+                || p.id == p.capture
+                || p.profile.media_type != RELATIONSHIP_CORRECTION_MEDIA
+                || p.profile.byte_count.0 > 1_048_576
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["ImportReceipt"], &v["receipt_id"], None);
+            m.reference(&["RelationshipCapture"], &v["capture"], None);
+            if p.prior_parse.is_some() {
+                m.reference(&["RelationshipParseRevision"], &v["prior_parse"], None);
+            }
+            m.content(&v["profile"])?;
+        }
         AuthoritativeRecordV1::RelationshipCapture(capture) => {
             if capture.schema_version != 1 {
                 return Err(EngineError::version());
@@ -349,6 +371,13 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             {
                 m.reference(&["FinancialLeg"], &edge["leg"], None);
                 m.reference(&["RelationshipCapture"], &edge["source"]["capture"], None);
+                if !edge["source"]["parse_revision"].is_null() {
+                    m.reference(
+                        &["RelationshipParseRevision"],
+                        &edge["source"]["parse_revision"],
+                        None,
+                    );
+                }
             }
 
             for edge in v["allocations"]

@@ -298,6 +298,7 @@ impl IdentityEngine {
         if seen.len() != versions.len() {
             return Err(conflict());
         }
+        crate::relationship_parse::require_current(state, binding)?;
         Self::retained_facet(state, binding, unit)
     }
     /// Resolve immutable captured evidence, not eligibility for a new decision.
@@ -321,14 +322,7 @@ impl IdentityEngine {
             return Err(conflict());
         }
         crate::relationship_evidence::validate_metadata(capture, receipt)?;
-        let row = capture
-            .rows
-            .iter()
-            .find(|row| {
-                row.source_record == binding.source_record
-                    && row.source_revision == binding.source_revision
-            })
-            .ok_or_else(conflict)?;
+        let row = crate::relationship_parse::retained_row(state, binding)?;
         let facet = row
             .facets
             .iter()
