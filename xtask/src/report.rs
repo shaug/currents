@@ -37,7 +37,7 @@ pub fn build(
     result: &Result<Value, String>,
 ) -> Value {
     let commands = COMMANDS.with(|c| std::mem::take(&mut *c.borrow_mut()));
-    let tests: Vec<_> =
+    let mut tests: Vec<_> =
         commands
             .iter()
             .flat_map(|c| {
@@ -46,6 +46,15 @@ pub fn build(
                 )
             })
             .collect();
+    // Imported native observations are not commands executed by this invocation.
+    if args.first().is_some_and(|a| a == "qualify")
+        && args.get(1).is_some_and(|a| a == "native-platform")
+        && args.get(2).is_some_and(|a| a == "--aggregate")
+        && let Ok(result) = result
+        && let Some(observed) = result["observed_tests"].as_array()
+    {
+        tests.extend(observed.iter().cloned());
+    }
     let versions: Vec<_> = commands.iter().filter(|c| !c["version_output"].is_null()).map(|c| json!({"program":c["program"],"args":c["args"],"output":c["version_output"],"exit":c["exit"]})).collect();
     let mut paths = vec![
         root.join("Cargo.toml"),

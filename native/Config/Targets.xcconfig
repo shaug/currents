@@ -1,0 +1,6 @@
+// Qualification fixture only. No shipping/signing qualification is implied.
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+MACOSX_DEPLOYMENT_TARGET = 15.0
+IPHONEOS_DEPLOYMENT_TARGET = 18.0
+ARCHS = arm64

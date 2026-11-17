@@ -1,0 +1,28 @@
+{
+  "configurations": [
+    {
+      "id": "6D78D4A0-5647-45C5-9E57-183F867D054A",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "CURRENTS_BUILT_PRODUCTS_DIR",
+        "value": "$(BUILT_PRODUCTS_DIR)"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:Currents.xcodeproj",
+        "identifier": "5F0CBEB27E8DE22B4EDF77A7",
+        "name": "CurrentsCaptureTests"
+      },
+      "parallelizable": false
+    }
+  ],
+  "version": 1
+}
