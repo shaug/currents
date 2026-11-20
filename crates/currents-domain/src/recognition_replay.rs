@@ -34,6 +34,38 @@ pub(crate) fn validate_transition(
                     },
                 )?)
             }
+            AuthoritativeRecordV1::RecognitionCorrectionRevision(revision) => {
+                let Some(AuthoritativeRecordV1::Recognition(replacement)) = next
+                    .records
+                    .get(&RecordId(revision.replacement_recognition.0))
+                else {
+                    return Err(EngineError::invalid());
+                };
+                // The bounded slice is one owner and replacement, in a fixed order.
+                let [
+                    owner,
+                    adopted,
+                    AuthoritativeRecordV1::FrozenAccountingManifest(_),
+                ] = commit.records.as_slice()
+                else {
+                    return Err(EngineError::invalid());
+                };
+                if owner != record
+                    || adopted != &AuthoritativeRecordV1::Recognition(replacement.clone())
+                {
+                    return Err(EngineError::invalid());
+                }
+                Some(crate::correction::CorrectionEngine::correct_durable(
+                    prior,
+                    revision.id,
+                    &CorrectionV1 {
+                        active_recognition: revision.prior_recognition,
+                        replacement: vec![replacement.clone()],
+                        remapping: vec![],
+                        reason: revision.reason.clone(),
+                    },
+                )?)
+            }
             AuthoritativeRecordV1::ActivityAdoption(adoption) => {
                 Some(RecognitionEngine::adopt(prior, &restore(next, adoption)?)?)
             }
@@ -136,6 +168,7 @@ pub(crate) fn validate_transition(
         let requires_owner = match record {
             AuthoritativeRecordV1::AccountCatalogRevision(_)
             | AuthoritativeRecordV1::ActivityAdoption(_)
+            | AuthoritativeRecordV1::RecognitionCorrectionRevision(_)
             | AuthoritativeRecordV1::RelationshipCapture(_)
             | AuthoritativeRecordV1::RelationshipParseRevision(_)
             | AuthoritativeRecordV1::AssociationRevision(_)

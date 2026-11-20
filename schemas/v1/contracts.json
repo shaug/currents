@@ -7610,6 +7610,59 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "RecognitionCorrectionRevision"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "prior_recognition": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "remap_disposition": {
+                  "enum": [
+                    "UnchangedStableLegs"
+                  ]
+                },
+                "replacement_recognition": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "prior_recognition",
+                "replacement_recognition",
+                "reason",
+                "remap_disposition"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "AccountingSegment"
             },
             "value": {
@@ -41311,6 +41364,59 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "RecognitionCorrectionRevision"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior_recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "remap_disposition": {
+                        "enum": [
+                          "UnchangedStableLegs"
+                        ]
+                      },
+                      "replacement_recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "prior_recognition",
+                      "replacement_recognition",
+                      "reason",
+                      "remap_disposition"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "AccountingSegment"
                   },
                   "value": {
@@ -54727,6 +54833,59 @@
                       "scope",
                       "bookkeeping_date",
                       "date_policy"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "RecognitionCorrectionRevision"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior_recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "remap_disposition": {
+                        "enum": [
+                          "UnchangedStableLegs"
+                        ]
+                      },
+                      "replacement_recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "prior_recognition",
+                      "replacement_recognition",
+                      "reason",
+                      "remap_disposition"
                     ],
                     "type": "object"
                   }
