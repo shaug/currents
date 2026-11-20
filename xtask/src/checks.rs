@@ -337,16 +337,14 @@ impl CorePhase {
     }
 }
 
-fn macos_core_phases(msrv: bool, has_manifest: bool) -> bool {
-    cfg!(target_os = "macos")
-        && !msrv
-        && !has_manifest
+fn ci_core_phases(has_manifest: bool) -> bool {
+    !has_manifest
         && env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-        && env::var("CURRENTS_MACOS_CORE_PHASES").as_deref() == Ok("1")
+        && env::var("CURRENTS_CI_CORE_PHASES").as_deref() == Ok("1")
 }
 
 fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
-    let phases = macos_core_phases(msrv, manifest.is_some());
+    let phases = ci_core_phases(manifest.is_some());
     check_native_environment()?;
     let (program, rustc, version) = if msrv {
         let (c, r, v) = msrv_tools()?;
