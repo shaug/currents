@@ -159,6 +159,30 @@ Financial terms separately identify recognition and lineage, postings, bookkeepi
 
 The standalone identity-only correction chain may advance only its live terminal. Each append keeps the original activity adoption as the unique historical owner, retires the preceding native recognition, and preserves the entire prior history with exactly one live terminal. Reused posting identities, forks, cycles, orphan authority and economic changes are invalid. Association-bound and dependent recognitions still require an explicit remap path; this checkpoint does not silently remap them or expose service or wire dispatch.
 
+### CUR-016 bounded qualification and remaining work
+
+`cargo xtask ticket CUR-016` verifies an exact 14-test synthetic inventory
+across domain, encrypted service and correction-chain suites, with no ignored
+tests. It includes the actual 1,200-native-operation replacement midpoint
+rollback, exact retry, reopen and fresh rebuild, and the separate typed
+20,001-operation no-plan witness. The latter is an envelope limit witness,
+not a claim that all proposed entries beyond the limit were semantically
+admissible or that any 20,000-entry candidate would fit storage limits.
+The `--inventory-only` switch checks names and records fixture hashes; it
+runs no tests and is not behavioral qualification. A successful inspection
+exits zero but its qualification report stays `Blocked`.
+
+See the executable synthetic inputs and limits in
+[S4](../../fixtures/journeys/s4/README.md) and
+[S5](../../fixtures/journeys/s5/README.md). This gate proves neither full
+release journeys nor public command support. The bounded transfer witness
+retains historical associations and permits exactly mapped, unchanged
+current counterparts. It does not implement general stable organization
+remapping or the predicate dependency index needed to invalidate current
+claims, occurrence matches and cost basis atomically. Unsupported dependency
+families remain fail-closed; this gate does not by itself complete CUR-016
+or unblock its hard successors.
+
 <a id="c09"></a>
 
 ## C09: Queries/reconciliation, owners CUR-017, CUR-018, CUR-020

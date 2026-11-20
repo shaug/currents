@@ -90,14 +90,22 @@ pub fn build(
             Err(error) => json!({"path":path,"unavailable":error.to_string()}),
         })
         .collect();
+    let cur_016_inventory_only = args == ["ticket", "CUR-016", "--inventory-only"];
+    let error = result.as_ref().err().map(String::as_str).or({
+        if cur_016_inventory_only {
+            Some("BLOCKED: CUR-016 inventory inspection did not execute behavioral tests")
+        } else {
+            None
+        }
+    });
     json!({
         "schema":"QualificationReportV1","schema_version":1,
         "gate":args.iter().take(2).cloned().collect::<Vec<_>>().join(" "),
         "inputs":{"command":args,"candidate_sha":head.trim(),"dirty":dirty,"files":inputs,"unix_seconds":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()},
         "platform":{"os":env::consts::OS,"arch":env::consts::ARCH,"target_override":env::var("CARGO_BUILD_TARGET").ok()},
         "versions":versions,"tests":tests,
-        "evidence":{"result":result.as_ref().ok(),"error":result.as_ref().err(),"commands":commands},
-        "status":if result.is_ok() {"Passed"} else {"Blocked"},
+        "evidence":{"result":result.as_ref().ok(),"error":error,"commands":commands},
+        "status":if error.is_none() {"Passed"} else {"Blocked"},
         "limitations":["Synthetic workspace only; no financial, signed-native or production qualification.","A pass applies only to the named gate and recorded host.","Empty tests means this command executed no test functions. Failed and unavailable prerequisites are Blocked under C16; evidence.error distinguishes them."]
     })
 }
@@ -160,6 +168,24 @@ mod tests {
             assert!(report["tests"].as_array().unwrap().is_empty());
             assert!(report["inputs"]["files"][0]["unavailable"].is_string());
         }
+    }
+    #[test]
+    fn cur_016_inventory_never_passes_behavioral_qualification() {
+        let args = vec!["ticket".into(), "CUR-016".into(), "--inventory-only".into()];
+        let report = build(
+            Path::new("/nonexistent-currents-fixture"),
+            &args,
+            "synthetic-sha",
+            false,
+            &Ok(json!({"mode":"inventory only; no tests executed"})),
+        );
+        assert_eq!(report["status"], "Blocked");
+        assert_eq!(
+            report["evidence"]["error"],
+            "BLOCKED: CUR-016 inventory inspection did not execute behavioral tests"
+        );
+        assert!(report["tests"].as_array().unwrap().is_empty());
+        assert!(report["evidence"]["result"]["mode"].is_string());
     }
     #[test]
     fn command_evidence_retains_test_names_and_output_digests() {

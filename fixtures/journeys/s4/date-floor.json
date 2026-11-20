@@ -1,0 +1,6 @@
+{
+  "declaration_at": "2026-11-01T12:00:00Z",
+  "prior_cutoff": "2026-11-01",
+  "anchor": {"date": "2024-10-30", "amount": 96},
+  "movement": {"effective": "2024-10-31", "booking": "2024-11-02", "amount": -192}
+}

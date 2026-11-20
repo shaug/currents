@@ -1289,10 +1289,17 @@ async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of
     use currents_storage::{CommitControl, PreparedCommit};
     use std::sync::Arc;
 
+    let journey: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/journeys/s4/date-floor.json"
+    ))
+    .unwrap();
+    let text = |pointer: &str| journey.pointer(pointer).unwrap().as_str().unwrap();
+    let amount = |pointer: &str| journey.pointer(pointer).unwrap().as_i64().unwrap();
+
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("historical-date-floor.db");
     let (mut f, _) = bootstrap_with_balance(&path, true).await;
-    let now: RecordedInstant = serde_json::from_str("\"2026-11-01T12:00:00Z\"").unwrap();
+    let now: RecordedInstant = serde_json::from_value(journey["declaration_at"].clone()).unwrap();
     f.clock
         .advance(now.0.unix_timestamp() - f.clock.now().unix_timestamp());
     declare_template(&mut f, &path, &fixture::monetary_state()).await;
@@ -1307,7 +1314,7 @@ async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of
         segment_id: prior_segment,
         component_id: component,
         amount: initial.amount,
-        cutoff: fixture::date("2026-11-01"),
+        cutoff: fixture::date(text("/prior_cutoff")),
         evidence: initial,
         included_activity: vec![],
     });
@@ -1315,10 +1322,22 @@ async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of
     f.service.close().await.unwrap();
 
     let store = open(&path).await;
-    let balance =
-        retain_segment_assertion(&store, 810, 96, "2024-10-30", ObservationKind::Balance).await;
-    let movement =
-        retain_segment_assertion(&store, 820, -192, "2024-10-31", ObservationKind::Movement).await;
+    let balance = retain_segment_assertion(
+        &store,
+        810,
+        amount("/anchor/amount").into(),
+        text("/anchor/date"),
+        ObservationKind::Balance,
+    )
+    .await;
+    let movement = retain_segment_assertion(
+        &store,
+        820,
+        amount("/movement/amount").into(),
+        text("/movement/effective"),
+        ObservationKind::Movement,
+    )
+    .await;
     store.close().await.unwrap();
     f.service = f.reopen().await;
     let old = refresh_financial(&mut f, &path, None).await;
@@ -1376,12 +1395,18 @@ async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of
         }
         draft
     };
-    let mut earlier = dated(balance.clone(), 900, 50, "2024-10-30", "2024-10-30");
+    let mut earlier = dated(
+        balance.clone(),
+        900,
+        50,
+        text("/anchor/date"),
+        text("/anchor/date"),
+    );
     earlier.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
         segment_id: fixture::id(907),
         component_id: component,
         amount: balance.amount,
-        cutoff: fixture::date("2024-10-30"),
+        cutoff: fixture::date(text("/anchor/date")),
         evidence: balance,
         included_activity: vec![],
     });
@@ -1400,7 +1425,13 @@ async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of
             residual_disposition: SourceValue::Absent,
         },
         opening: earlier,
-        backfill: vec![dated(movement, 920, 30, "2024-10-31", "2024-11-02")],
+        backfill: vec![dated(
+            movement,
+            920,
+            30,
+            text("/movement/effective"),
+            text("/movement/booking"),
+        )],
         reemissions: vec![],
     };
     let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&old, &proposal).unwrap() else {

@@ -248,7 +248,7 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
     let capture = FileParser::parse(
         BoundedEvidence::new(
             "refund.csv",
-            b"original_id,amount,unit,effective,description\nsynthetic-refund,96,USD,2026-11-07,separate refund\n".to_vec(),
+            include_bytes!("../../../fixtures/journeys/s5/refund.csv").to_vec(),
             ImportContextV1 {
                 receipt_id: fixture::id(serial + 2),
                 source: SourceIdentityV1 {
@@ -265,7 +265,8 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
                     facet: fixture::id(900),
                 }],
             },
-        ).unwrap(),
+        )
+        .unwrap(),
         ParserProfileV1 {
             schema_version: 1,
             format: ImportFormatV1::SyntheticCsv,
@@ -277,7 +278,8 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
                 kind: UnitKind::Currency,
             },
         },
-    ).unwrap();
+    )
+    .unwrap();
     let evidence = ImportEvidence::new(capture).unwrap();
     let import = evidence.request();
     refresh_financial(&mut f, &path, Some(evidence)).await;
