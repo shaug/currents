@@ -41,6 +41,11 @@ impl Writer {
     pub(crate) fn new(accounting: AtomicStore, pool: sqlx::SqlitePool) -> Self {
         Self { accounting, pool }
     }
+    /// Read-only retained history from this exact authority writer.
+    pub fn retained_history(&self) -> crate::HistoryReader {
+        crate::HistoryReader::new(self.pool.clone())
+    }
+
     /// C05 pre-write binding for a C08 plan re-admitted by the service.
     /// Freshly freeze trusted intent; a well-formed but different batch cannot
     /// substitute another native interpretation of the same accepted prefix.
@@ -50,6 +55,31 @@ impl Writer {
         supplied: &AccountingBatchV1,
     ) -> Result<(), EngineError> {
         if !matches!(&plan.accounting, AccountingIntent::Correction(_))
+            || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(())
+    }
+
+    /// C05 binding for the one-root standalone segment replay shape only.
+    pub fn verify_standalone_segment_freeze(
+        prior: &DomainState,
+        plan: &DecisionPlan,
+        supplied: &AccountingBatchV1,
+    ) -> Result<(), EngineError> {
+        let AccountingIntent::Corrections(corrections) = &plan.accounting else {
+            return Err(EngineError::invalid());
+        };
+        let [root] = corrections.as_slice() else {
+            return Err(EngineError::invalid());
+        };
+        let [opening, activity] = root.replacement.as_slice() else {
+            return Err(EngineError::invalid());
+        };
+        if !root.remapping.is_empty()
+            || opening.kind != RecognitionKind::Opening
+            || activity.kind != RecognitionKind::Activity
             || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
         {
             return Err(EngineError::invalid());

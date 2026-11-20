@@ -336,7 +336,7 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
     malformed.frozen_batch = wrong_frozen;
     let malformed_control = malformed.control.clone();
     assert!(matches!(
-        synthetic_commit_verified_correction(&writer, &old_basis, malformed).await,
+        synthetic_commit_verified_correction(writer, malformed).await,
         Err(CommitFailure::DefinitelyRolledBack(_))
     ));
     assert_eq!(malformed_control.completed_operations(), 0);
@@ -359,7 +359,7 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
     };
     let (outcome, completed) = tokio::time::timeout(std::time::Duration::from_secs(30), async {
         tokio::join!(
-            synthetic_commit_verified_correction(&writer, &old_basis, prepare(control.clone())),
+            synthetic_commit_verified_correction(writer, prepare(control.clone())),
             cancel_between_entries
         )
     })
@@ -389,23 +389,32 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
             .is_none()
     );
     let writer = source.writer();
-    let commit = synthetic_commit_verified_correction(
-        &writer,
-        &old_basis,
-        prepare(Arc::new(CommitControl::default())),
-    )
-    .await
-    .expect("C04 retry must atomically commit both native and typed authority");
-    let retry = synthetic_commit_verified_correction(
-        &writer,
-        &old_basis,
-        prepare(Arc::new(CommitControl::default())),
-    )
-    .await
-    .expect("identical retry must resolve the existing correction");
+    let commit =
+        synthetic_commit_verified_correction(writer, prepare(Arc::new(CommitControl::default())))
+            .await
+            .expect("C04 retry must atomically commit both native and typed authority");
+    let retry =
+        synthetic_commit_verified_correction(writer, prepare(Arc::new(CommitControl::default())))
+            .await
+            .expect("identical retry must resolve the existing correction");
     assert_eq!(retry.commit, commit.commit);
     assert_eq!(retry.domain_digest, commit.domain_digest);
     assert_eq!(retry.native_head, commit.native_head);
+    let persisted = writer.audited_prefix().await.unwrap();
+    let mut altered_retry = prepare(Arc::new(CommitControl::default()));
+    altered_retry
+        .result
+        .effects
+        .amounts
+        .push(fixture::amount(1));
+    let retry_control = altered_retry.control.clone();
+    assert!(matches!(
+        synthetic_commit_verified_correction(writer, altered_retry).await,
+        Err(CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(retry_control.completed_operations(), 0);
+    assert_eq!(writer.audited_prefix().await.unwrap(), persisted);
+
     assert_eq!(commit.commit, CommitSeq(old_basis.through.0 + 1));
     assert_ne!(
         commit.native_head,
@@ -536,4 +545,363 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
             .reversed
             .contains(&original_id)
     );
+}
+
+/// Retain a second read-only synthetic balance assertion using the same
+/// encrypted evidence shape as the established bootstrap fixture.
+async fn retain_segment_assertion(
+    store: &currents_storage::EncryptedStore,
+    serial: u32,
+    coefficient: i128,
+    date: &str,
+    kind: ObservationKind,
+) -> SourceFacetBindingV1 {
+    let mut scratch = DomainState::default();
+    let source = fixture::evidence(&mut scratch, serial, coefficient, None);
+    let day = fixture::date(date);
+    let mut observation = scratch.records.remove(&source.observation).unwrap();
+    let mut product = scratch.records.remove(&source.parse_product).unwrap();
+    let AuthoritativeRecordV1::ObservationVersion(o) = &mut observation else {
+        panic!()
+    };
+    let AuthoritativeRecordV1::AddressedParseProduct(p) = &mut product else {
+        panic!()
+    };
+    let text = format!("Synthetic segment assertion: {coefficient} USD on {date}");
+    let content = store.stage(text.as_bytes()).await.unwrap();
+    o.temporal = day.clone();
+    o.semantic_kind = kind;
+    o.original_ids = vec![format!("standalone-segment-evidence-{serial}")];
+    o.sanitized_representation = text.clone();
+    o.content_digest = content.digest();
+    p.product.facets[0].kind = kind;
+    p.product.facets[0].temporal = day;
+    let receipt = ImportReceiptV1 {
+        id: fixture::id(serial + 2),
+        source: o.source.clone(),
+        adapter_version: "cur-016-synthetic-balance/1".into(),
+        parser_version: "1".into(),
+        requested_coverage: vec![],
+        reported_coverage: vec![],
+        received_time: serde_json::from_str("\"2026-11-01T12:00:00Z\"").unwrap(),
+        result: ImportResult::Complete,
+        cursor: SourceValue::Absent,
+        truncated: false,
+        complete: true,
+        contents: vec![ContentReferenceV1 {
+            digest: content.digest(),
+            byte_count: CommitSeq(text.len() as u64),
+            media_type: "text/plain".into(),
+        }],
+    };
+    let writer = store.writer();
+    let prefix = writer.audited_prefix().await.unwrap();
+    writer
+        .append(currents_storage::HistoryAppend {
+            prior_head: prefix.through,
+            records: vec![
+                AuthoritativeRecordV1::ImportReceipt(receipt),
+                observation,
+                product,
+            ],
+            decisions: vec![],
+            staged: vec![content],
+            native: None,
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(50_001 + serial).0),
+                digest: Digest([55; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        writer.audited_prefix().await.unwrap().native_head,
+        prefix.native_head
+    );
+    source
+}
+
+#[tokio::test]
+async fn cur_016_standalone_segment_commit_reopens_and_rebuilds_native_authority() {
+    use currents_accounting::AccountingAdapter;
+    use currents_domain::segments::{SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1};
+    use currents_protocol::OperationV1;
+    use currents_service::{ReplayCoordinator, synthetic_commit_verified_segment};
+    use currents_storage::{CommitControl, PreparedCommit};
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("standalone-segment.db");
+    let (mut f, _) = bootstrap_with_balance(&path, true).await;
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    let initial = legacy_binding(250);
+    let prior_segment = fixture::id(707);
+    let component = fixture::id(11);
+    let mut old_draft = fixture::posted(initial.clone(), 700, 50);
+    let terms = old_draft.financial.as_mut().unwrap();
+    let old_opening = terms.recognition_id;
+    terms.opening = Some(OpeningBasisV1 {
+        segment_id: prior_segment,
+        component_id: component,
+        amount: initial.amount,
+        cutoff: fixture::date("2026-11-01"),
+        evidence: initial,
+        included_activity: vec![],
+    });
+    submit(&mut f, 50_002, OperationV1::AdoptActivity(old_draft)).await;
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let balance =
+        retain_segment_assertion(&store, 810, 96, "2026-10-30", ObservationKind::Balance).await;
+    let movement =
+        retain_segment_assertion(&store, 820, -192, "2026-10-31", ObservationKind::Movement).await;
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let old = refresh_financial(&mut f, &path, None).await;
+
+    let dated = |source, serial, counter, day| {
+        let mut draft = fixture::posted(source, serial, counter);
+        let date = fixture::date(day);
+        draft.legs[0].leg.effective = date.clone();
+        draft.legs[0].leg.posting = date.clone();
+        let terms = draft.financial.as_mut().unwrap();
+        terms.bookkeeping_date = date.clone();
+        for posting in &mut terms.postings {
+            posting.effective = date.clone();
+            posting.posting = date.clone();
+        }
+        draft
+    };
+    let new_segment = fixture::id(907);
+    let mut opening = dated(balance.clone(), 900, 50, "2026-10-30");
+    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: new_segment,
+        component_id: component,
+        amount: balance.amount,
+        cutoff: fixture::date("2026-10-30"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let new_opening = RecognitionId(fixture::id(903).0);
+    let backfill = RecognitionId(fixture::id(923).0);
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component,
+            prior_segment: Some(prior_segment),
+            opening: new_opening,
+            included_activity: vec![backfill],
+            replacement_closure: vec![old_opening],
+            approved_accounts: [10, 30, 50]
+                .into_iter()
+                .map(|n| AccountId(fixture::id(n).0))
+                .collect(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening,
+        backfill: vec![dated(movement, 920, 30, "2026-10-31")],
+        reemissions: vec![],
+    };
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&old, &proposal).unwrap() else {
+        panic!("96 - 192 must equal the old -96 boundary");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
+    assert_eq!(frozen.operations.len(), 3);
+    let effects = EffectsV1 {
+        records: plan
+            .records
+            .iter()
+            .map(|record| match record {
+                AuthoritativeRecordV1::FinancialEvent(e) => e.id,
+                AuthoritativeRecordV1::FinancialLeg(l) => RecordId(l.id.0),
+                AuthoritativeRecordV1::ActivityAdoption(a) => a.id,
+                AuthoritativeRecordV1::Recognition(r) => RecordId(r.id.0),
+                AuthoritativeRecordV1::AccountingSegment(s) => s.id,
+                _ => panic!("unexpected record for standalone segment"),
+            })
+            .collect(),
+        accounts: vec![],
+        amounts: vec![],
+        invalidations: plan.invalidations.clone(),
+    };
+    let make_prepared = || PreparedCommit {
+        evidence: vec![],
+        result: CommandResultV1 {
+            command_id: CommandId(fixture::id(50_003).0),
+            digest: Digest([56; 32]),
+            state: CommandState::Committed,
+            commit: None,
+            effects: effects.clone(),
+            health: vec![],
+        },
+        decision_plan: plan.as_ref().clone(),
+        frozen_batch: frozen.clone(),
+        prior_head: old.through,
+        decisions: vec![],
+        manifest_id: fixture::id(50_004),
+        control: Arc::new(CommitControl::default()),
+    };
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let writer = store.writer();
+    let before = writer.audited_prefix().await.unwrap();
+    // Forged local state stamps itself with the true authority tip. Both
+    // drafts still reconcile, but their amounts were never retained on disk.
+    let mut forged_prior = old.clone();
+    let mut forged_proposal = proposal.clone();
+    let adjust_retained_source =
+        |state: &mut DomainState, mut source: SourceFacetBindingV1, delta| {
+            let adjusted = source.amount.checked_add(&fixture::amount(delta)).unwrap();
+            let AuthoritativeRecordV1::AddressedParseProduct(product) =
+                state.records.get_mut(&source.parse_product).unwrap()
+            else {
+                panic!("fixture parse product missing");
+            };
+            product.product.facets[0].amount = SourceValue::Known(adjusted);
+            source.amount = adjusted;
+            source
+        };
+    let changed_opening = adjust_retained_source(
+        &mut forged_prior,
+        proposal.opening.legs[0].sources[0].clone(),
+        10,
+    );
+    let mut forged_opening = dated(changed_opening.clone(), 900, 50, "2026-10-30");
+    let mut forged_basis = proposal
+        .opening
+        .financial
+        .as_ref()
+        .unwrap()
+        .opening
+        .clone()
+        .unwrap();
+    forged_basis.amount = changed_opening.amount;
+    forged_basis.evidence = changed_opening;
+    forged_opening.financial.as_mut().unwrap().opening = Some(forged_basis);
+    forged_proposal.opening = forged_opening;
+    let changed_movement = adjust_retained_source(
+        &mut forged_prior,
+        proposal.backfill[0].legs[0].sources[0].clone(),
+        -10,
+    );
+    forged_proposal.backfill = vec![dated(changed_movement, 920, 30, "2026-10-31")];
+    assert_eq!(forged_prior.through, old.through);
+    assert_eq!(forged_prior.domain_digest, old.domain_digest);
+    assert_eq!(forged_prior.accounting.as_ref().unwrap().prefix, before);
+    let SegmentPreviewV1::Ready(forged_plan) =
+        SegmentEngine::replace(&forged_prior, &forged_proposal).unwrap()
+    else {
+        panic!("forged amounts deliberately still reconcile");
+    };
+    let mut forged = make_prepared();
+    forged.frozen_batch =
+        AccountingAdapter::freeze(&forged_plan.accounting, &forged_prior).unwrap();
+    forged.decision_plan = *forged_plan;
+    let forged_control = forged.control.clone();
+    let outcome = synthetic_commit_verified_segment(writer, &forged_proposal, forged).await;
+    if outcome.is_ok() {
+        let witness = open(&dir.path().join("forged-replay.db")).await;
+        assert!(
+            ReplayCoordinator::rebuild(store.history(), witness)
+                .await
+                .is_err()
+        );
+    }
+    assert!(
+        matches!(
+            outcome,
+            Err(currents_storage::CommitFailure::DefinitelyRolledBack(_))
+        ),
+        "a caller cannot authenticate edited retained evidence by copying the correct prefix stamp"
+    );
+    assert_eq!(forged_control.completed_operations(), 0);
+    assert_eq!(writer.audited_prefix().await.unwrap(), before);
+
+    let mut wrong_prefix = make_prepared();
+    wrong_prefix.frozen_batch.preconditions.domain_digest = Digest([57; 32]);
+    let wrong_prefix_control = wrong_prefix.control.clone();
+    assert!(matches!(
+        synthetic_commit_verified_segment(writer, &proposal, wrong_prefix).await,
+        Err(currents_storage::CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(wrong_prefix_control.completed_operations(), 0);
+    assert_eq!(writer.audited_prefix().await.unwrap(), before);
+
+    let mut wrong_intent = plan.accounting.clone();
+    let AccountingIntent::Corrections(corrections) = &mut wrong_intent else {
+        panic!();
+    };
+    let postings = &mut corrections[0].replacement[1].postings;
+    postings[0].amount.coefficient -= 1;
+    postings[1].amount.coefficient += 1;
+    let mut malformed = make_prepared();
+    malformed.frozen_batch = AccountingAdapter::freeze(&wrong_intent, &old)
+        .expect("balanced but wrong C05 payload is natively freezeable");
+    let malformed_control = malformed.control.clone();
+    assert!(matches!(
+        synthetic_commit_verified_segment(writer, &proposal, malformed).await,
+        Err(currents_storage::CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(malformed_control.completed_operations(), 0);
+    assert_eq!(writer.audited_prefix().await.unwrap(), before);
+    assert!(
+        writer
+            .command_result(CommandId(fixture::id(50_003).0), Digest([56; 32]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let receipt = synthetic_commit_verified_segment(writer, &proposal, make_prepared())
+        .await
+        .expect("trusted C08/C05 segment preflight must reach the real C04 commit");
+    assert_eq!(receipt.commit, CommitSeq(before.through.0 + 1));
+    assert_ne!(receipt.native_head, before.native_head);
+    let committed_prefix = writer.audited_prefix().await.unwrap();
+    assert!(matches!(
+        synthetic_commit_verified_segment(writer, &proposal, make_prepared()).await,
+        Err(currents_storage::CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(writer.audited_prefix().await.unwrap(), committed_prefix);
+
+    store.close().await.unwrap();
+
+    let store = open(&path).await;
+    let reopened = store.writer().audited_prefix().await.unwrap();
+    assert_eq!(reopened.through, receipt.commit);
+    assert_eq!(reopened.native_head, receipt.native_head);
+    let fresh = open(&dir.path().join("standalone-segment-rebuild.db")).await;
+    let report = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(report.through, receipt.commit);
+    assert_eq!(report.native_head, reopened.native_head);
+    store.close().await.unwrap();
+
+    f.service = f.reopen().await;
+    let current = refresh_financial(&mut f, &path, None).await;
+    for (id, record) in &old.records {
+        assert_eq!(current.records.get(id), Some(record));
+    }
+    let Some(AuthoritativeRecordV1::AccountingSegment(active)) = current.records.get(&new_segment)
+    else {
+        panic!("reopened projection lost the new segment");
+    };
+    assert_eq!(active.prior_segment, Some(prior_segment));
+    assert_eq!(active.opening, new_opening);
+    assert_eq!(active.included_activity, vec![backfill]);
+    let index = current.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&old_opening));
+    for id in [new_opening, backfill] {
+        assert!(index.recognitions.contains_key(&id));
+        assert!(!index.reversed.contains(&id));
+    }
 }
