@@ -1236,3 +1236,305 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
     }
     currents_domain::associations::IdentityEngine::audit(&current).unwrap();
 }
+
+/// Narrow acceptance-witness report from verified authoritative native rows.
+/// Not the general CUR-017 position/query surface.
+fn historical_balance_for_witness(
+    state: &DomainState,
+    basis: &ReadBasis,
+    account: AccountId,
+) -> SourceValue<Amount> {
+    assert_eq!(state.through, basis.through_commit);
+    assert_eq!(basis.effective_scope.basis, DateBasis::Effective);
+    let index = state.accounting.as_ref().unwrap();
+    assert_eq!(index.prefix.through, basis.through_commit);
+    let end = basis.effective_scope.end.unwrap().to_string();
+    let mut uses_anchor = false;
+    let mut balance = fixture::amount(0);
+    for (id, entries) in &index.recognitions {
+        if index.reversed.contains(id) {
+            continue;
+        }
+        let AuthoritativeRecordV1::Recognition(authority) = &state.records[&RecordId(id.0)] else {
+            panic!("frozen recognition is missing typed authority");
+        };
+        for entry in entries.iter().filter(|e| e.value_date <= end) {
+            for posting in entry
+                .postings
+                .iter()
+                .filter(|p| p.original.account_id == account)
+            {
+                if authority.kind == RecognitionKind::Opening {
+                    assert!(!uses_anchor, "this fixture has one active opening on A");
+                    uses_anchor = true;
+                }
+                balance = balance.checked_add(&posting.original.amount).unwrap();
+            }
+        }
+    }
+    if uses_anchor {
+        SourceValue::Known(balance.normalized().unwrap())
+    } else {
+        SourceValue::Unknown
+    }
+}
+
+#[tokio::test]
+async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of() {
+    use currents_accounting::AccountingAdapter;
+    use currents_domain::segments::{SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1};
+    use currents_domain::{ReplayEngine, recognition::RecognitionEngine};
+    use currents_protocol::{OperationV1, TrustedClock};
+    use currents_service::{ReplayCoordinator, synthetic_commit_verified_segment};
+    use currents_storage::{CommitControl, PreparedCommit};
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("historical-date-floor.db");
+    let (mut f, _) = bootstrap_with_balance(&path, true).await;
+    let now: RecordedInstant = serde_json::from_str("\"2026-11-01T12:00:00Z\"").unwrap();
+    f.clock
+        .advance(now.0.unix_timestamp() - f.clock.now().unix_timestamp());
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    let account = AccountId(fixture::id(10).0);
+    let component = fixture::id(11);
+    let prior_segment = fixture::id(707);
+    let initial = legacy_binding(250);
+    let mut opening_2026 = fixture::posted(initial.clone(), 700, 50);
+    let terms = opening_2026.financial.as_mut().unwrap();
+    let old_opening = terms.recognition_id;
+    terms.opening = Some(OpeningBasisV1 {
+        segment_id: prior_segment,
+        component_id: component,
+        amount: initial.amount,
+        cutoff: fixture::date("2026-11-01"),
+        evidence: initial,
+        included_activity: vec![],
+    });
+    submit(&mut f, 52_001, OperationV1::AdoptActivity(opening_2026)).await;
+    f.service.close().await.unwrap();
+
+    let store = open(&path).await;
+    let balance =
+        retain_segment_assertion(&store, 810, 96, "2024-10-30", ObservationKind::Balance).await;
+    let movement =
+        retain_segment_assertion(&store, 820, -192, "2024-10-31", ObservationKind::Movement).await;
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let old = refresh_financial(&mut f, &path, None).await;
+    let declared = old
+        .records
+        .values()
+        .find_map(|record| match record {
+            AuthoritativeRecordV1::AccountCatalogRevision(r)
+                if r.account_id == account && r.prior_revision.is_none() =>
+            {
+                Some(r.id)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        old.records.values().any(|record| matches!(record,
+            AuthoritativeRecordV1::Decision(d)
+                if d.adopted_result.contains(&declared) && d.recorded_time.0.year() == 2026
+        )),
+        "real account declaration decision must be recorded in 2026"
+    );
+    let TemporalValue::Date { civil: as_of, .. } = fixture::date("2024-10-31") else {
+        panic!()
+    };
+    let old_basis = ReadBasis {
+        dataset_id: DatasetId(support::id(1000).0),
+        through_commit: old.through,
+        effective_scope: DateScope {
+            start: None,
+            end: Some(as_of),
+            basis: DateBasis::Effective,
+        },
+        evaluation_instant: now.0,
+        query_semantics_version: 1,
+        selection_policy_version: 1,
+        unit_catalog_version: 1,
+    };
+    assert_eq!(
+        historical_balance_for_witness(&old, &old_basis, account),
+        SourceValue::Unknown
+    );
+
+    let dated = |source, serial, counter, effective, booking| {
+        let mut draft = fixture::posted(source, serial, counter);
+        let effective = fixture::date(effective);
+        let booking = fixture::date(booking);
+        draft.legs[0].leg.effective = effective.clone();
+        draft.legs[0].leg.posting = booking.clone();
+        let terms = draft.financial.as_mut().unwrap();
+        terms.bookkeeping_date = booking.clone();
+        for posting in &mut terms.postings {
+            posting.effective = effective.clone();
+            posting.posting = booking.clone();
+        }
+        draft
+    };
+    let mut earlier = dated(balance.clone(), 900, 50, "2024-10-30", "2024-10-30");
+    earlier.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: fixture::id(907),
+        component_id: component,
+        amount: balance.amount,
+        cutoff: fixture::date("2024-10-30"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let backfill = RecognitionId(fixture::id(923).0);
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component,
+            prior_segment: Some(prior_segment),
+            opening: RecognitionId(fixture::id(903).0),
+            included_activity: vec![backfill],
+            replacement_closure: vec![old_opening],
+            approved_accounts: [10, 30, 50]
+                .into_iter()
+                .map(|n| AccountId(fixture::id(n).0))
+                .collect(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening: earlier,
+        backfill: vec![dated(movement, 920, 30, "2024-10-31", "2024-11-02")],
+        reemissions: vec![],
+    };
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&old, &proposal).unwrap() else {
+        panic!("legitimate 2024 opening and movement must reconcile");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
+    assert_eq!(frozen.operations.len(), 3);
+    assert!(
+        frozen
+            .operations
+            .iter()
+            .all(|op| matches!(op, FrozenNativeOperationV1::Entry(_)))
+    );
+
+    assert!(
+        frozen
+            .operations
+            .iter()
+            .any(|op| matches!(op, FrozenNativeOperationV1::Entry(e)
+        if e.recognition_id == backfill && e.value_date == "2024-10-31"
+            && e.booking_date == "2024-11-02"))
+    );
+    let effects = EffectsV1 {
+        records: plan
+            .records
+            .iter()
+            .map(|r| match r {
+                AuthoritativeRecordV1::FinancialEvent(e) => e.id,
+                AuthoritativeRecordV1::FinancialLeg(l) => RecordId(l.id.0),
+                AuthoritativeRecordV1::ActivityAdoption(a) => a.id,
+                AuthoritativeRecordV1::Recognition(r) => RecordId(r.id.0),
+                AuthoritativeRecordV1::AccountingSegment(s) => s.id,
+                _ => panic!("unexpected historical plan record"),
+            })
+            .collect(),
+        accounts: vec![],
+        amounts: vec![],
+        invalidations: plan.invalidations.clone(),
+    };
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let writer = store.writer();
+    let committed = synthetic_commit_verified_segment(
+        writer,
+        &proposal,
+        PreparedCommit {
+            evidence: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(52_002).0),
+                digest: Digest([71; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects,
+                health: vec![],
+            },
+            decision_plan: *plan,
+            frozen_batch: frozen,
+            prior_head: old.through,
+            decisions: vec![],
+            manifest_id: fixture::id(52_003),
+            control: Arc::new(CommitControl::default()),
+        },
+    )
+    .await
+    .expect("native account floor allows older dates after a later domain declaration");
+
+    // Independently reconstruct the old encrypted prefix *after* the accepted
+    // backfill, not merely reread the pre-write in-memory state.
+    let source = store.history();
+    source
+        .verify_checkpoint(old.through, old.domain_digest)
+        .await
+        .unwrap();
+    let old_rebuild = open(&dir.path().join("prior-as-of.db")).await;
+    let genesis = old_rebuild.writer().audited_prefix().await.unwrap();
+    let mut historical = DomainState {
+        accounting: Some(AccountingIndexV1::empty(genesis.native_head)),
+        ..DomainState::default()
+    };
+    let mut stream = source
+        .stream_prefix(old_basis.through_commit)
+        .await
+        .unwrap();
+    while let Some(commit) = stream.next().await.unwrap() {
+        let mut next = historical.clone();
+        ReplayEngine::apply(&mut next, &commit).unwrap();
+        next.accounting = Some(
+            source
+                .rebuild_commit(&old_rebuild, &historical, &commit)
+                .await
+                .unwrap(),
+        );
+        RecognitionEngine::audit(&next).unwrap();
+        historical = next;
+    }
+    drop(stream);
+    assert_eq!(
+        old_rebuild.writer().audited_prefix().await.unwrap(),
+        old.accounting.as_ref().unwrap().prefix
+    );
+    assert_eq!(historical.records, old.records);
+    assert_eq!(
+        historical_balance_for_witness(&historical, &old_basis, account),
+        SourceValue::Unknown
+    );
+    old_rebuild.close().await.unwrap();
+    let current_rebuild = open(&dir.path().join("current-as-of.db")).await;
+    let report = ReplayCoordinator::rebuild(source, current_rebuild)
+        .await
+        .unwrap();
+    assert_eq!(report.native_head, committed.native_head);
+    store.close().await.unwrap();
+
+    f.service = f.reopen().await;
+    let current = refresh_financial(&mut f, &path, None).await;
+    let current_basis = ReadBasis {
+        through_commit: committed.commit,
+        ..old_basis.clone()
+    };
+    assert_eq!(current_basis.effective_scope, old_basis.effective_scope);
+    assert_eq!(
+        historical_balance_for_witness(&current, &current_basis, account),
+        SourceValue::Known(fixture::amount(-96))
+    );
+    let index = current.accounting.as_ref().unwrap();
+    let [entry] = index.recognitions[&backfill].as_slice() else {
+        panic!()
+    };
+    assert_eq!(entry.value_date, "2024-10-31");
+    assert_eq!(entry.booking_date, "2024-11-02");
+    assert!(!index.reversed.contains(&backfill));
+    for posting in &entry.postings {
+        assert_eq!(posting.original.effective, fixture::date("2024-10-31"));
+        assert_eq!(posting.original.posting, fixture::date("2024-11-02"));
+    }
+    assert_eq!(current.records.get(&declared), old.records.get(&declared));
+}
