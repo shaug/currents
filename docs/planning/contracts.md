@@ -178,14 +178,6 @@ Its candidate digest is not a C03 closure digest, approval token, or new
 operation. The synthetic helper refuses stale preview basis and a retained
 but non-adopted policy version rather than using a latest-policy default.
 
-One encrypted synthetic lifecycle test now checks both layers together.
-The fixture host requires separate approval evidence binding the exact
-typed candidate digest, legacy body digest, plan closure and challenge.
-The normal Service executes only that approved closure. A legacy-only
-token or a second valid candidate's digest cannot authorize it. The
-candidate digest is test-host evidence, not a field in the production
-protocol or the replayed owner decision.
-
 The local v1 codec includes dormant `CorrectRecognitionComplete` with
 `CompleteCorrectionRequestV1`: schema version 1, exact accounting basis,
 caller revision ID, active recognition, one replacement, reason and the
@@ -194,8 +186,17 @@ the normal canonical C03 command digest. The legacy tag and golden bytes
 remain unchanged; older codecs reject the unfamiliar tag. Only DTO
 shape is decoded: before any future route can be admitted, the outer
 expected head must agree with the candidate basis and both must agree
-with the authenticated C04/C05 prefix. The current Service planner does
+with the authenticated C04/C05 prefix. The default Service planner does
 not accept the new operation, and no client support is advertised.
+
+One encrypted synthetic lifecycle test injects a test-only planner. Both
+decoded complete requests are independently checked against the same
+Writer; the planner then checks the exact body, prefix, policy and plan
+before C05 freezing. Ordinary C03 approval binds the complete command
+digest and closure without a separate host sidecar. An approval for one
+valid revision cannot authorize another, and the exact approved body
+commits and replays the same immutable correction and governing policy.
+This test does not activate a shipped route.
 
 ### CUR-016 bounded qualification and remaining work
 

@@ -560,16 +560,36 @@ async fn cur_016_2_correction_preserves_note_and_invalidates_only_matching_predi
     );
 }
 
-// The legacy request cannot name the immutable revision. This fixture supplies
-// every ID explicitly for one synthetic command rather than inventing a
-// production rule for deriving them from the client request.
+// The synchronous fixture planner consumes only candidates independently
+// previewed against the encrypted Writer during the asynchronous setup.
 struct ExactSyntheticCorrectionPlanner {
     state: DomainState,
+    dataset: DatasetId,
     command: CommandId,
-    revision: RecordId,
+    candidates: Vec<(Digest, service_api::SyntheticCorrectionCandidatePreview)>,
     decision: RecordId,
     manifest: RecordId,
-    policy: PolicyReferenceV1,
+}
+
+fn candidate_from_body(
+    body: &currents_protocol::CommandBodyV1,
+) -> Result<service_api::SyntheticCorrectionCandidate, EngineError> {
+    let OperationV1::CorrectRecognitionComplete(request) = &body.operation else {
+        return Err(EngineError::version());
+    };
+    if body.expected_head != request.expected_basis.through {
+        return Err(EngineError::invalid());
+    }
+    Ok(service_api::SyntheticCorrectionCandidate {
+        dataset: body.dataset_id,
+        command: body.command_id,
+        expected_basis: request.expected_basis.clone(),
+        revision: request.revision_id,
+        active_recognition: request.active_recognition,
+        replacement: request.replacement.clone(),
+        reason: request.reason.clone(),
+        governing_policy: request.governing_policy.clone(),
+    })
 }
 
 impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
@@ -578,24 +598,37 @@ impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
         body: &currents_protocol::CommandBodyV1,
         prefix: &AccountingPrefixV1,
     ) -> Result<service_api::CommandPlan, EngineError> {
-        let OperationV1::CorrectRecognition(request) = &body.operation else {
-            return Err(EngineError::version());
-        };
-        if body.command_id != self.command
-            || !self
-                .state
-                .dataset_policies
-                .contains_key(&(self.policy.id, self.policy.version))
+        let candidate = candidate_from_body(body)?;
+        if candidate.dataset != self.dataset
+            || candidate.command != self.command
+            || &candidate.expected_basis != prefix
         {
             return Err(EngineError::invalid());
         }
+        let digest = currents_protocol::command_digest(body)?;
+        let (_, authenticated) = self
+            .candidates
+            .iter()
+            .find(|(known, _)| *known == digest)
+            .ok_or_else(EngineError::invalid)?;
         let request = CorrectionRequestV1 {
-            active_recognition: request.active_recognition,
-            replacement: request.replacement.clone(),
-            remapping: request.remapping.clone(),
-            reason: request.reason.clone(),
+            active_recognition: candidate.active_recognition,
+            replacement: vec![candidate.replacement],
+            remapping: vec![],
+            reason: candidate.reason,
         };
-        let plan = CorrectionEngine::correct_durable(&self.state, self.revision, &request)?;
+        let plan = CorrectionEngine::correct_durable_at_policy(
+            &self.state,
+            candidate.revision,
+            &request,
+            &candidate.governing_policy,
+        )?;
+        if &authenticated.basis != prefix
+            || authenticated.plan != plan
+            || authenticated.policy != candidate.governing_policy
+        {
+            return Err(EngineError::invalid());
+        }
         let frozen = AccountingAdapter::freeze(&plan.accounting, &self.state)?;
         service_api::verify_correction_preflight(&self.state, prefix, &plan, &frozen)?;
         let mut accounts = std::collections::BTreeSet::new();
@@ -611,7 +644,7 @@ impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
         }
         let accounts: Vec<_> = accounts.into_iter().collect();
         let effects = EffectsV1 {
-            records: vec![self.revision, RecordId(request.replacement[0].id.0)],
+            records: vec![candidate.revision, RecordId(request.replacement[0].id.0)],
             accounts: accounts.clone(),
             amounts,
             invalidations: plan.invalidations.clone(),
@@ -629,7 +662,7 @@ impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
             },
             decision_id: self.decision,
             manifest_id: self.manifest,
-            policy: self.policy.clone(),
+            policy: candidate.governing_policy,
         })
     }
 
@@ -639,110 +672,6 @@ impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
         _: &AccountingPrefixV1,
     ) -> Result<currents_protocol::QueryResponseV1, EngineError> {
         Err(EngineError::version())
-    }
-}
-
-// Synthetic host-only sidecar. Neither the legacy body nor the Service DTO
-// is extended; the fixture refuses the real Service challenge unless both
-// canonical commitments and the separately approved typed digest match.
-struct CandidateApprovalHost {
-    inner: Arc<support::Host>,
-    body_digest: Digest,
-    closure_digest: Digest,
-    candidate_digest: Digest,
-    challenge: std::sync::Mutex<Option<service_api::ApprovalChallenge>>,
-    approval: std::sync::Mutex<Option<(uuid::Uuid, Digest, Digest, Digest)>>,
-}
-
-impl CandidateApprovalHost {
-    fn proof(
-        &self,
-        fixture: &support::Fixture,
-        approved_candidate: Digest,
-    ) -> currents_protocol::AuthorizationEnvelope {
-        let challenge = self.challenge.lock().unwrap().clone().unwrap();
-        *self.approval.lock().unwrap() = Some((
-            challenge.nonce,
-            challenge.preview.digest,
-            challenge.preview.closure_digest,
-            approved_candidate,
-        ));
-        fixture.auth(Some(challenge.nonce.to_string()))
-    }
-}
-
-impl service_api::HostGrants for CandidateApprovalHost {
-    fn revoke_sessions(&self, d: DatasetId, i: InstanceId) {
-        self.inner.revoke_sessions(d, i);
-    }
-    fn authenticate(
-        &self,
-        ctx: &currents_protocol::RequestContext,
-        d: DatasetId,
-        capability: Option<&str>,
-        now: OffsetDateTime,
-    ) -> Result<(), EngineError> {
-        self.inner.authenticate(ctx, d, capability, now)
-    }
-    fn authorize_command(
-        &self,
-        ctx: &currents_protocol::RequestContext,
-        b: &currents_protocol::CommandBodyV1,
-    ) -> Result<(), EngineError> {
-        self.inner.authorize_command(ctx, b)
-    }
-    fn authorize_effects(
-        &self,
-        ctx: &currents_protocol::RequestContext,
-        p: &currents_protocol::PreviewV1,
-    ) -> Result<(), EngineError> {
-        self.inner.authorize_effects(ctx, p)
-    }
-    fn publish_challenge(&self, c: &service_api::ApprovalChallenge) -> Result<(), EngineError> {
-        if c.preview.digest != self.body_digest || c.preview.closure_digest != self.closure_digest {
-            return Err(EngineError::invalid());
-        }
-        self.inner.publish_challenge(c)?;
-        *self.challenge.lock().unwrap() = Some(c.clone());
-        Ok(())
-    }
-    fn verify_approval(
-        &self,
-        ctx: &currents_protocol::RequestContext,
-        envelope: &currents_protocol::AuthorizationEnvelope,
-        c: &service_api::ApprovalChallenge,
-        now: OffsetDateTime,
-    ) -> Result<(), EngineError> {
-        self.inner.verify_approval(ctx, envelope, c, now)?;
-        if *self.approval.lock().unwrap()
-            != Some((
-                c.nonce,
-                self.body_digest,
-                self.closure_digest,
-                self.candidate_digest,
-            ))
-        {
-            return Err(EngineError {
-                class: ErrorClass::Unauthorized,
-                affected_scope: vec![],
-                next_action: SafeNextAction::Authenticate,
-            });
-        }
-        Ok(())
-    }
-    fn authorize_result(
-        &self,
-        ctx: &currents_protocol::RequestContext,
-        access: service_api::ResultAccess<'_>,
-    ) -> Result<(), EngineError> {
-        self.inner.authorize_result(ctx, access)
-    }
-    fn authorize_query(
-        &self,
-        ctx: &currents_protocol::RequestContext,
-        q: &currents_protocol::QueryV1,
-    ) -> Result<(), EngineError> {
-        self.inner.authorize_query(ctx, q)
     }
 }
 
@@ -764,87 +693,86 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
     let replacement = correction.replacement[0].id;
     let mut body = f.body(58_002);
     body.expected_head = before.through;
-    body.operation = OperationV1::CorrectRecognition(currents_types::CorrectionRequestV1 {
-        active_recognition: correction.active_recognition,
-        replacement: correction.replacement.clone(),
-        remapping: correction.remapping,
-        reason: correction.reason,
-    });
-    f.service.close().await.unwrap();
-    let candidate = service_api::SyntheticCorrectionCandidate {
-        dataset: body.dataset_id,
-        command: body.command_id,
-        expected_basis: before.accounting.as_ref().unwrap().prefix.clone(),
-        revision: fixture::id(58_010),
-        active_recognition: original,
-        replacement: match &body.operation {
-            OperationV1::CorrectRecognition(request) => request.replacement[0].clone(),
-            _ => panic!("legacy carrier"),
-        },
-        reason: match &body.operation {
-            OperationV1::CorrectRecognition(request) => request.reason.clone(),
-            _ => panic!("legacy carrier"),
-        },
-        governing_policy: governing_policy.clone(),
+    body.operation =
+        OperationV1::CorrectRecognitionComplete(currents_protocol::CompleteCorrectionRequestV1 {
+            schema_version: currents_protocol::ProtocolVersion,
+            expected_basis: before.accounting.as_ref().unwrap().prefix.clone(),
+            revision_id: fixture::id(58_010),
+            active_recognition: original,
+            replacement: correction.replacement[0].clone(),
+            reason: correction.reason,
+            governing_policy,
+        });
+    let decode_body = |body: &currents_protocol::CommandBodyV1| {
+        currents_protocol::decode::<currents_protocol::CommandBodyV1>(
+            &currents_protocol::canonical_bytes(body).unwrap(),
+        )
+        .unwrap()
     };
+    let body = decode_body(&body);
+    let mut alternate = body.clone();
+    let OperationV1::CorrectRecognitionComplete(request) = &mut alternate.operation else {
+        panic!("complete correction")
+    };
+    request.revision_id = fixture::id(58_013);
+    let alternate = decode_body(&alternate);
+    let digest = currents_protocol::command_digest(&body).unwrap();
+    let alternate_digest = currents_protocol::command_digest(&alternate).unwrap();
+    assert_ne!(digest, alternate_digest);
+
+    f.service.close().await.unwrap();
     let store = open(&path).await;
-    let typed = service_api::synthetic_preview_correction_candidate(store.writer(), &candidate)
-        .await
-        .unwrap();
-    let mut alternate = candidate.clone();
-    alternate.revision = fixture::id(58_013);
-    let substituted =
-        service_api::synthetic_preview_correction_candidate(store.writer(), &alternate)
-            .await
-            .unwrap();
-    assert_ne!(substituted.candidate_digest, typed.candidate_digest);
-    store.close().await.unwrap();
-    use service_api::CommandPlanner as _;
-    use sha2::{Digest as _, Sha256};
+    let typed = service_api::synthetic_preview_correction_candidate(
+        store.writer(),
+        &candidate_from_body(&body).unwrap(),
+    )
+    .await
+    .unwrap();
+    let alternate_typed = service_api::synthetic_preview_correction_candidate(
+        store.writer(),
+        &candidate_from_body(&alternate).unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_ne!(typed.plan.records, alternate_typed.plan.records);
     let planner = Arc::new(ExactSyntheticCorrectionPlanner {
         state: before.clone(),
+        dataset: body.dataset_id,
         command: body.command_id,
-        revision: candidate.revision,
+        candidates: vec![(digest, typed.clone()), (alternate_digest, alternate_typed)],
         decision: fixture::id(58_011),
         manifest: fixture::id(58_012),
-        policy: typed.policy.clone(),
     });
-    let plan = planner.prepare(&body, &typed.basis).unwrap();
-    assert_eq!(plan.decision_plan, typed.plan);
-    assert_eq!(plan.policy, typed.policy);
-    let closure = currents_protocol::canonical_bytes_with_limits(
-        &plan,
-        currents_protocol::CanonicalLimits {
-            max_bytes: 65 * 1_048_576,
-            max_collection_items: 65_536,
-        },
-    )
-    .unwrap();
-    let host = Arc::new(CandidateApprovalHost {
-        inner: f.host.clone(),
-        body_digest: currents_protocol::command_digest(&body).unwrap(),
-        closure_digest: Digest(Sha256::digest(closure).into()),
-        candidate_digest: typed.candidate_digest,
-        challenge: std::sync::Mutex::new(None),
-        approval: std::sync::Mutex::new(None),
-    });
+    use service_api::CommandPlanner as _;
+    let mut mismatch = body.clone();
+    let OperationV1::CorrectRecognitionComplete(request) = &mut mismatch.operation else {
+        panic!("complete correction")
+    };
+    request.expected_basis.through = CommitSeq(before.through.0 - 1);
+    assert!(planner.prepare(&mismatch, &typed.basis).is_err());
+    let mut foreign = body.clone();
+    foreign.dataset_id = DatasetId(fixture::id(58_014).0);
+    assert!(planner.prepare(&foreign, &typed.basis).is_err());
     f.host.reconnect();
     f.service = service_api::Service::new(
-        open(&path).await,
+        store,
         body.dataset_id,
         f.ctx().instance_id,
         service_api::ServiceProfile::Synthetic,
-        host.clone(),
+        f.host.clone(),
         planner,
         f.clock.clone(),
     )
     .await
     .unwrap();
     support::recover_service(&f.service).await;
+    let alternate_preview = f.service.preview(f.ctx(), alternate.clone()).unwrap();
+    assert_eq!(alternate_preview.digest, alternate_digest);
     let preview = f
         .service
         .preview(f.ctx(), body.clone())
-        .expect("verified synthetic service preview must disclose a correction before approval");
+        .expect("decoded complete correction must traverse the synthetic service");
+    assert_eq!(preview.digest, digest);
     assert_eq!(preview.approval_scope.operation, DecisionKind::Correction);
     assert_eq!(
         preview.effects.accounts,
@@ -864,35 +792,17 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
             .class,
         ErrorClass::Unauthorized
     );
-    let token_without_typed_binding = f.approve(&body);
+    let original_approval = f.approve(&body);
     assert_eq!(
         f.service
-            .submit(f.ctx(), body.clone(), token_without_typed_binding)
+            .submit(f.ctx(), alternate, original_approval)
             .await
             .unwrap_err()
             .class,
         ErrorClass::Unauthorized,
-        "legacy nonce and closure are not evidence that the exact typed candidate digest was approved"
+        "ordinary C03 approval for one revision cannot authorize another valid decoded revision"
     );
     assert_eq!(f.prefix().await, typed.basis);
-    let substituted_proof = host.proof(&f, substituted.candidate_digest);
-    assert_eq!(
-        f.service
-            .submit(f.ctx(), body.clone(), substituted_proof)
-            .await
-            .unwrap_err()
-            .class,
-        ErrorClass::Unauthorized,
-        "valid digest for a different immutable revision cannot authorize the original"
-    );
-    assert_eq!(f.prefix().await, typed.basis);
-    let mut edited = body.clone();
-    let OperationV1::CorrectRecognition(request) = &mut edited.operation else {
-        panic!()
-    };
-    request.reason.push_str(" altered after approval");
-    let token = host.proof(&f, typed.candidate_digest);
-    assert!(f.service.submit(f.ctx(), edited, token).await.is_err());
     let mut stale = body.clone();
     stale.expected_head = CommitSeq(before.through.0 - 1);
     assert_eq!(
@@ -903,11 +813,7 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
 
     let result = f
         .service
-        .submit(
-            f.ctx(),
-            body.clone(),
-            host.proof(&f, typed.candidate_digest),
-        )
+        .submit(f.ctx(), body.clone(), f.approve(&body))
         .await
         .expect("host-approved synthetic correction");
     assert_eq!(result.state, CommandState::Committed);
