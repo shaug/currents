@@ -41,7 +41,7 @@ class WorkflowContract(unittest.TestCase):
             step = {"name": f"Run {gate} gate", "run": f"cargo xtask check {gate}"}
             if gate in ("core", "msrv"):
                 step["env"] = {"CURRENTS_CI_CORE_PHASES": "1"}
-                self.assertEqual(self.jobs[gate]["timeout-minutes"], 65)
+                self.assertEqual(self.jobs[gate]["timeout-minutes"], 85 if gate == "msrv" else 65)
             else:
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)
             self.assertEqual(self.jobs[gate]["steps"][-1], step)
