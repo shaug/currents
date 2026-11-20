@@ -224,7 +224,9 @@ challenge, approval, and submit for complete segment commands. At queued
 execution, the feature-gated service checks the approved canonical
 command digest, rederives the exact Ready C08 plan from the same Writer,
 and verifies the accounts, result records, invalidations, policy, and
-C05 freeze before entering C04. A separately valid authority cannot
+C05 freeze. Before the C04 handoff it samples the trusted clock again
+and rechecks capability, scope, and the original challenge; expiry or
+revocation after the early execution check does not authorize a write. A separately valid authority cannot
 replace the authority the command names. A different valid body needs
 its own approval; the accepted one retains one C03 owner decision and
 all eleven native operations in the single atomic commit. The default

@@ -35,11 +35,14 @@ impl TrustedClock for Clock {
         OffsetDateTime::from_unix_timestamp(self.0.load(Ordering::SeqCst)).unwrap()
     }
 }
+type ApprovalCheckHook = (usize, Box<dyn FnOnce() + Send>);
+
 pub struct Host {
     pub revoked: AtomicBool,
     pub unrelated: AtomicBool,
     session: AtomicU64,
     challenges: Mutex<BTreeMap<CommandId, ApprovalChallenge>>,
+    approval_check_hook: Mutex<Option<ApprovalCheckHook>>,
 }
 impl Host {
     fn new() -> Self {
@@ -48,7 +51,26 @@ impl Host {
             unrelated: AtomicBool::new(false),
             session: AtomicU64::new(1),
             challenges: Mutex::new(BTreeMap::new()),
+            approval_check_hook: Mutex::new(None),
         }
+    }
+    #[allow(
+        dead_code,
+        reason = "Only the CUR-016 integration test arms this shared fixture hook."
+    )]
+    pub fn after_successful_approval_checks(
+        &self,
+        checks: usize,
+        hook: impl FnOnce() + Send + 'static,
+    ) {
+        assert!(checks > 0);
+        assert!(
+            self.approval_check_hook
+                .lock()
+                .unwrap()
+                .replace((checks, Box::new(hook)))
+                .is_none()
+        );
     }
     pub fn corrupt_approval_effects(&self, command: CommandId) {
         self.challenges
@@ -138,6 +160,21 @@ impl HostGrants for Host {
             || s.preview != c.preview
         {
             return Err(unauthorized());
+        }
+        drop(saved);
+        let hook = {
+            let mut armed = self.approval_check_hook.lock().unwrap();
+            match armed.as_mut() {
+                Some((remaining, _)) if *remaining == 1 => armed.take().map(|(_, hook)| hook),
+                Some((remaining, _)) => {
+                    *remaining -= 1;
+                    None
+                }
+                None => None,
+            }
+        };
+        if let Some(hook) = hook {
+            hook();
         }
         Ok(())
     }

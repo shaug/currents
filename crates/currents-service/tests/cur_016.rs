@@ -1621,7 +1621,15 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
     let mut mismatched = body.clone();
     mismatched.command_id = CommandId(fixture::id(51_129).0);
     let mismatched_digest = currents_protocol::command_digest(&mismatched).unwrap();
+    let mut expiring = body.clone();
+    expiring.command_id = CommandId(fixture::id(51_133).0);
+    let expiring_digest = currents_protocol::command_digest(&expiring).unwrap();
+    let mut revoked = body.clone();
+    revoked.command_id = CommandId(fixture::id(51_134).0);
+    let revoked_digest = currents_protocol::command_digest(&revoked).unwrap();
     let planner = Arc::new(ExactSyntheticSegmentPlanner(vec![
+        (expiring_digest, proposed(&plan, fixture::id(51_135))),
+        (revoked_digest, proposed(&plan, fixture::id(51_136))),
         (digest, proposed(&plan, fixture::id(51_130))),
         (
             alternate_digest,
@@ -1660,6 +1668,48 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         ErrorClass::InvalidReference
     );
     assert_eq!(control.completed_operations(), 0);
+    assert_eq!(f.prefix().await, prior);
+    // Trigger changes after both admission and preflight-entry checks,
+    // without sleeps or externally timed signals.
+    let setup_denial = |attempt: &currents_protocol::CommandBodyV1| {
+        let control = Arc::new(CommitControl::default());
+        f.service
+            .set_test_control(attempt.command_id, control.clone())
+            .unwrap();
+        (f.approve(attempt), control)
+    };
+    let (approval, control) = setup_denial(&expiring);
+    let clock = f.clock.clone();
+    f.host
+        .after_successful_approval_checks(2, move || clock.advance(300));
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), expiring.clone(), approval)
+            .await
+            .expect_err("approval expired before C04")
+            .class,
+        ErrorClass::Unauthorized
+    );
+    assert_eq!(control.completed_operations(), 0);
+    assert_eq!(f.prefix().await, prior);
+    let (approval, control) = setup_denial(&revoked);
+    let host = f.host.clone();
+    f.host.after_successful_approval_checks(2, move || {
+        host.revoked
+            .store(true, std::sync::atomic::Ordering::SeqCst)
+    });
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), revoked.clone(), approval)
+            .await
+            .expect_err("capability revoked before C04")
+            .class,
+        ErrorClass::Unauthorized
+    );
+    assert_eq!(control.completed_operations(), 0);
+    f.host
+        .revoked
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(f.prefix().await, prior);
     let alternate_preview = f.service.preview(f.ctx(), alternate.clone()).unwrap();
     assert_eq!(alternate_preview.digest, alternate_digest);
@@ -1712,6 +1762,16 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
             .unwrap()
             .is_none()
     );
+    for (denied, denied_digest) in [(expiring, expiring_digest), (revoked, revoked_digest)] {
+        assert!(
+            store
+                .writer()
+                .command_result(denied.command_id, denied_digest)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
     let history = store.history();
     history
         .verify_checkpoint(old.through, old.domain_digest)
