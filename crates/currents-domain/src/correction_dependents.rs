@@ -13,6 +13,7 @@ pub struct OrganizationDispositionItem {
     pub eligible_candidate_legs: Vec<LegId>,
 }
 
+#[derive(Default)]
 pub(crate) struct DependentChanges {
     pub invalidations: BTreeSet<RecordId>,
     pub organization_questions: Vec<OrganizationDispositionItem>,

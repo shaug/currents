@@ -167,7 +167,9 @@ tests. It includes the actual 1,200-native-operation replacement midpoint
 rollback, exact retry, reopen and fresh rebuild, and the separate typed
 20,001-operation no-plan witness. The latter is an envelope limit witness,
 not a claim that all proposed entries beyond the limit were semantically
-admissible or that any 20,000-entry candidate would fit storage limits.
+admissible or that any 20,000-entry candidate would fit storage limits. An
+owned monetary residual is surfaced only after validating the exact owner
+identity and retained counterpart family, and exposes no writable plan.
 The `--inventory-only` switch checks names and records fixture hashes; it
 runs no tests and is not behavioral qualification. A successful inspection
 exits zero but its qualification report stays `Blocked`.

@@ -458,6 +458,25 @@ fn cur_016_1_cross_account_backfill() {
         panic!("one cent cannot yield a native plan or silent plug");
     };
     assert_eq!(amount, cent);
+    let prefix = state.accounting.as_ref().unwrap().prefix.clone();
+    let records = state.records.clone();
+    let authority_id = id(941);
+    let SegmentPreviewV1::UnresolvedResidual(owned_amount) =
+        SegmentEngine::replace_owned(&state, &residual, authority_id)
+            .expect("a fully validated owned request with a penny discrepancy returns no plan")
+    else {
+        panic!("the owned boundary must report the exact discrepancy");
+    };
+    assert_eq!(owned_amount, cent);
+    let colliding_owner = residual.opening.event.id;
+    assert_ne!(colliding_owner, authority_id);
+    assert!(
+        SegmentEngine::replace_owned(&state, &residual, colliding_owner).is_err(),
+        "an invalid authority may not hide behind a balanced-input residual classification"
+    );
+
+    assert_eq!(state.accounting.as_ref().unwrap().prefix, prefix);
+    assert_eq!(state.records, records);
     let mut stale = state.clone();
     stale.accounting.as_mut().unwrap().prefix.domain_digest = Digest::default();
     assert!(SegmentEngine::replace(&stale, &request).is_err());

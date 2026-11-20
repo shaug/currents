@@ -334,7 +334,7 @@ pub enum SegmentPreviewV1 {
 enum SegmentPreparation {
     Validated {
         plan: Box<DecisionPlan>,
-        question: Option<NeedsOrganizationDisposition>,
+        blocked: Option<SegmentPreviewV1>,
     },
     Stopped(SegmentPreviewV1),
 }
@@ -344,12 +344,12 @@ impl SegmentPreparation {
         match self {
             Self::Stopped(outcome) => outcome,
             Self::Validated {
-                question: Some(question),
+                blocked: Some(outcome),
                 ..
-            } => SegmentPreviewV1::NeedsOrganizationDisposition(question),
+            } => outcome,
             Self::Validated {
                 plan,
-                question: None,
+                blocked: None,
             } => SegmentPreviewV1::Ready(plan),
         }
     }
@@ -861,12 +861,12 @@ impl SegmentEngine {
         let difference = replacement_balance
             .checked_add(&old_balance.checked_neg()?)?
             .normalized()?;
-        if difference.coefficient != 0 {
-            return Ok(SegmentPreparation::Stopped(
-                SegmentPreviewV1::UnresolvedResidual(difference),
-            ));
-        }
-        let dependents = {
+        let has_residual = difference.coefficient != 0;
+        let dependents = if has_residual {
+            // Monetary reconciliation precedes dependent dispositions, but an
+            // owned monetary result still waits for exact family validation.
+            crate::correction_dependents::DependentChanges::default()
+        } else {
             // Real changes are the removed anchor and its new anchor/backfill.
             // Exact retained counterpart re-emissions change IDs, not predicate inputs.
             let changed = std::iter::once(old_anchor)
@@ -920,13 +920,18 @@ impl SegmentEngine {
                 .collect(),
             accounting: AccountingIntent::Corrections(corrections),
         });
-        let question =
-            (!dependents.organization_questions.is_empty()).then(|| NeedsOrganizationDisposition {
-                prior_basis: index.prefix.clone(),
-                prior_segment: prior.id,
-                affected: dependents.organization_questions,
-            });
-        Ok(SegmentPreparation::Validated { plan, question })
+        let blocked = if has_residual {
+            Some(SegmentPreviewV1::UnresolvedResidual(difference))
+        } else {
+            (!dependents.organization_questions.is_empty()).then(|| {
+                SegmentPreviewV1::NeedsOrganizationDisposition(NeedsOrganizationDisposition {
+                    prior_basis: index.prefix.clone(),
+                    prior_segment: prior.id,
+                    affected: dependents.organization_questions,
+                })
+            })
+        };
+        Ok(SegmentPreparation::Validated { plan, blocked })
     }
 }
 
@@ -945,8 +950,8 @@ impl SegmentEngine {
         {
             return Err(invalid());
         }
-        let (mut plan, question) = match Self::prepare(state, preview)? {
-            SegmentPreparation::Validated { plan, question } => (plan, question),
+        let (mut plan, blocked) = match Self::prepare(state, preview)? {
+            SegmentPreparation::Validated { plan, blocked } => (plan, blocked),
             SegmentPreparation::Stopped(outcome) => return Ok(outcome),
         };
         let Some(AuthoritativeRecordV1::AccountingSegment(segment)) = plan.records.last() else {
@@ -1035,6 +1040,6 @@ impl SegmentEngine {
                     counterparts,
                 },
             ));
-        Ok(SegmentPreparation::Validated { plan, question }.finish())
+        Ok(SegmentPreparation::Validated { plan, blocked }.finish())
     }
 }
