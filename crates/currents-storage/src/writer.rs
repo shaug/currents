@@ -74,7 +74,7 @@ impl Writer {
         let [root, counterparts @ ..] = corrections.as_slice() else {
             return Err(EngineError::invalid());
         };
-        let [opening, activity] = root.replacement.as_slice() else {
+        let [opening, activities @ ..] = root.replacement.as_slice() else {
             return Err(EngineError::invalid());
         };
         let owner = plan.records.last().and_then(|record| match record {
@@ -101,7 +101,10 @@ impl Writer {
         }
         if !root.remapping.is_empty()
             || opening.kind != RecognitionKind::Opening
-            || activity.kind != RecognitionKind::Activity
+            || activities.is_empty()
+            || activities
+                .iter()
+                .any(|r| r.kind != RecognitionKind::Activity)
             || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
         {
             return Err(EngineError::invalid());

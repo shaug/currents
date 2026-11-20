@@ -17,7 +17,7 @@ pub async fn synthetic_commit_verified_segment(
         .map_err(DefinitelyRolledBack)?;
     if prepared.frozen_batch.preconditions != trusted_tip
         || prepared.prior_head != trusted_tip.through
-        || proposal.request.included_activity.len() != 1
+        || proposal.request.included_activity.is_empty()
         || !prepared.evidence.is_empty()
         || !prepared.decisions.is_empty()
         || prepared.result.state != CommandState::Committed

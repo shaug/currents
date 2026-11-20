@@ -4,7 +4,7 @@ use currents_types::{EngineError, ErrorClass, SafeNextAction};
 use doubleentry::store::Op;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
-pub const MAX_CLOSURE_OPERATIONS: usize = 20_000;
+pub use currents_types::MAX_CLOSURE_OPERATIONS;
 pub const MAX_CLOSURE_BYTES: usize = 64 * 1_048_576;
 
 /// Constructed only by the trusted accounting adapter from validated frozen input.

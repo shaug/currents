@@ -212,9 +212,9 @@ fn validate_segment_successor(
     let (root, None) = segment_family(prior, successor.component)?.ok_or_else(invalid)? else {
         return Err(invalid());
     };
-    let [backfill] = successor.included_activity.as_slice() else {
-        return Err(EngineError::version());
-    };
+    if successor.included_activity.is_empty() {
+        return Err(invalid());
+    }
     if successor.prior_segment != Some(root.id) {
         return Err(EngineError::version());
     }
@@ -279,7 +279,12 @@ fn validate_segment_successor(
             residual_disposition: successor.residual_disposition.clone(),
         },
         opening: restore_exact(successor.opening)?,
-        backfill: vec![restore_exact(*backfill)?],
+        backfill: successor
+            .included_activity
+            .iter()
+            .copied()
+            .map(restore_exact)
+            .collect::<Result<Vec<_>, _>>()?,
         reemissions,
     };
     let admitted = if let Some(owner) = owner {

@@ -1538,3 +1538,282 @@ async fn cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of
     }
     assert_eq!(current.records.get(&declared), old.records.get(&declared));
 }
+
+#[tokio::test]
+async fn cur_016_4_real_1200_operation_replacement_is_atomic_at_c04_midpoint() {
+    use currents_accounting::{
+        AccountingAdapter,
+        test_fixtures::{ClosureFault, fault_control},
+    };
+    use currents_acquisition::{capture::BoundedEvidence, parse::FileParser};
+    use currents_domain::segments::{SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1};
+    use currents_protocol::OperationV1;
+    use currents_service::{ImportEvidence, ReplayCoordinator, synthetic_commit_verified_segment};
+    use currents_storage::{CommitControl, CommitFailure, PreparedCommit};
+    use std::{sync::Arc, time::Duration};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("planner-1200.db");
+    let (mut f, _) = bootstrap_with_balance(&path, true).await;
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    let initial = legacy_binding(250);
+    let prior_segment = fixture::id(707);
+    let component = fixture::id(11);
+    let mut old_opening = fixture::posted(initial.clone(), 700, 50);
+    let terms = old_opening.financial.as_mut().unwrap();
+    let root = terms.recognition_id;
+    terms.opening = Some(OpeningBasisV1 {
+        segment_id: prior_segment,
+        component_id: component,
+        amount: initial.amount,
+        cutoff: fixture::date("2026-11-01"),
+        evidence: initial,
+        included_activity: vec![],
+    });
+    submit(&mut f, 55_001, OperationV1::AdoptActivity(old_opening)).await;
+    refresh_financial(&mut f, &path, None).await;
+
+    let mut csv = String::from("original_id,amount,unit,effective,description\n");
+    let mut row_ids = Vec::new();
+    let mut movements = Vec::new();
+    for i in 0..1198 {
+        use std::fmt::Write;
+        writeln!(
+            &mut csv,
+            "bulk-{i},-1,USD,2026-10-31,synthetic-closed-movement"
+        )
+        .unwrap();
+        let serial = 100_000 + 4 * i;
+        let row = ImportRowIdsV1 {
+            observation: fixture::id(serial),
+            product: fixture::id(serial + 1),
+            facet: fixture::id(serial + 2),
+        };
+        movements.push(SourceFacetBindingV1 {
+            observation: row.observation,
+            parse_product: row.product,
+            facet: row.facet,
+            amount: fixture::amount(-1),
+        });
+        row_ids.push(row);
+    }
+    let capture = FileParser::parse(
+        BoundedEvidence::new(
+            "bulk.csv",
+            csv.into_bytes(),
+            ImportContextV1 {
+                receipt_id: fixture::id(55_010),
+                source: SourceIdentityV1 {
+                    source: "synthetic".into(),
+                    connection_id: fixture::id(102),
+                    device_id: None,
+                },
+                captured_at: serde_json::from_str("\"2026-11-01T12:00:00Z\"").unwrap(),
+                received_at: serde_json::from_str("\"2026-11-02T12:00:00Z\"").unwrap(),
+                coverage: vec![],
+                row_ids,
+            },
+        )
+        .unwrap(),
+        ParserProfileV1 {
+            schema_version: 1,
+            format: ImportFormatV1::SyntheticCsv,
+            parser_version: "1".into(),
+            unit: UnitDefinition {
+                id: UnitId(fixture::id(1).0),
+                exponent: 2,
+                native_code: "USD".into(),
+                kind: UnitKind::Currency,
+            },
+        },
+    )
+    .unwrap();
+    let evidence = ImportEvidence::new(capture).unwrap();
+    let import = evidence.request();
+    refresh_financial(&mut f, &path, Some(evidence)).await;
+    submit(&mut f, 55_002, OperationV1::PublishImport(import)).await;
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let balance =
+        retain_segment_assertion(&store, 810, 1102, "2026-10-30", ObservationKind::Balance).await;
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    // Only one independent initial replay is needed. We do not submit
+    // another protocol command, so don't reinstall the fixture planner.
+    support::recover_service(&f.service).await;
+    let old = f.service.verified_projection().unwrap();
+
+    let dated = |source, serial, counter, day| {
+        let mut draft = fixture::posted(source, serial, counter);
+        let date = fixture::date(day);
+        draft.legs[0].leg.effective = date.clone();
+        draft.legs[0].leg.posting = date.clone();
+        let terms = draft.financial.as_mut().unwrap();
+        terms.bookkeeping_date = date.clone();
+        for posting in &mut terms.postings {
+            posting.effective = date.clone();
+            posting.posting = date.clone();
+        }
+        draft
+    };
+    let mut opening = dated(balance.clone(), 900, 50, "2026-10-30");
+    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: fixture::id(907),
+        component_id: component,
+        amount: balance.amount,
+        cutoff: fixture::date("2026-10-30"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let backfill: Vec<_> = movements
+        .into_iter()
+        .enumerate()
+        .map(|(i, movement)| {
+            dated(
+                movement,
+                1_000_000 + 10 * u32::try_from(i).unwrap(),
+                30,
+                "2026-10-31",
+            )
+        })
+        .collect();
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component,
+            prior_segment: Some(prior_segment),
+            opening: opening.financial.as_ref().unwrap().recognition_id,
+            included_activity: backfill
+                .iter()
+                .map(|r| r.financial.as_ref().unwrap().recognition_id)
+                .collect(),
+            replacement_closure: vec![root],
+            approved_accounts: [10, 30, 50]
+                .into_iter()
+                .map(|n| AccountId(fixture::id(n).0))
+                .collect(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening,
+        backfill,
+        reemissions: vec![],
+    };
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&old, &proposal).unwrap() else {
+        panic!("1102 minus 1198 must reconcile to the real retained -96 anchor");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
+    assert_eq!(frozen.operations.len(), 1200);
+    eprintln!("authenticated retained prefix planned and froze 1200 operations");
+    let effects = EffectsV1 {
+        records: plan
+            .records
+            .iter()
+            .map(|r| match r {
+                AuthoritativeRecordV1::FinancialEvent(e) => e.id,
+                AuthoritativeRecordV1::FinancialLeg(l) => RecordId(l.id.0),
+                AuthoritativeRecordV1::ActivityAdoption(a) => a.id,
+                AuthoritativeRecordV1::Recognition(r) => RecordId(r.id.0),
+                AuthoritativeRecordV1::AccountingSegment(s) => s.id,
+                _ => panic!("unexpected typed bulk segment record"),
+            })
+            .collect(),
+        accounts: vec![],
+        amounts: vec![],
+        invalidations: plan.invalidations.clone(),
+    };
+    let command = CommandId(fixture::id(55_003).0);
+    let digest = Digest([79; 32]);
+    let prepare = |control| PreparedCommit {
+        evidence: vec![],
+        result: CommandResultV1 {
+            command_id: command,
+            digest,
+            state: CommandState::Committed,
+            commit: None,
+            effects: effects.clone(),
+            health: vec![],
+        },
+        decision_plan: plan.as_ref().clone(),
+        frozen_batch: frozen.clone(),
+        prior_head: old.through,
+        decisions: vec![],
+        manifest_id: fixture::id(55_004),
+        control,
+    };
+
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let writer = store.writer();
+    let before = writer.audited_prefix().await.unwrap();
+    let control = Arc::new(fault_control(ClosureFault::PauseAfter600));
+    let observe = async {
+        while control.completed_operations() < 600 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(control.completed_operations(), 600);
+        let still_old = store.history().audit_report().await.unwrap();
+        assert_eq!(still_old.through, before.through);
+        assert_eq!(still_old.native_head, before.native_head);
+        assert!(control.request_cancel());
+        eprintln!("at 600 applied operations, independent reader still saw the old head");
+    };
+    let attempt = synthetic_commit_verified_segment(writer, &proposal, prepare(control.clone()));
+    let result = tokio::time::timeout(Duration::from_secs(240), async {
+        tokio::pin!(attempt);
+        tokio::select! {
+            result = &mut attempt => result,
+            () = observe => attempt.await,
+        }
+    })
+    .await
+    .expect("planner-generated C04 midpoint must be reached");
+    assert!(
+        matches!(
+            result,
+            Err(CommitFailure::DefinitelyRolledBack(EngineError {
+                class: ErrorClass::Canceled,
+                ..
+            }))
+        ),
+        "the real writer must cancel after the first 600 operations, got {:?}",
+        result.as_ref().err()
+    );
+    assert_eq!(control.completed_operations(), 600);
+    assert_eq!(writer.audited_prefix().await.unwrap(), before);
+    assert!(
+        writer
+            .command_result(command, digest)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    store.close().await.unwrap();
+
+    let store = open(&path).await;
+    assert_eq!(store.writer().audited_prefix().await.unwrap(), before);
+    let committed = synthetic_commit_verified_segment(
+        store.writer(),
+        &proposal,
+        prepare(Arc::new(CommitControl::default())),
+    )
+    .await
+    .expect("complete 1200-op replacement must commit once after rolled-back attempt");
+    assert_eq!(committed.commit, CommitSeq(before.through.0 + 1));
+    let history = store.history();
+    let last = store
+        .writer()
+        .command_result(command, digest)
+        .await
+        .unwrap()
+        .unwrap();
+    let Some(AuthoritativeRecordV1::FrozenAccountingManifest(manifest)) = last.records.last()
+    else {
+        panic!("committed manifest missing");
+    };
+    assert_eq!(
+        manifest.result_expectations.native_operation_count,
+        CommitSeq(1200)
+    );
+    let fresh = open(&dir.path().join("bulk-fresh-rebuild.db")).await;
+    let rebuilt = ReplayCoordinator::rebuild(history, fresh).await.unwrap();
+    assert_eq!(rebuilt.native_head, committed.native_head);
+}

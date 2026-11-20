@@ -121,7 +121,7 @@ impl AccountingAdapter {
         state: &DomainState,
         operations: &mut Vec<FrozenNativeOperationV1>,
     ) -> Result<(), EngineError> {
-        if recognitions.is_empty() || recognitions.len() > 20_000 {
+        if recognitions.is_empty() || recognitions.len() > MAX_CLOSURE_OPERATIONS {
             return Err(EngineError::invalid());
         }
         let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
@@ -167,7 +167,7 @@ impl AccountingAdapter {
         state: &DomainState,
         operations: &mut Vec<FrozenNativeOperationV1>,
     ) -> Result<(), EngineError> {
-        if corrections.is_empty() || corrections.len() > 20_000 {
+        if corrections.is_empty() || corrections.len() > MAX_CLOSURE_OPERATIONS {
             return Err(EngineError::invalid());
         }
         let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
@@ -235,7 +235,7 @@ impl AccountingAdapter {
             for r in &c.replacement {
                 operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
             }
-            if operations.len() > 20_000 {
+            if operations.len() > MAX_CLOSURE_OPERATIONS {
                 return Err(EngineError::invalid());
             }
         }
@@ -321,7 +321,7 @@ impl AccountingAdapter {
         {
             return Err(EngineError::version());
         }
-        if batch.operations.len() > 20_000
+        if batch.operations.len() > MAX_CLOSURE_OPERATIONS
             || batch
                 .operations
                 .iter()
@@ -801,23 +801,33 @@ fn verify_segment_correspondence(
     index: &AccountingIndexV1,
 ) -> Result<(), EngineError> {
     let invalid = EngineError::invalid;
-    let ([old_opening, remainder @ ..], [backfill]) = (
-        successor.replacement_closure.as_slice(),
-        successor.included_activity.as_slice(),
-    ) else {
+    let [old_opening, remainder @ ..] = successor.replacement_closure.as_slice() else {
         return Err(invalid());
     };
     let Some(
         [
             FrozenNativeOperationV1::Entry(reversal),
             FrozenNativeOperationV1::Entry(opening),
-            FrozenNativeOperationV1::Entry(activity),
-            operations @ ..,
+            after_opening @ ..,
         ],
     ) = batch.map(|b| b.operations.as_slice())
     else {
         return Err(invalid());
     };
+    let (backfills, operations) = after_opening
+        .split_at_checked(successor.included_activity.len())
+        .ok_or_else(invalid)?;
+    if backfills.is_empty() {
+        return Err(invalid());
+    }
+    for (operation, expected) in backfills.iter().zip(&successor.included_activity) {
+        let FrozenNativeOperationV1::Entry(entry) = operation else {
+            return Err(invalid());
+        };
+        if entry.reverses.is_some() || entry.recognition_id != *expected {
+            return Err(invalid());
+        }
+    }
     let exact_reverse = |entry: &FrozenEntryV1, id: RecognitionId| {
         index.reversed.contains(&id)
             && entry.recognition_id == id
@@ -828,8 +838,6 @@ fn verify_segment_correspondence(
         || !exact_reverse(reversal, *old_opening)
         || opening.reverses.is_some()
         || opening.recognition_id != successor.opening
-        || activity.reverses.is_some()
-        || activity.recognition_id != *backfill
     {
         return Err(invalid());
     }

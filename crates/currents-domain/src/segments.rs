@@ -192,9 +192,16 @@ pub(crate) fn segment_family(
         && (s.prior_segment != Some(root.id)
             || s.opening == root.opening
             || s.replacement_closure.first() != Some(&root.opening)
-            || s.included_activity.len() != 1
-            || s.included_activity[0] == root.opening
-            || s.included_activity[0] == s.opening
+            || s.included_activity.is_empty()
+            || s.included_activity
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != s.included_activity.len()
+            || s.included_activity
+                .iter()
+                .any(|id| *id == root.opening || *id == s.opening)
             || !matches!(s.residual_disposition, SourceValue::Absent))
     {
         return Err(EngineError::invalid());
@@ -311,6 +318,7 @@ pub struct SegmentPreviewRequestV1 {
 pub enum SegmentPreviewV1 {
     Ready(Box<DecisionPlan>),
     UnresolvedResidual(Amount),
+    ClosureTooLarge { operations: usize, maximum: usize },
 }
 
 pub struct SegmentEngine;
@@ -474,8 +482,8 @@ fn original_recognition<'a>(
 }
 
 impl SegmentEngine {
-    /// Bounded one-off preview of an earlier opening with one intervening
-    /// evidence-backed movement. No segment owner is admitted or dispatched.
+    /// Bounded one-off preview of an earlier opening with ordered intervening
+    /// evidence-backed movements. No segment owner is admitted or dispatched.
     pub fn replace(
         state: &DomainState,
         preview: &SegmentPreviewRequestV1,
@@ -493,9 +501,10 @@ impl SegmentEngine {
         {
             return Err(invalid());
         }
-        let [backfill] = preview.backfill.as_slice() else {
-            return Err(EngineError::version());
-        };
+        if preview.backfill.is_empty() || preview.backfill.len() != request.included_activity.len()
+        {
+            return Err(invalid());
+        }
         let prior_id = request.prior_segment.ok_or_else(incomplete)?;
         let Some(AuthoritativeRecordV1::AccountingSegment(prior)) = state.records.get(&prior_id)
         else {
@@ -651,41 +660,105 @@ impl SegmentEngine {
             return Err(invalid());
         }
 
-        let mut opening_plan = crate::recognition::RecognitionEngine::segment_draft(
-            state,
-            &preview.opening,
-            prior.component,
-            old_cutoff,
-            new_cutoff,
-        )?;
-        let backfill_plan = crate::recognition::RecognitionEngine::segment_draft(
-            state,
-            backfill,
-            prior.component,
-            old_cutoff,
-            new_cutoff,
-        )?;
-        let (AccountingIntent::Recognition(opening), AccountingIntent::Recognition(movement)) =
-            (opening_plan.accounting, backfill_plan.accounting)
-        else {
-            return Err(invalid());
-        };
-        if opening.id != request.opening
-            || request.included_activity != [movement.id]
-            || opening.kind != RecognitionKind::Opening
-            || movement.kind != RecognitionKind::Activity
-        {
-            return Err(invalid());
-        }
         let approved: BTreeSet<_> = request.approved_accounts.iter().copied().collect();
         if approved.len() != request.approved_accounts.len()
             || !approved.contains(&component.account_id)
-            || [old_anchor, &opening, &movement]
-                .into_iter()
-                .flat_map(|r| &r.postings)
+            || old_anchor
+                .postings
+                .iter()
                 .any(|p| !approved.contains(&p.account_id))
         {
             return Err(invalid());
+        }
+        // Count only matched typed proposals and the exact retained closure,
+        // before cloning/admitting draft authority or materializing native work.
+        let mut proposed_ids = BTreeSet::from([request.opening]);
+        let mut proposed_sources = BTreeSet::new();
+        for (draft, expected) in preview.backfill.iter().zip(&request.included_activity) {
+            let Some(terms) = draft.financial.as_ref() else {
+                return Err(invalid());
+            };
+            let [leg] = draft.legs.as_slice() else {
+                return Err(invalid());
+            };
+            let [source] = leg.sources.as_slice() else {
+                return Err(invalid());
+            };
+            if terms.recognition_id != *expected
+                || !proposed_ids.insert(*expected)
+                || expected.0.is_nil()
+                || terms.opening.is_some()
+                || draft.status != ActivityStatusV1::Posted
+                || draft.prior_pending.is_some()
+                || leg.leg.account_id != component.account_id
+                || state.records.contains_key(&RecordId(expected.0))
+                || !proposed_sources.insert((source.observation, source.facet))
+                || !matches!(
+                    state.records.get(&source.observation),
+                    Some(AuthoritativeRecordV1::ObservationVersion(_))
+                )
+                || !matches!(
+                    state.records.get(&source.parse_product),
+                    Some(AuthoritativeRecordV1::AddressedParseProduct(_))
+                )
+            {
+                return Err(invalid());
+            }
+        }
+        let Some(opening_terms) = preview.opening.financial.as_ref() else {
+            return Err(invalid());
+        };
+        if opening_terms.recognition_id != request.opening
+            || request.opening.0.is_nil()
+            || state.records.contains_key(&RecordId(request.opening.0))
+            || preview.opening.status != ActivityStatusV1::Posted
+            || preview.opening.prior_pending.is_some()
+            || opening_basis(state, &preview.opening)? != Some(new_cutoff)
+        {
+            return Err(invalid());
+        }
+        let operations = closure
+            .len()
+            .checked_add(preview.reemissions.len())
+            .and_then(|n| n.checked_add(1))
+            .and_then(|n| n.checked_add(preview.backfill.len()))
+            .ok_or_else(invalid)?;
+        if operations > MAX_CLOSURE_OPERATIONS {
+            return Ok(SegmentPreviewV1::ClosureTooLarge {
+                operations,
+                maximum: MAX_CLOSURE_OPERATIONS,
+            });
+        }
+
+        let drafts = std::iter::once(&preview.opening).chain(&preview.backfill);
+        let mut seen_facts = BTreeSet::new();
+        let mut records = Vec::new();
+        let mut replacements = Vec::with_capacity(proposed_ids.len());
+        for draft in drafts.clone() {
+            for source in draft.legs.iter().flat_map(|leg| &leg.sources) {
+                if !seen_facts.insert(fact(state, source)?) {
+                    return Err(invalid());
+                }
+            }
+            let plan = crate::recognition::RecognitionEngine::segment_draft(
+                state,
+                draft,
+                prior.component,
+                old_cutoff,
+                new_cutoff,
+            )?;
+            let AccountingIntent::Recognition(recognition) = plan.accounting else {
+                return Err(invalid());
+            };
+            if recognition
+                .postings
+                .iter()
+                .any(|p| !approved.contains(&p.account_id))
+            {
+                return Err(invalid());
+            }
+            records.extend(plan.records);
+            replacements.push(recognition);
         }
         let sum = |r: &RecognitionV1| {
             r.postings
@@ -716,14 +789,14 @@ impl SegmentEngine {
             }
         };
         fresh(proposed_opening.segment_id)?;
-        for draft in [&preview.opening, backfill] {
+        for draft in drafts {
             fresh(draft.adoption_id)?;
             fresh(draft.event.id)?;
             for leg in &draft.legs {
                 fresh(RecordId(leg.leg.id.0))?;
             }
         }
-        for r in [&opening, &movement] {
+        for r in &replacements {
             fresh(RecordId(r.id.0))?;
             fresh(r.lineage)?;
             for p in &r.postings {
@@ -740,21 +813,23 @@ impl SegmentEngine {
                 fresh(*id)?;
             }
         }
-        let difference = sum(&opening)?
-            .checked_add(&sum(&movement)?)?
+        let replacement_balance = replacements
+            .iter()
+            .try_fold(Amount::new(0, 0, component.unit_id)?, |total, r| {
+                total.checked_add(&sum(r)?)
+            })?;
+        let difference = replacement_balance
             .checked_add(&old_balance.checked_neg()?)?
             .normalized()?;
         if difference.coefficient != 0 {
             return Ok(SegmentPreviewV1::UnresolvedResidual(difference));
         }
-
         let mut corrections = vec![CorrectionV1 {
             active_recognition: prior.opening,
-            replacement: vec![opening, movement],
+            replacement: replacements,
             remapping: vec![],
             reason: "Replace segment opening at an earlier reconciled boundary".into(),
         }];
-        opening_plan.records.extend(backfill_plan.records);
         for reemit in &preview.reemissions {
             let original = original_recognition(state, index, reemit.original)?;
             let mut replacement = original.clone();
@@ -768,26 +843,22 @@ impl SegmentEngine {
                 remapping: vec![],
                 reason: "Preserve whole retained consequence across segment replacement".into(),
             });
-            opening_plan
-                .records
-                .push(AuthoritativeRecordV1::Recognition(replacement));
+            records.push(AuthoritativeRecordV1::Recognition(replacement));
         }
-        opening_plan
-            .records
-            .push(AuthoritativeRecordV1::AccountingSegment(
-                AccountingSegmentV1 {
-                    id: proposed_opening.segment_id,
-                    component: prior.component,
-                    prior_segment: Some(prior.id),
-                    opening: request.opening,
-                    included_activity: request.included_activity.clone(),
-                    replacement_closure: request.replacement_closure.clone(),
-                    approved_accounts: request.approved_accounts.clone(),
-                    residual_disposition: SourceValue::Absent,
-                },
-            ));
+        records.push(AuthoritativeRecordV1::AccountingSegment(
+            AccountingSegmentV1 {
+                id: proposed_opening.segment_id,
+                component: prior.component,
+                prior_segment: Some(prior.id),
+                opening: request.opening,
+                included_activity: request.included_activity.clone(),
+                replacement_closure: request.replacement_closure.clone(),
+                approved_accounts: request.approved_accounts.clone(),
+                residual_disposition: SourceValue::Absent,
+            },
+        ));
         Ok(SegmentPreviewV1::Ready(Box::new(DecisionPlan {
-            records: opening_plan.records,
+            records,
             invalidations: std::iter::once(prior.id)
                 .chain(closure.into_iter().map(|id| RecordId(id.0)))
                 .collect(),

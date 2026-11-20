@@ -193,6 +193,26 @@ fn retain_proposal_evidence(
     day: &str,
     kind: ObservationKind,
 ) -> SourceFacetBindingV1 {
+    let (source, records) = proposal_evidence_records(n, amount, day, kind);
+    retain_frozen_plan(
+        state,
+        DecisionPlan {
+            records,
+            invalidations: vec![],
+            accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "Retain preview source assertions, not financial drafts".into(),
+            }),
+        },
+    );
+    source
+}
+
+fn proposal_evidence_records(
+    n: u32,
+    amount: Amount,
+    day: &str,
+    kind: ObservationKind,
+) -> (SourceFacetBindingV1, Vec<AuthoritativeRecordV1>) {
     let mut scratch = DomainState::default();
     let mut source = fixture::evidence(&mut scratch, n, 1, None);
     source.amount = amount;
@@ -210,17 +230,7 @@ fn retain_proposal_evidence(
     record.product.facets[0].kind = kind;
     record.product.facets[0].amount = SourceValue::Known(amount);
     record.product.facets[0].temporal = fixture::date(day);
-    retain_frozen_plan(
-        state,
-        DecisionPlan {
-            records: vec![observation, product],
-            invalidations: vec![],
-            accounting: AccountingIntent::NoEffect(NoEffectV1 {
-                reason: "Retain preview source assertions, not financial drafts".into(),
-            }),
-        },
-    );
-    source
+    (source, vec![observation, product])
 }
 
 fn dated_draft(
@@ -974,4 +984,166 @@ fn cur_016_1_cross_account_backfill_replays_the_entire_transfer_family() {
     r.postings[0].amount.coefficient -= 1;
     r.postings[1].amount.coefficient += 1;
     assert!(IdentityEngine::audit(&changed_current).is_err());
+}
+
+fn bulk_replacement_fixture(
+    movements: u32,
+) -> (
+    DomainState,
+    AccountingSegmentV1,
+    currents_domain::segments::SegmentPreviewRequestV1,
+) {
+    use currents_domain::segments::SegmentPreviewRequestV1;
+
+    let mut state = fixture::monetary_state();
+    let prior = retain_original_opening(&mut state, false);
+    // The old opening is 3300. Earlier balance equals it plus one for
+    // every independently retained intervening -1 movement.
+    let (balance, mut evidence) = proposal_evidence_records(
+        800,
+        fixture::amount(3300 + i128::from(movements)),
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    let mut backfill = Vec::new();
+    for i in 0..movements {
+        let (movement, captured) = proposal_evidence_records(
+            100_000 + 4 * i,
+            fixture::amount(-1),
+            "2026-10-31",
+            ObservationKind::Movement,
+        );
+        evidence.extend(captured);
+        backfill.push(dated_draft(movement, 1_000_000 + 10 * i, 30, "2026-10-31"));
+        // Authority retains the source evidence in real logical commit-sized
+        // groups before the oversized or ordinary draft is ever constructed.
+        if (i + 1) % 2048 == 0 {
+            retain_frozen_plan(
+                &mut state,
+                DecisionPlan {
+                    records: std::mem::take(&mut evidence),
+                    invalidations: vec![],
+                    accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                        reason: "Retain bounded source assertion group".into(),
+                    }),
+                },
+            );
+        }
+    }
+    retain_frozen_plan(
+        &mut state,
+        DecisionPlan {
+            records: evidence,
+            invalidations: vec![],
+            accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "Retain distinct source assertions before authorizing any finance".into(),
+            }),
+        },
+    );
+    let mut earlier = dated_draft(balance.clone(), 900, 50, "2026-10-30");
+    earlier.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: id(907),
+        component_id: prior.component,
+        amount: balance.amount,
+        cutoff: fixture::date("2026-10-30"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component: prior.component,
+            prior_segment: Some(prior.id),
+            opening: earlier.financial.as_ref().unwrap().recognition_id,
+            included_activity: backfill
+                .iter()
+                .map(|d| d.financial.as_ref().unwrap().recognition_id)
+                .collect(),
+            replacement_closure: vec![prior.opening],
+            approved_accounts: [10, 30, 50]
+                .into_iter()
+                .map(|n| AccountId(id(n).0))
+                .collect(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening: earlier,
+        backfill,
+        reemissions: vec![],
+    };
+    (state, prior, proposal)
+}
+
+#[test]
+fn cur_016_4_actual_planner_emits_a_closed_1200_operation_replacement() {
+    use currents_domain::segments::{SegmentEngine, SegmentPreviewV1};
+
+    let (mut state, prior, proposal) = bulk_replacement_fixture(1198);
+    let original_prefix = state.accounting.as_ref().unwrap().prefix.clone();
+    let original_records = state.records.clone();
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&state, &proposal)
+        .expect("actual segment owner must plan 1198 independent retained movements together")
+    else {
+        panic!("4498 minus 1198 equals the retained 3300 cutoff");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    assert_eq!(frozen.operations.len(), 1200);
+    assert_eq!(
+        frozen.result_expectations.native_operation_count,
+        CommitSeq(1200)
+    );
+    assert_eq!(
+        AccountingAdapter::prepare_closure(&frozen)
+            .unwrap()
+            .operation_count()
+            .unwrap(),
+        1200
+    );
+    assert_eq!(state.records, original_records);
+    assert_eq!(state.accounting.as_ref().unwrap().prefix, original_prefix);
+    let ordered = proposal.request.included_activity.clone();
+    let mut invalid = plan.as_ref().clone();
+    let Some(AuthoritativeRecordV1::AccountingSegment(segment)) = invalid.records.last_mut() else {
+        panic!("planned closed segment missing");
+    };
+    segment.included_activity.swap(0, 1);
+    assert!(replay_with_frozen_batch(&mut state, invalid, &frozen).is_err());
+    assert_eq!(state.records, original_records);
+    let accepted = replay_with_frozen_batch(&mut state, *plan, &frozen).unwrap();
+    assert_eq!(accepted.seq, CommitSeq(original_prefix.through.0 + 1));
+    let Some(AuthoritativeRecordV1::AccountingSegment(segment)) = state.records.get(&id(907))
+    else {
+        panic!("replayed complete segment missing");
+    };
+    assert_eq!(segment.included_activity, ordered);
+    assert!(
+        state
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&prior.opening)
+    );
+    RecognitionEngine::audit(&state).unwrap();
+}
+
+#[test]
+fn cur_016_4_actual_planner_rejects_20001_native_operations_without_a_plan() {
+    use currents_domain::segments::{SegmentEngine, SegmentPreviewV1};
+
+    let (state, _, mut proposal) = bulk_replacement_fixture(19_999);
+    let before = state.accounting.as_ref().unwrap().prefix.clone();
+    let count = state.records.len();
+    let witness = proposal.backfill.last().unwrap().legs[0].sources[0].parse_product;
+    assert!(state.records.contains_key(&witness));
+    assert!(matches!(
+        SegmentEngine::replace(&state, &proposal).unwrap(),
+        SegmentPreviewV1::ClosureTooLarge {
+            operations: 20_001,
+            maximum: 20_000
+        }
+    ));
+    proposal.request.included_activity.swap(0, 1);
+    assert!(SegmentEngine::replace(&state, &proposal).is_err());
+    assert_eq!(state.accounting.as_ref().unwrap().prefix, before);
+    assert_eq!(state.records.len(), count);
+    assert!(state.records.contains_key(&witness));
 }
