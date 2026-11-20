@@ -109,7 +109,7 @@
     "core": {
       "name": "core (${{ matrix.os }})",
       "runs-on": "${{ matrix.os }}",
-      "timeout-minutes": 65,
+      "timeout-minutes": "${{ matrix.os == 'macos-15' && 80 || 65 }}",
       "steps": [
         {
           "name": "Checkout v7.0.1 (immutable upstream commit)",
