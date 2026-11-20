@@ -141,13 +141,12 @@ impl CorrectionEngine {
         }) {
             return Err(EngineError::version());
         }
-        plan.invalidations
-            .extend(crate::correction_dependents::invalidations(
-                state,
-                &[replacement],
-                &[],
-                &[],
-            )?);
+        let dependents =
+            crate::correction_dependents::invalidations(state, &[replacement], &[], &[])?;
+        if !dependents.organization_questions.is_empty() {
+            return Err(EngineError::version());
+        }
+        plan.invalidations.extend(dependents.invalidations);
         plan.records.insert(
             0,
             AuthoritativeRecordV1::RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1 {

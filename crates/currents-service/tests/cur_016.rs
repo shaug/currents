@@ -1225,30 +1225,137 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
     assert!(plan.invalidations.contains(&affected_claim));
     assert!(!plan.invalidations.contains(&unchanged_claim));
     assert!(!plan.invalidations.contains(&retained_note));
-    let mut unsupported_note = old.clone();
     let Some(AuthoritativeRecordV1::Recognition(old_anchor)) =
         old.records.get(&RecordId(old_opening.0))
     else {
         panic!("prior anchor remains authenticated")
     };
-    let Some(AuthoritativeRecordV1::Organization(changed_note)) =
-        unsupported_note.records.get_mut(&retained_note)
-    else {
-        panic!("note remains authenticated")
+    let [old_leg] = old_anchor.leg_ids.as_slice() else {
+        panic!("one old anchor leg")
     };
-    changed_note.targets = old_anchor
-        .leg_ids
-        .iter()
-        .map(|leg| RecordId(leg.0))
-        .collect();
-    assert!(!changed_note.targets.is_empty());
-    assert_eq!(
-        SegmentEngine::replace_owned(&unsupported_note, &proposal, authority)
-            .unwrap_err()
-            .class,
-        EngineError::version().class,
-        "a note targeting retired old-anchor legs may not be silently detached or remapped"
+    let mapping_note = OrganizationRecordV1 {
+        id: fixture::id(51_110),
+        version: 1,
+        kind: OrganizationKind::Note,
+        targets: vec![RecordId(old_leg.0)],
+        parent: None,
+        text: "Retained note for the retired anchor's economic leg".into(),
+        allocations: vec![],
+        supersedes: None,
+    };
+    f.service.close().await.unwrap();
+    let source = open(&path).await;
+    let question_path = dir.path().join("organization-question.db");
+    let report = ReplayCoordinator::rebuild(source.history(), open(&question_path).await)
+        .await
+        .unwrap();
+    assert_eq!(report.through, old.through);
+    source.close().await.unwrap();
+    let question_store = open(&question_path).await;
+    let accounting = AccountingIntent::NoEffect(NoEffectV1 {
+        reason: "retain old-anchor note for mapping question".into(),
+    });
+    let batch = AccountingAdapter::freeze(&accounting, &old).unwrap();
+    let receipt = question_store
+        .writer()
+        .commit(PreparedCommit {
+            evidence: vec![],
+            decision_plan: DecisionPlan {
+                records: vec![AuthoritativeRecordV1::Organization(mapping_note.clone())],
+                invalidations: vec![],
+                accounting,
+            },
+            frozen_batch: batch,
+            prior_head: old.through,
+            decisions: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(51_111).0),
+                digest: Digest([96; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![mapping_note.id],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            manifest_id: fixture::id(51_112),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .unwrap();
+    let persisted = question_store
+        .history()
+        .read_prefix(receipt.commit)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    let mut mapping_basis = old.clone();
+    currents_domain::ReplayEngine::apply(&mut mapping_basis, &persisted).unwrap();
+    mapping_basis.accounting = Some(
+        question_store
+            .history()
+            .verify_retained_accounting(&old, &persisted)
+            .await
+            .unwrap(),
     );
+    assert_eq!(
+        mapping_basis.records[&mapping_note.id],
+        AuthoritativeRecordV1::Organization(mapping_note.clone())
+    );
+    let persisted_basis = question_store.writer().audited_prefix().await.unwrap();
+    let SegmentPreviewV1::NeedsOrganizationDisposition(question) =
+        SegmentEngine::replace_owned(&mapping_basis, &proposal, authority)
+            .expect("a valid reconciled draft with a retained retired-leg note surfaces a typed mapping question")
+    else {
+        panic!("no other preview outcome may bypass the organization disposition")
+    };
+    assert_eq!(question.prior_basis, persisted_basis);
+    assert_eq!(question.prior_segment, prior_segment);
+    let [item] = question.affected.as_slice() else {
+        panic!("one exact retained note")
+    };
+    assert_eq!(item.organization_revision, mapping_note.id);
+    assert_eq!(item.organization_version, mapping_note.version);
+    assert_eq!(item.prior_leg, *old_leg);
+    assert!(item.eligible_candidate_legs.is_empty());
+    assert_eq!(mapping_basis.records[&retained_note], note);
+    // The private prepare phase may compute closure but the question may not
+    // bypass any later owned-family validation (e.g. draft/authority collision).
+    assert!(
+        SegmentEngine::replace_owned(&mapping_basis, &proposal, proposal.opening.event.id).is_err()
+    );
+    for shape in 0..3 {
+        let mut invalid_basis = mapping_basis.clone();
+        let Some(AuthoritativeRecordV1::Organization(edited)) =
+            invalid_basis.records.get_mut(&mapping_note.id)
+        else {
+            panic!("retained note")
+        };
+        match shape {
+            0 => edited.targets.push(RecordId(transfer.revision.legs[0].0)),
+            1 => edited
+                .allocations
+                .push(old_anchor.evidence_allocations[0].clone()),
+            2 => edited.version = 2,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            SegmentEngine::replace_owned(&invalid_basis, &proposal, authority)
+                .unwrap_err()
+                .class,
+            EngineError::version().class
+        );
+    }
+    assert_eq!(
+        question_store.writer().audited_prefix().await.unwrap(),
+        persisted_basis
+    );
+    question_store.close().await.unwrap();
+    f.service = f.reopen().await;
     let frozen = AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
     assert_eq!(frozen.operations.len(), 11);
     let effect_records: Vec<_> = plan

@@ -183,10 +183,14 @@ correction and reconciled segment replacement preserve same-leg display-only
 notes and derive current-state invalidation for bounded civil-date Activity
 claims from account/date overlap. A replaced segment checks the retired anchor
 and the new anchor and backfill; exact counterpart re-emissions alone do not
-change those predicates. A note on a retired anchor leg requires an explicit
-remap and is rejected by this bounded path. A separately retained economic
-leg is not an equivalent target merely because a correction leaves native
-postings unchanged. A future leg-changing correction must own both old
+change those predicates. A retained, unallocated, single-leg root note on a
+retired anchor is surfaced as a typed `NeedsOrganizationDisposition` preview
+with the exact prior accounting basis, prior segment, organization revision
+and stable leg. The bounded preview returns no eligible candidates when
+equivalence is unproved and exposes no writable decision plan. Allocated,
+split-target or ambiguous revision shapes still fail closed. A separately
+retained economic leg is not an equivalent target merely because a correction
+leaves native postings unchanged. A future leg-changing correction must own both old
 and new economic meanings, bind explicit reviewed organization disposition
 (including organization revision and exact targets), and prove active view
 and archival replay in the same correction. The legacy relationship remap

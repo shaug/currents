@@ -314,11 +314,45 @@ pub struct SegmentPreviewRequestV1 {
     pub reemissions: Vec<SegmentReemissionV1>,
 }
 
+pub use crate::correction_dependents::OrganizationDispositionItem;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NeedsOrganizationDisposition {
+    pub prior_basis: AccountingPrefixV1,
+    pub prior_segment: RecordId,
+    pub affected: Vec<OrganizationDispositionItem>,
+}
+
 #[derive(Clone, Debug)]
 pub enum SegmentPreviewV1 {
     Ready(Box<DecisionPlan>),
+    NeedsOrganizationDisposition(NeedsOrganizationDisposition),
     UnresolvedResidual(Amount),
     ClosureTooLarge { operations: usize, maximum: usize },
+}
+
+enum SegmentPreparation {
+    Validated {
+        plan: Box<DecisionPlan>,
+        question: Option<NeedsOrganizationDisposition>,
+    },
+    Stopped(SegmentPreviewV1),
+}
+
+impl SegmentPreparation {
+    fn finish(self) -> SegmentPreviewV1 {
+        match self {
+            Self::Stopped(outcome) => outcome,
+            Self::Validated {
+                question: Some(question),
+                ..
+            } => SegmentPreviewV1::NeedsOrganizationDisposition(question),
+            Self::Validated {
+                plan,
+                question: None,
+            } => SegmentPreviewV1::Ready(plan),
+        }
+    }
 }
 
 pub struct SegmentEngine;
@@ -488,6 +522,13 @@ impl SegmentEngine {
         state: &DomainState,
         preview: &SegmentPreviewRequestV1,
     ) -> Result<SegmentPreviewV1, EngineError> {
+        Self::prepare(state, preview).map(SegmentPreparation::finish)
+    }
+
+    fn prepare(
+        state: &DomainState,
+        preview: &SegmentPreviewRequestV1,
+    ) -> Result<SegmentPreparation, EngineError> {
         let request = &preview.request;
         let invalid = EngineError::invalid;
         let index = state.accounting.as_ref().ok_or_else(incomplete)?;
@@ -721,10 +762,12 @@ impl SegmentEngine {
             .and_then(|n| n.checked_add(preview.backfill.len()))
             .ok_or_else(invalid)?;
         if operations > MAX_CLOSURE_OPERATIONS {
-            return Ok(SegmentPreviewV1::ClosureTooLarge {
-                operations,
-                maximum: MAX_CLOSURE_OPERATIONS,
-            });
+            return Ok(SegmentPreparation::Stopped(
+                SegmentPreviewV1::ClosureTooLarge {
+                    operations,
+                    maximum: MAX_CLOSURE_OPERATIONS,
+                },
+            ));
         }
 
         let drafts = std::iter::once(&preview.opening).chain(&preview.backfill);
@@ -819,9 +862,11 @@ impl SegmentEngine {
             .checked_add(&old_balance.checked_neg()?)?
             .normalized()?;
         if difference.coefficient != 0 {
-            return Ok(SegmentPreviewV1::UnresolvedResidual(difference));
+            return Ok(SegmentPreparation::Stopped(
+                SegmentPreviewV1::UnresolvedResidual(difference),
+            ));
         }
-        let dependent_claims = {
+        let dependents = {
             // Real changes are the removed anchor and its new anchor/backfill.
             // Exact retained counterpart re-emissions change IDs, not predicate inputs.
             let changed = std::iter::once(old_anchor)
@@ -867,14 +912,21 @@ impl SegmentEngine {
                 residual_disposition: SourceValue::Absent,
             },
         ));
-        Ok(SegmentPreviewV1::Ready(Box::new(DecisionPlan {
+        let plan = Box::new(DecisionPlan {
             records,
             invalidations: std::iter::once(prior.id)
                 .chain(closure.into_iter().map(|id| RecordId(id.0)))
-                .chain(dependent_claims)
+                .chain(dependents.invalidations)
                 .collect(),
             accounting: AccountingIntent::Corrections(corrections),
-        })))
+        });
+        let question =
+            (!dependents.organization_questions.is_empty()).then(|| NeedsOrganizationDisposition {
+                prior_basis: index.prefix.clone(),
+                prior_segment: prior.id,
+                affected: dependents.organization_questions,
+            });
+        Ok(SegmentPreparation::Validated { plan, question })
     }
 }
 
@@ -893,9 +945,9 @@ impl SegmentEngine {
         {
             return Err(invalid());
         }
-        let mut plan = match Self::replace(state, preview)? {
-            SegmentPreviewV1::Ready(plan) => plan,
-            residual => return Ok(residual),
+        let (mut plan, question) = match Self::prepare(state, preview)? {
+            SegmentPreparation::Validated { plan, question } => (plan, question),
+            SegmentPreparation::Stopped(outcome) => return Ok(outcome),
         };
         let Some(AuthoritativeRecordV1::AccountingSegment(segment)) = plan.records.last() else {
             return Err(invalid());
@@ -983,6 +1035,6 @@ impl SegmentEngine {
                     counterparts,
                 },
             ));
-        Ok(SegmentPreviewV1::Ready(plan))
+        Ok(SegmentPreparation::Validated { plan, question }.finish())
     }
 }

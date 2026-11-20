@@ -5,15 +5,30 @@ use currents_types::{
 };
 use std::collections::BTreeSet;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrganizationDispositionItem {
+    pub organization_revision: RecordId,
+    pub organization_version: u32,
+    pub prior_leg: LegId,
+    pub eligible_candidate_legs: Vec<LegId>,
+}
+
+pub(crate) struct DependentChanges {
+    pub invalidations: BTreeSet<RecordId>,
+    pub organization_questions: Vec<OrganizationDispositionItem>,
+}
+
 /// Known scope-only Activity predicates receive a deterministic stale marker.
-/// Display notes may retain an exact stable leg but cannot follow retired legs.
+/// Display notes may retain an exact stable leg. Moving a retired leg note
+/// requires a separate explicit owner decision before the plan can escape.
 pub(crate) fn invalidations(
     state: &DomainState,
     changed: &[&RecognitionV1],
     obsolete_legs: &[LegId],
     retired_segments: &[RecordId],
-) -> Result<BTreeSet<RecordId>, EngineError> {
+) -> Result<DependentChanges, EngineError> {
     let mut dependent_claims = BTreeSet::new();
+    let mut organization_questions = Vec::new();
     for record in state.records.values() {
         match record {
             AuthoritativeRecordV1::Organization(note) => {
@@ -21,14 +36,35 @@ pub(crate) fn invalidations(
                     || !note.allocations.is_empty()
                     || note.targets.is_empty()
                     || note.targets.iter().any(|target| {
-                        obsolete_legs.iter().any(|leg| RecordId(leg.0) == *target)
-                            || !matches!(
-                                state.records.get(target),
-                                Some(AuthoritativeRecordV1::FinancialLeg(_))
-                            )
+                        !matches!(
+                            state.records.get(target),
+                            Some(AuthoritativeRecordV1::FinancialLeg(_))
+                        )
                     })
                 {
                     return Err(EngineError::version());
+                }
+                let mut retired = obsolete_legs
+                    .iter()
+                    .copied()
+                    .filter(|leg| note.targets.contains(&RecordId(leg.0)));
+                if let Some(prior_leg) = retired.next() {
+                    if note.targets.len() != 1 || retired.next().is_some()
+                        || note.version != 1 || note.parent.is_some() || note.supersedes.is_some()
+                        || state.records.values().any(|record| matches!(
+                            record,
+                            AuthoritativeRecordV1::Organization(other)
+                                if other.supersedes == Some(note.id) || other.parent == Some(note.id)
+                        ))
+                    {
+                        return Err(EngineError::version());
+                    }
+                    organization_questions.push(OrganizationDispositionItem {
+                        organization_revision: note.id,
+                        organization_version: note.version,
+                        prior_leg,
+                        eligible_candidate_legs: Vec::new(),
+                    });
                 }
                 // Exact identity compensation preserves stable economic leg IDs.
             }
@@ -87,5 +123,8 @@ pub(crate) fn invalidations(
             _ => {}
         }
     }
-    Ok(dependent_claims)
+    Ok(DependentChanges {
+        invalidations: dependent_claims,
+        organization_questions,
+    })
 }
