@@ -179,8 +179,12 @@ release journeys nor public command support. The bounded transfer witness
 retains historical associations and permits exactly mapped, unchanged
 current counterparts. It does not implement general stable organization
 remapping or the full predicate dependency index. One supported identity-only
-correction preserves same-leg display-only notes and derives current-state
-invalidation for bounded civil-date Activity claims from account/date overlap.
+correction and reconciled segment replacement preserve same-leg display-only
+notes and derive current-state invalidation for bounded civil-date Activity
+claims from account/date overlap. A replaced segment checks the retired anchor
+and the new anchor and backfill; exact counterpart re-emissions alone do not
+change those predicates. A note on a retired anchor leg requires an explicit
+remap and is rejected by this bounded path.
 The original claim is archival; replay rederives exact invalidation effects.
 Claims with explicit evidence, decision, allocation, or exclusion dependencies
 are unsupported by this scope-only predicate.

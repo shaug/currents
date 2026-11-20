@@ -26,3 +26,5 @@ mod association_duplicates;
 pub mod relationship_parse;
 
 pub mod correction;
+
+mod correction_dependents;

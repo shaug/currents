@@ -1,5 +1,4 @@
 //! Proposals for corrections to an accepted recognition.
-use currents_types::{DateBasis, OrganizationKind};
 
 use currents_types::{
     AccountingIndexV1, AccountingIntent, ActivityAdoptionV1, ActivityStatusV1,
@@ -143,58 +142,12 @@ impl CorrectionEngine {
         }) {
             return Err(EngineError::version());
         }
-        let mut dependent_claims = BTreeSet::new();
-        for record in state.records.values() {
-            match record {
-                AuthoritativeRecordV1::Organization(note) => {
-                    if note.kind != OrganizationKind::Note
-                        || !note.allocations.is_empty()
-                        || note.targets.is_empty()
-                        || note.targets.iter().any(|target| {
-                            !matches!(
-                                state.records.get(target),
-                                Some(AuthoritativeRecordV1::FinancialLeg(_))
-                            )
-                        })
-                    {
-                        return Err(EngineError::version());
-                    }
-                    // Exact identity compensation preserves stable economic leg IDs.
-                }
-                AuthoritativeRecordV1::ReconciliationClaim(claim) => {
-                    let (Some(start), Some(end)) = (claim.cutoffs.start, claim.cutoffs.end) else {
-                        return Err(EngineError::version());
-                    };
-                    if claim.comparison_type != "Activity"
-                        || !claim.matched_allocations.is_empty()
-                        || !claim.evidence_dependencies.is_empty()
-                        || !claim.decision_dependencies.is_empty()
-                        || !claim.exclusions.is_empty()
-                        || claim.scope.is_empty()
-                        || start > end
-                    {
-                        return Err(EngineError::version());
-                    }
-                    for posting in &replacement.postings {
-                        if !claim.scope.contains(&posting.account_id) {
-                            continue;
-                        }
-                        let date = match claim.cutoffs.basis {
-                            DateBasis::Effective => &posting.effective,
-                            DateBasis::Posting => &posting.posting,
-                        };
-                        let currents_types::TemporalValue::Date { civil, .. } = date else {
-                            return Err(EngineError::version());
-                        };
-                        if start <= *civil && *civil <= end {
-                            dependent_claims.insert(claim.id);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        plan.invalidations.extend(dependent_claims);
+        plan.invalidations
+            .extend(crate::correction_dependents::invalidations(
+                state,
+                &[replacement],
+                &[],
+            )?);
         plan.records.insert(
             0,
             AuthoritativeRecordV1::RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1 {

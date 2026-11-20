@@ -988,7 +988,91 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         retain_segment_assertion(&store, 820, -192, "2026-10-31", ObservationKind::Movement).await;
     store.close().await.unwrap();
     f.service = f.reopen().await;
+    let before_dependents = refresh_financial(&mut f, &path, None).await;
+    let affected_claim = fixture::id(51_101);
+    let unchanged_claim = fixture::id(51_102);
+    let retained_note = fixture::id(51_103);
+    let claim = |id, day| {
+        let TemporalValue::Date { civil, .. } = fixture::date(day) else {
+            panic!("fixture date")
+        };
+        AuthoritativeRecordV1::ReconciliationClaim(ReconciliationClaimV1 {
+            id,
+            comparison_type: "Activity".into(),
+            scope: vec![AccountId(fixture::id(10).0)],
+            cutoffs: DateScope {
+                start: Some(civil),
+                end: Some(civil),
+                basis: DateBasis::Effective,
+            },
+            evidence_dependencies: vec![],
+            decision_dependencies: vec![],
+            dependency_digest: Digest([91; 32]),
+            matched_allocations: vec![],
+            differences: vec![],
+            exclusions: vec![],
+            status: ReconciliationStatus::Matched,
+            reason: "Bounded synthetic segment comparison".into(),
+        })
+    };
+    let note = AuthoritativeRecordV1::Organization(OrganizationRecordV1 {
+        id: retained_note,
+        version: 1,
+        kind: OrganizationKind::Note,
+        targets: vec![RecordId(transfer.revision.legs[0].0)],
+        parent: None,
+        text: "Stable transfer leg note".into(),
+        allocations: vec![],
+        supersedes: None,
+    });
+    let accounting = AccountingIntent::NoEffect(NoEffectV1 {
+        reason: "retain synthetic segment dependents".into(),
+    });
+    let frozen_batch = AccountingAdapter::freeze(&accounting, &before_dependents).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .writer()
+        .commit(PreparedCommit {
+            evidence: vec![],
+            decision_plan: DecisionPlan {
+                records: vec![
+                    claim(affected_claim, "2026-10-31"),
+                    claim(unchanged_claim, "2026-11-03"),
+                    note.clone(),
+                ],
+                invalidations: vec![],
+                accounting,
+            },
+            frozen_batch,
+            prior_head: before_dependents.through,
+            decisions: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(51_104).0),
+                digest: Digest([92; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![affected_claim, unchanged_claim, retained_note],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            manifest_id: fixture::id(51_105),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .unwrap();
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
     let old = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(old.records[&retained_note], note);
+    assert_eq!(
+        old.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Matched)
+    );
     let dated = |source, serial, counter, day| {
         let mut draft = fixture::posted(source, serial, counter);
         let at = fixture::date(day);
@@ -1060,6 +1144,33 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
     else {
         panic!("the cross-account owner's earlier balance reconciles");
     };
+    assert!(plan.invalidations.contains(&affected_claim));
+    assert!(!plan.invalidations.contains(&unchanged_claim));
+    assert!(!plan.invalidations.contains(&retained_note));
+    let mut unsupported_note = old.clone();
+    let Some(AuthoritativeRecordV1::Recognition(old_anchor)) =
+        old.records.get(&RecordId(old_opening.0))
+    else {
+        panic!("prior anchor remains authenticated")
+    };
+    let Some(AuthoritativeRecordV1::Organization(changed_note)) =
+        unsupported_note.records.get_mut(&retained_note)
+    else {
+        panic!("note remains authenticated")
+    };
+    changed_note.targets = old_anchor
+        .leg_ids
+        .iter()
+        .map(|leg| RecordId(leg.0))
+        .collect();
+    assert!(!changed_note.targets.is_empty());
+    assert_eq!(
+        SegmentEngine::replace_owned(&unsupported_note, &proposal, authority)
+            .unwrap_err()
+            .class,
+        EngineError::version().class,
+        "a note targeting retired old-anchor legs may not be silently detached or remapped"
+    );
     let frozen = AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
     assert_eq!(frozen.operations.len(), 11);
     let effect_records: Vec<_> = plan
@@ -1145,6 +1256,20 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
             .is_none()
     );
 
+    let mut forged_invalidations = make_prepared();
+    forged_invalidations
+        .decision_plan
+        .invalidations
+        .retain(|id| *id != affected_claim);
+    forged_invalidations.result.effects.invalidations =
+        forged_invalidations.decision_plan.invalidations.clone();
+    assert!(
+        synthetic_commit_verified_segment(writer, &proposal, forged_invalidations)
+            .await
+            .is_err()
+    );
+    assert_eq!(writer.audited_prefix().await.unwrap(), prior);
+
     let receipt = synthetic_commit_verified_segment(writer, &proposal, make_prepared())
         .await
         .expect("same-writer authority must commit all eleven cross-account operations together");
@@ -1166,6 +1291,24 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         .unwrap()
         .pop()
         .unwrap();
+    let mut forged = committed.clone();
+    forged
+        .command_result
+        .effects
+        .invalidations
+        .retain(|id| *id != affected_claim);
+    forged
+        .command_result
+        .effects
+        .invalidations
+        .push(unchanged_claim);
+    let mut unchanged = old.clone();
+    assert!(currents_domain::ReplayEngine::apply(&mut unchanged, &forged).is_err());
+    assert_eq!(unchanged.through, old.through);
+    assert_eq!(
+        unchanged.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Matched)
+    );
     let Some(AuthoritativeRecordV1::FrozenAccountingManifest(manifest)) = committed.records.last()
     else {
         panic!("actual authority commit must retain its exact native closure");
@@ -1185,6 +1328,19 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
 
     f.service = f.reopen().await;
     let current = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(
+        old.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Matched)
+    );
+    assert_eq!(
+        current.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Invalidated)
+    );
+    assert_eq!(
+        current.reconciliation_status(unchanged_claim),
+        Some(ReconciliationStatus::Matched)
+    );
+    assert_eq!(current.records[&retained_note], note);
     for (id, archived) in &old.records {
         assert_eq!(current.records.get(id), Some(archived));
     }

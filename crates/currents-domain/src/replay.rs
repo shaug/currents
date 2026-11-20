@@ -119,11 +119,10 @@ impl ReplayEngine {
         projection.dataset_policies =
             crate::policy_history::PolicyHistory::project(state, &commit.records)?;
         crate::recognition_replay::validate_transition(state, &projection, commit)?;
-        if commit.records.iter().any(|record| {
-            matches!(
-                record,
-                AuthoritativeRecordV1::RecognitionCorrectionRevision(_)
-            )
+        if commit.records.iter().any(|record| match record {
+            AuthoritativeRecordV1::RecognitionCorrectionRevision(_) => true,
+            AuthoritativeRecordV1::AccountingSegment(segment) => segment.prior_segment.is_some(),
+            _ => false,
         }) {
             // C08 validated the complete, re-derived effects above. A raw command
             // result or another record family cannot mark claims invalid.

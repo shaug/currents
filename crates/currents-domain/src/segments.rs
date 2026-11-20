@@ -627,8 +627,6 @@ impl SegmentEngine {
                     // Dependency remapping is not in this preview slice.
                     AuthoritativeRecordV1::Association(_)
                     | AuthoritativeRecordV1::Allocation(_)
-                    | AuthoritativeRecordV1::ReconciliationClaim(_)
-                    | AuthoritativeRecordV1::Organization(_)
                     | AuthoritativeRecordV1::OccurrenceMatch(_)
                     | AuthoritativeRecordV1::ForecastRun(_)
                     | AuthoritativeRecordV1::Review(_) => return Err(EngineError::version()),
@@ -824,6 +822,14 @@ impl SegmentEngine {
         if difference.coefficient != 0 {
             return Ok(SegmentPreviewV1::UnresolvedResidual(difference));
         }
+        let dependent_claims = {
+            // Real changes are the removed anchor and its new anchor/backfill.
+            // Exact retained counterpart re-emissions change IDs, not predicate inputs.
+            let changed = std::iter::once(old_anchor)
+                .chain(replacements.iter())
+                .collect::<Vec<_>>();
+            crate::correction_dependents::invalidations(state, &changed, &old_anchor.leg_ids)?
+        };
         let mut corrections = vec![CorrectionV1 {
             active_recognition: prior.opening,
             replacement: replacements,
@@ -861,6 +867,7 @@ impl SegmentEngine {
             records,
             invalidations: std::iter::once(prior.id)
                 .chain(closure.into_iter().map(|id| RecordId(id.0)))
+                .chain(dependent_claims)
                 .collect(),
             accounting: AccountingIntent::Corrections(corrections),
         })))
