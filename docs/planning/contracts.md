@@ -159,9 +159,19 @@ Financial terms separately identify recognition and lineage, postings, bookkeepi
 
 The standalone identity-only correction chain may advance only its live terminal. Each append keeps the original activity adoption as the unique historical owner, retires the preceding native recognition, and preserves the entire prior history with exactly one live terminal. Reused posting identities, forks, cycles, orphan authority and economic changes are invalid. Association-bound and dependent recognitions still require an explicit remap path; this checkpoint does not silently remap them or expose service or wire dispatch.
 
+The standalone correction can traverse the real synthetic Service approval
+lifecycle with one explicitly configured command, revision, decision, manifest
+and policy. The test binds the displayed account closure and digest, rejects
+missing, altered or stale approval paths, and reopens the encrypted owner
+decision alongside the original adoption and replacement. This is not a
+public dispatcher. The legacy `CorrectRecognition` request cannot supply the
+immutable revision ID, and `ReplaceAccountingSegment` lacks the actual
+opening and backfill drafts, exact re-emission identities and owner witness.
+Do not silently fill those omissions or make a scope-only request writable.
+
 ### CUR-016 bounded qualification and remaining work
 
-`cargo xtask ticket CUR-016` verifies an exact 16-test synthetic inventory
+`cargo xtask ticket CUR-016` verifies an exact 17-test synthetic inventory
 across domain, encrypted service and correction-chain suites, with no ignored
 tests. It includes the actual 1,200-native-operation replacement midpoint
 rollback, exact retry, reopen and fresh rebuild, and the separate typed

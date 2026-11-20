@@ -559,3 +559,221 @@ async fn cur_016_2_correction_preserves_note_and_invalidates_only_matching_predi
         Some(ReconciliationStatus::Matched)
     );
 }
+
+// The legacy request cannot name the immutable revision. This fixture supplies
+// every ID explicitly for one synthetic command rather than inventing a
+// production rule for deriving them from the client request.
+struct ExactSyntheticCorrectionPlanner {
+    state: DomainState,
+    command: CommandId,
+    revision: RecordId,
+    decision: RecordId,
+    manifest: RecordId,
+    policy: PolicyReferenceV1,
+}
+
+impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
+    fn prepare(
+        &self,
+        body: &currents_protocol::CommandBodyV1,
+        prefix: &AccountingPrefixV1,
+    ) -> Result<service_api::CommandPlan, EngineError> {
+        let OperationV1::CorrectRecognition(request) = &body.operation else {
+            return Err(EngineError::version());
+        };
+        if body.command_id != self.command
+            || !self
+                .state
+                .dataset_policies
+                .contains_key(&(self.policy.id, self.policy.version))
+        {
+            return Err(EngineError::invalid());
+        }
+        let request = CorrectionRequestV1 {
+            active_recognition: request.active_recognition,
+            replacement: request.replacement.clone(),
+            remapping: request.remapping.clone(),
+            reason: request.reason.clone(),
+        };
+        let plan = CorrectionEngine::correct_durable(&self.state, self.revision, &request)?;
+        let frozen = AccountingAdapter::freeze(&plan.accounting, &self.state)?;
+        service_api::verify_correction_preflight(&self.state, prefix, &plan, &frozen)?;
+        let mut accounts = std::collections::BTreeSet::new();
+        let mut amounts = Vec::new();
+        for operation in &frozen.operations {
+            let FrozenNativeOperationV1::Entry(entry) = operation else {
+                return Err(EngineError::invalid());
+            };
+            for posting in &entry.postings {
+                accounts.insert(posting.original.account_id);
+                amounts.push(posting.original.amount);
+            }
+        }
+        let accounts: Vec<_> = accounts.into_iter().collect();
+        let effects = EffectsV1 {
+            records: vec![self.revision, RecordId(request.replacement[0].id.0)],
+            accounts: accounts.clone(),
+            amounts,
+            invalidations: plan.invalidations.clone(),
+        };
+        Ok(service_api::CommandPlan {
+            import: None,
+            decision_plan: plan,
+            frozen_batch: frozen,
+            effects,
+            warnings: vec![],
+            approval_scope: currents_protocol::ApprovalScopeV1 {
+                accounts,
+                operation: DecisionKind::Correction,
+                fields: vec!["recognition".into()],
+            },
+            decision_id: self.decision,
+            manifest_id: self.manifest,
+            policy: self.policy.clone(),
+        })
+    }
+
+    fn query(
+        &self,
+        _: &currents_protocol::QueryV1,
+        _: &AccountingPrefixV1,
+    ) -> Result<currents_protocol::QueryResponseV1, EngineError> {
+        Err(EngineError::version())
+    }
+}
+
+#[tokio::test]
+async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner_decision() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("owner-approved-correction.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, &path, 200, "1", "2026-11-01").await;
+    let purchase = fixture::posted(legacy_binding(200), 300, 30);
+    let original = purchase.financial.as_ref().unwrap().recognition_id;
+    let original_adoption = purchase.adoption_id;
+    let governing_policy = purchase.governing_policy.clone();
+    submit(&mut f, 58_001, OperationV1::AdoptActivity(purchase)).await;
+    let before = refresh_financial(&mut f, &path, None).await;
+
+    let correction = fresh_correction(&before, original, 58_020);
+    let replacement = correction.replacement[0].id;
+    let mut body = f.body(58_002);
+    body.expected_head = before.through;
+    body.operation = OperationV1::CorrectRecognition(currents_types::CorrectionRequestV1 {
+        active_recognition: correction.active_recognition,
+        replacement: correction.replacement.clone(),
+        remapping: correction.remapping,
+        reason: correction.reason,
+    });
+    f.service.close().await.unwrap();
+    f.host.reconnect();
+    f.service = service_api::Service::new(
+        open(&path).await,
+        body.dataset_id,
+        f.ctx().instance_id,
+        service_api::ServiceProfile::Synthetic,
+        f.host.clone(),
+        Arc::new(ExactSyntheticCorrectionPlanner {
+            state: before.clone(),
+            command: body.command_id,
+            revision: fixture::id(58_010),
+            decision: fixture::id(58_011),
+            manifest: fixture::id(58_012),
+            policy: governing_policy,
+        }),
+        f.clock.clone(),
+    )
+    .await
+    .unwrap();
+    support::recover_service(&f.service).await;
+    let preview = f
+        .service
+        .preview(f.ctx(), body.clone())
+        .expect("verified synthetic service preview must disclose a correction before approval");
+    assert_eq!(preview.approval_scope.operation, DecisionKind::Correction);
+    assert_eq!(
+        preview.effects.accounts,
+        [10, 30].map(|id| AccountId(fixture::id(id).0))
+    );
+    assert_eq!(
+        preview.effects.records,
+        [fixture::id(58_010), RecordId(replacement.0)]
+    );
+    assert_eq!(f.prefix().await, before.accounting.as_ref().unwrap().prefix);
+
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), body.clone(), f.auth(None))
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::Unauthorized
+    );
+    let mut edited = body.clone();
+    let OperationV1::CorrectRecognition(request) = &mut edited.operation else {
+        panic!()
+    };
+    request.reason.push_str(" altered after approval");
+    let token = f.approve(&body);
+    assert!(f.service.submit(f.ctx(), edited, token).await.is_err());
+    let mut stale = body.clone();
+    stale.expected_head = CommitSeq(before.through.0 - 1);
+    assert_eq!(
+        f.service.preview(f.ctx(), stale).unwrap_err().class,
+        ErrorClass::StaleBasis
+    );
+    assert_eq!(f.prefix().await, before.accounting.as_ref().unwrap().prefix);
+
+    let result = f
+        .service
+        .submit(f.ctx(), body.clone(), f.approve(&body))
+        .await
+        .expect("host-approved synthetic correction");
+    assert_eq!(result.state, CommandState::Committed);
+    assert_eq!(result.commit, Some(CommitSeq(before.through.0 + 1)));
+    assert_eq!(result.effects, preview.effects);
+    f.service.close().await.unwrap();
+
+    let store = open(&path).await;
+    let commit = store
+        .history()
+        .read_prefix(result.commit.unwrap())
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    let [decision] = commit.decisions.as_slice() else {
+        panic!("real owner decision envelope")
+    };
+    assert_eq!(decision.decision_type, DecisionKind::Correction);
+    assert_eq!(decision.authority, AuthorityKind::Owner);
+    assert_eq!(decision.command_id, body.command_id);
+    assert_eq!(decision.command_digest, preview.digest);
+    assert_eq!(decision.adopted_result, preview.effects.records);
+    store
+        .history()
+        .verify_checkpoint(before.through, before.domain_digest)
+        .await
+        .unwrap();
+    let fresh = open(&dir.path().join("approved-rebuild.db")).await;
+    let replay = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(replay, store.history().audit_report().await.unwrap());
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let current = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(
+        current.records[&original_adoption],
+        before.records[&original_adoption]
+    );
+    assert_eq!(
+        current.records[&decision.id],
+        AuthoritativeRecordV1::Decision(decision.clone())
+    );
+    let index = current.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&original));
+    assert!(!index.reversed.contains(&replacement));
+    assert!(index.recognitions.contains_key(&replacement));
+}

@@ -423,6 +423,7 @@ fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
             &[
                 "cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle",
                 "cur_016_2_correction_preserves_note_and_invalidates_only_matching_predicate",
+                "cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner_decision",
                 "cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal",
             ],
         ),
