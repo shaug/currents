@@ -178,6 +178,14 @@ Its candidate digest is not a C03 closure digest, approval token, or new
 operation. The synthetic helper refuses stale preview basis and a retained
 but non-adopted policy version rather than using a latest-policy default.
 
+One encrypted synthetic lifecycle test now checks both layers together.
+The fixture host requires separate approval evidence binding the exact
+typed candidate digest, legacy body digest, plan closure and challenge.
+The normal Service executes only that approved closure. A legacy-only
+token or a second valid candidate's digest cannot authorize it. The
+candidate digest is test-host evidence, not a field in the production
+protocol or the replayed owner decision.
+
 ### CUR-016 bounded qualification and remaining work
 
 `cargo xtask ticket CUR-016` verifies an exact 18-test synthetic inventory

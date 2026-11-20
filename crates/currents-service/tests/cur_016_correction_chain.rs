@@ -642,6 +642,110 @@ impl service_api::CommandPlanner for ExactSyntheticCorrectionPlanner {
     }
 }
 
+// Synthetic host-only sidecar. Neither the legacy body nor the Service DTO
+// is extended; the fixture refuses the real Service challenge unless both
+// canonical commitments and the separately approved typed digest match.
+struct CandidateApprovalHost {
+    inner: Arc<support::Host>,
+    body_digest: Digest,
+    closure_digest: Digest,
+    candidate_digest: Digest,
+    challenge: std::sync::Mutex<Option<service_api::ApprovalChallenge>>,
+    approval: std::sync::Mutex<Option<(uuid::Uuid, Digest, Digest, Digest)>>,
+}
+
+impl CandidateApprovalHost {
+    fn proof(
+        &self,
+        fixture: &support::Fixture,
+        approved_candidate: Digest,
+    ) -> currents_protocol::AuthorizationEnvelope {
+        let challenge = self.challenge.lock().unwrap().clone().unwrap();
+        *self.approval.lock().unwrap() = Some((
+            challenge.nonce,
+            challenge.preview.digest,
+            challenge.preview.closure_digest,
+            approved_candidate,
+        ));
+        fixture.auth(Some(challenge.nonce.to_string()))
+    }
+}
+
+impl service_api::HostGrants for CandidateApprovalHost {
+    fn revoke_sessions(&self, d: DatasetId, i: InstanceId) {
+        self.inner.revoke_sessions(d, i);
+    }
+    fn authenticate(
+        &self,
+        ctx: &currents_protocol::RequestContext,
+        d: DatasetId,
+        capability: Option<&str>,
+        now: OffsetDateTime,
+    ) -> Result<(), EngineError> {
+        self.inner.authenticate(ctx, d, capability, now)
+    }
+    fn authorize_command(
+        &self,
+        ctx: &currents_protocol::RequestContext,
+        b: &currents_protocol::CommandBodyV1,
+    ) -> Result<(), EngineError> {
+        self.inner.authorize_command(ctx, b)
+    }
+    fn authorize_effects(
+        &self,
+        ctx: &currents_protocol::RequestContext,
+        p: &currents_protocol::PreviewV1,
+    ) -> Result<(), EngineError> {
+        self.inner.authorize_effects(ctx, p)
+    }
+    fn publish_challenge(&self, c: &service_api::ApprovalChallenge) -> Result<(), EngineError> {
+        if c.preview.digest != self.body_digest || c.preview.closure_digest != self.closure_digest {
+            return Err(EngineError::invalid());
+        }
+        self.inner.publish_challenge(c)?;
+        *self.challenge.lock().unwrap() = Some(c.clone());
+        Ok(())
+    }
+    fn verify_approval(
+        &self,
+        ctx: &currents_protocol::RequestContext,
+        envelope: &currents_protocol::AuthorizationEnvelope,
+        c: &service_api::ApprovalChallenge,
+        now: OffsetDateTime,
+    ) -> Result<(), EngineError> {
+        self.inner.verify_approval(ctx, envelope, c, now)?;
+        if *self.approval.lock().unwrap()
+            != Some((
+                c.nonce,
+                self.body_digest,
+                self.closure_digest,
+                self.candidate_digest,
+            ))
+        {
+            return Err(EngineError {
+                class: ErrorClass::Unauthorized,
+                affected_scope: vec![],
+                next_action: SafeNextAction::Authenticate,
+            });
+        }
+        Ok(())
+    }
+    fn authorize_result(
+        &self,
+        ctx: &currents_protocol::RequestContext,
+        access: service_api::ResultAccess<'_>,
+    ) -> Result<(), EngineError> {
+        self.inner.authorize_result(ctx, access)
+    }
+    fn authorize_query(
+        &self,
+        ctx: &currents_protocol::RequestContext,
+        q: &currents_protocol::QueryV1,
+    ) -> Result<(), EngineError> {
+        self.inner.authorize_query(ctx, q)
+    }
+}
+
 #[tokio::test]
 async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner_decision() {
     let dir = tempfile::tempdir().unwrap();
@@ -667,21 +771,71 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
         reason: correction.reason,
     });
     f.service.close().await.unwrap();
+    let candidate = service_api::SyntheticCorrectionCandidate {
+        dataset: body.dataset_id,
+        command: body.command_id,
+        expected_basis: before.accounting.as_ref().unwrap().prefix.clone(),
+        revision: fixture::id(58_010),
+        active_recognition: original,
+        replacement: match &body.operation {
+            OperationV1::CorrectRecognition(request) => request.replacement[0].clone(),
+            _ => panic!("legacy carrier"),
+        },
+        reason: match &body.operation {
+            OperationV1::CorrectRecognition(request) => request.reason.clone(),
+            _ => panic!("legacy carrier"),
+        },
+        governing_policy: governing_policy.clone(),
+    };
+    let store = open(&path).await;
+    let typed = service_api::synthetic_preview_correction_candidate(store.writer(), &candidate)
+        .await
+        .unwrap();
+    let mut alternate = candidate.clone();
+    alternate.revision = fixture::id(58_013);
+    let substituted =
+        service_api::synthetic_preview_correction_candidate(store.writer(), &alternate)
+            .await
+            .unwrap();
+    assert_ne!(substituted.candidate_digest, typed.candidate_digest);
+    store.close().await.unwrap();
+    use service_api::CommandPlanner as _;
+    use sha2::{Digest as _, Sha256};
+    let planner = Arc::new(ExactSyntheticCorrectionPlanner {
+        state: before.clone(),
+        command: body.command_id,
+        revision: candidate.revision,
+        decision: fixture::id(58_011),
+        manifest: fixture::id(58_012),
+        policy: typed.policy.clone(),
+    });
+    let plan = planner.prepare(&body, &typed.basis).unwrap();
+    assert_eq!(plan.decision_plan, typed.plan);
+    assert_eq!(plan.policy, typed.policy);
+    let closure = currents_protocol::canonical_bytes_with_limits(
+        &plan,
+        currents_protocol::CanonicalLimits {
+            max_bytes: 65 * 1_048_576,
+            max_collection_items: 65_536,
+        },
+    )
+    .unwrap();
+    let host = Arc::new(CandidateApprovalHost {
+        inner: f.host.clone(),
+        body_digest: currents_protocol::command_digest(&body).unwrap(),
+        closure_digest: Digest(Sha256::digest(closure).into()),
+        candidate_digest: typed.candidate_digest,
+        challenge: std::sync::Mutex::new(None),
+        approval: std::sync::Mutex::new(None),
+    });
     f.host.reconnect();
     f.service = service_api::Service::new(
         open(&path).await,
         body.dataset_id,
         f.ctx().instance_id,
         service_api::ServiceProfile::Synthetic,
-        f.host.clone(),
-        Arc::new(ExactSyntheticCorrectionPlanner {
-            state: before.clone(),
-            command: body.command_id,
-            revision: fixture::id(58_010),
-            decision: fixture::id(58_011),
-            manifest: fixture::id(58_012),
-            policy: governing_policy,
-        }),
+        host.clone(),
+        planner,
         f.clock.clone(),
     )
     .await
@@ -710,12 +864,34 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
             .class,
         ErrorClass::Unauthorized
     );
+    let token_without_typed_binding = f.approve(&body);
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), body.clone(), token_without_typed_binding)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::Unauthorized,
+        "legacy nonce and closure are not evidence that the exact typed candidate digest was approved"
+    );
+    assert_eq!(f.prefix().await, typed.basis);
+    let substituted_proof = host.proof(&f, substituted.candidate_digest);
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), body.clone(), substituted_proof)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::Unauthorized,
+        "valid digest for a different immutable revision cannot authorize the original"
+    );
+    assert_eq!(f.prefix().await, typed.basis);
     let mut edited = body.clone();
     let OperationV1::CorrectRecognition(request) = &mut edited.operation else {
         panic!()
     };
     request.reason.push_str(" altered after approval");
-    let token = f.approve(&body);
+    let token = host.proof(&f, typed.candidate_digest);
     assert!(f.service.submit(f.ctx(), edited, token).await.is_err());
     let mut stale = body.clone();
     stale.expected_head = CommitSeq(before.through.0 - 1);
@@ -727,7 +903,11 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
 
     let result = f
         .service
-        .submit(f.ctx(), body.clone(), f.approve(&body))
+        .submit(
+            f.ctx(),
+            body.clone(),
+            host.proof(&f, typed.candidate_digest),
+        )
         .await
         .expect("host-approved synthetic correction");
     assert_eq!(result.state, CommandState::Committed);
@@ -751,6 +931,12 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
     assert_eq!(decision.command_id, body.command_id);
     assert_eq!(decision.command_digest, preview.digest);
     assert_eq!(decision.adopted_result, preview.effects.records);
+    assert_eq!(decision.policy, typed.policy);
+    assert_eq!(
+        commit.records[..commit.records.len() - 1],
+        typed.plan.records
+    );
+
     store
         .history()
         .verify_checkpoint(before.through, before.domain_digest)
