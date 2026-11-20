@@ -137,7 +137,7 @@ class SupplementalTests(unittest.TestCase):
         self.assertIn("python3 tools/native-canonical.py", runs)
         self.assertNotIn("python3 tools/native-supplemental.py", runs)
         self.assertEqual(checkout["uses"], "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1")
-        self.assertEqual(upload["uses"], "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02")
+        self.assertEqual(upload["uses"], "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9")
         self.assertEqual(upload["if"], "${{ always() }}")
         self.assertNotIn("secrets", json.dumps(workflow))
 
