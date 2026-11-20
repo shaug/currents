@@ -17,3 +17,27 @@ pub use replay::ReplayCoordinator;
 
 mod import;
 pub use import::ImportEvidence;
+
+mod correction_preflight;
+#[cfg(feature = "synthetic-test-fixtures")]
+#[doc(hidden)]
+pub use correction_preflight::synthetic_commit_verified_correction;
+pub use correction_preflight::verify_correction_preflight;
+
+#[cfg(feature = "synthetic-test-fixtures")]
+mod segment_preflight;
+#[cfg(feature = "synthetic-test-fixtures")]
+#[doc(hidden)]
+pub use segment_preflight::{synthetic_commit_verified_segment, synthetic_preview_owned_segment};
+
+#[cfg(feature = "synthetic-test-fixtures")]
+mod verified_prefix;
+
+#[cfg(feature = "synthetic-test-fixtures")]
+mod correction_candidate;
+#[cfg(feature = "synthetic-test-fixtures")]
+#[doc(hidden)]
+pub use correction_candidate::{
+    SyntheticCorrectionCandidate, SyntheticCorrectionCandidatePreview,
+    synthetic_preview_correction_candidate,
+};

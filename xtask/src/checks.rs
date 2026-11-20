@@ -389,6 +389,104 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
         json!({"compiler":version.trim(),"commands":evidence,"driver":driver,"host":env::consts::OS,"arch":env::consts::ARCH}),
     )
 }
+fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
+    let mut evidence = Vec::new();
+    let suites: [(&str, &str, &[&str]); 4] = [
+        (
+            "currents-protocol",
+            "cur_016_contracts",
+            &[
+                "complete_correction_commits_caller_ids_policy_and_exact_basis_without_changing_legacy",
+                "complete_correction_has_no_implicit_revision_basis_or_policy",
+                "complete_segment_commits_authority_basis_drafts_and_reemissions",
+            ],
+        ),
+        (
+            "currents-domain",
+            "cur_016",
+            &[
+                "cur_016_original_segment_is_backed_by_frozen_c05_authority",
+                "cur_016_1_cross_account_backfill",
+                "cur_016_standalone_segment_family_replays_without_overwriting_old_opening",
+                "cur_016_1_cross_account_backfill_replays_the_entire_transfer_family",
+                "cur_016_4_actual_planner_emits_a_closed_1200_operation_replacement",
+                "cur_016_4_actual_planner_rejects_20001_native_operations_without_a_plan",
+            ],
+        ),
+        (
+            "currents-service",
+            "cur_016",
+            &[
+                "cur_016_2_replayed_retirement_blocks_correction",
+                "cur_016_durable_correction_rebuilds_immutable_lineage",
+                "cur_016_standalone_segment_commit_reopens_and_rebuilds_native_authority",
+                "cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family",
+                "cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of",
+                "cur_016_4_real_1200_operation_replacement_is_atomic_at_c04_midpoint",
+                "cur_016_forecast_anchor_rejects_other_live_counterposting_through_cutoff",
+            ],
+        ),
+        (
+            "currents-service",
+            "cur_016_correction_chain",
+            &[
+                "cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle",
+                "cur_016_2_correction_preserves_note_and_invalidates_only_matching_predicate",
+                "cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner_decision",
+                "cur_016_2_typed_candidate_pins_authenticated_policy_and_revision",
+                "cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal",
+            ],
+        ),
+    ];
+    for (package, target, required) in suites {
+        let list = cargo(&[
+            "test", "--locked", "-p", package, "--test", target, "--", "--list",
+        ])?;
+        let actual: BTreeSet<_> = list
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .collect();
+        if actual != required.iter().copied().collect() {
+            return Err(format!(
+                "CUR016 assertion inventory mismatch in {package}/{target}: {list}"
+            ));
+        }
+        let mut suite = json!({"package":package,"target":target,"assertions":required});
+        if !inventory_only {
+            let output = cargo(&["test", "--locked", "-p", package, "--test", target])?;
+            if !output.contains(&format!("{} passed; 0 failed; 0 ignored;", required.len()))
+                || required
+                    .iter()
+                    .any(|test| !output.contains(&format!("test {test} ... ok")))
+            {
+                return Err(format!(
+                    "CUR016 incomplete qualification in {package}/{target}: {output}"
+                ));
+            }
+            suite["output_sha256"] = json!(sha(output.as_bytes()));
+        }
+        evidence.push(suite);
+    }
+    let mut fixture_hashes = serde_json::Map::new();
+    for path in [
+        "fixtures/contracts/v1/correction-complete.json",
+        "fixtures/contracts/v1/segment-complete.json",
+        "fixtures/journeys/s4/date-floor.json",
+        "fixtures/journeys/s5/refund.csv",
+    ] {
+        let bytes = std::fs::read(root().join(path))
+            .map_err(|error| format!("CUR016 fixture {path}: {error}"))?;
+        fixture_hashes.insert(path.into(), json!(sha(&bytes)));
+    }
+    Ok(json!({
+        "ticket":"CUR-016",
+        "suites":evidence,
+        "fixture_sha256": fixture_hashes,
+        "mode": if inventory_only {"inventory only; no tests executed"} else {"synthetic execution"},
+        "scope":"Bounded synthetic correction and segment evidence only; not production dispatch, general stable remapping or predicate invalidation, or full S4/S5 release qualification."
+    }))
+}
+
 fn ticket(name: &str) -> Result<Value> {
     if name == "CUR-044" {
         return crate::financekit_gate::ticket();
@@ -1037,6 +1135,9 @@ pub fn run(args: Vec<String>) -> Result<()> {
     }
     let result = (|| {
         match (command,gate) {
+        ("ticket","CUR-016") if args.len() == 2 => ticket_cur_016(false),
+        ("ticket","CUR-016") if args.get(2).is_some_and(|arg| arg == "--inventory-only") && args.len() == 3 => ticket_cur_016(true),
+        ("ticket","CUR-016") => Err("CUR-016 accepts only optional --inventory-only".into()),
         ("ticket",name)=>ticket(name),
         ("check","quality")=>quality(), ("check","quality-ci")=>quality_ci(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
         ("check","docs")=>crate::quality::docs(None),

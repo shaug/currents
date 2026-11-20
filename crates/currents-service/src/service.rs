@@ -248,6 +248,13 @@ impl Service {
         if body.expected_head != prefix.through {
             return Err(error(ErrorClass::StaleBasis));
         }
+        #[cfg(not(feature = "synthetic-test-fixtures"))]
+        if matches!(
+            body.operation,
+            OperationV1::ReplaceAccountingSegmentComplete(_)
+        ) {
+            return Err(EngineError::version());
+        }
         let plan = self.inner.planner.prepare(&body, &prefix)?;
         plan.validate_scope()?;
         match (&body.operation, &plan.import) {
@@ -503,6 +510,19 @@ impl Service {
         rx.await
             .unwrap_or_else(|_| Ok(status(id, digest, CommandState::ResultUnknown)))
     }
+    fn recheck_job_authority(&self, job: &Job) -> Result<OffsetDateTime, EngineError> {
+        let now = self.authenticate(&job.ctx, Some(&job.auth.capability))?;
+        self.inner.host.authorize_command(&job.ctx, &job.body)?;
+        fresh(&job.preview.challenge, now)?;
+        self.inner
+            .host
+            .authorize_effects(&job.ctx, &job.preview.challenge.preview)?;
+        self.inner
+            .host
+            .verify_approval(&job.ctx, &job.auth, &job.preview.challenge, now)?;
+        Ok(now)
+    }
+
     async fn execute(&self, job: Job) -> Result<CommandResultV1, EngineError> {
         let _writer = self.inner.serial.lock().await;
         let digest = job.preview.challenge.preview.digest;
@@ -516,19 +536,35 @@ impl Service {
             }
             entry.phase = Phase::Running;
         }
-        let now = self.authenticate(&job.ctx, Some(&job.auth.capability))?;
-        self.inner.host.authorize_command(&job.ctx, &job.body)?;
-        fresh(&job.preview.challenge, now)?;
-        self.inner
-            .host
-            .authorize_effects(&job.ctx, &job.preview.challenge.preview)?;
-        self.inner
-            .host
-            .verify_approval(&job.ctx, &job.auth, &job.preview.challenge, now)?;
+        let now = self.recheck_job_authority(&job)?;
         let prefix = self.prefix()?;
         if job.body.expected_head != prefix.through {
             return Err(error(ErrorClass::StaleBasis));
         }
+        let store = self.inner.store.read().await;
+        let writer = store
+            .as_ref()
+            .ok_or_else(|| error(ErrorClass::Locked))?
+            .writer();
+        #[cfg(feature = "synthetic-test-fixtures")]
+        let now = if matches!(
+            job.body.operation,
+            OperationV1::ReplaceAccountingSegmentComplete(_)
+        ) {
+            crate::segment_preflight::verify_approved_owned_segment(
+                writer,
+                &job.body,
+                digest,
+                &job.preview.plan,
+            )
+            .await?;
+            // Replay/refreeze may outlast the starting capability or
+            // approval. Recheck immediately before the atomic handoff,
+            // without re-issuing or re-consuming the original challenge.
+            self.recheck_job_authority(&job)?
+        } else {
+            now
+        };
         let plan = job.preview.plan;
         let result = CommandResultV1 {
             command_id: job.body.command_id,
@@ -569,11 +605,7 @@ impl Service {
             corrections: vec![],
             supersedes: vec![],
         };
-        let store = self.inner.store.read().await;
-        let outcome = store
-            .as_ref()
-            .ok_or_else(|| error(ErrorClass::Locked))?
-            .writer()
+        let outcome = writer
             .commit(PreparedCommit {
                 evidence: plan
                     .import

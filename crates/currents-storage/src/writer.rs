@@ -41,6 +41,77 @@ impl Writer {
     pub(crate) fn new(accounting: AtomicStore, pool: sqlx::SqlitePool) -> Self {
         Self { accounting, pool }
     }
+    /// Read-only retained history from this exact authority writer.
+    pub fn retained_history(&self) -> crate::HistoryReader {
+        crate::HistoryReader::new(self.pool.clone())
+    }
+
+    /// C05 pre-write binding for a C08 plan re-admitted by the service.
+    /// Freshly freeze trusted intent; a well-formed but different batch cannot
+    /// substitute another native interpretation of the same accepted prefix.
+    pub fn verify_correction_freeze(
+        prior: &DomainState,
+        plan: &DecisionPlan,
+        supplied: &AccountingBatchV1,
+    ) -> Result<(), EngineError> {
+        if !matches!(&plan.accounting, AccountingIntent::Correction(_))
+            || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(())
+    }
+
+    /// C05 binding for a segment owner already re-admitted from exact prior authority.
+    pub fn verify_segment_freeze(
+        prior: &DomainState,
+        plan: &DecisionPlan,
+        supplied: &AccountingBatchV1,
+    ) -> Result<(), EngineError> {
+        let AccountingIntent::Corrections(corrections) = &plan.accounting else {
+            return Err(EngineError::invalid());
+        };
+        let [root, counterparts @ ..] = corrections.as_slice() else {
+            return Err(EngineError::invalid());
+        };
+        let [opening, activities @ ..] = root.replacement.as_slice() else {
+            return Err(EngineError::invalid());
+        };
+        let owner = plan.records.last().and_then(|record| match record {
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Some(owner),
+            _ => None,
+        });
+        if let Some(owner) = owner {
+            if owner.counterparts.is_empty() || owner.counterparts.len() != counterparts.len() {
+                return Err(EngineError::invalid());
+            }
+            for (correction, pair) in counterparts.iter().zip(&owner.counterparts) {
+                let [replacement] = correction.replacement.as_slice() else {
+                    return Err(EngineError::invalid());
+                };
+                if !correction.remapping.is_empty()
+                    || correction.active_recognition != pair.original
+                    || replacement.id != pair.replacement
+                {
+                    return Err(EngineError::invalid());
+                }
+            }
+        } else if !counterparts.is_empty() {
+            return Err(EngineError::invalid());
+        }
+        if !root.remapping.is_empty()
+            || opening.kind != RecognitionKind::Opening
+            || activities.is_empty()
+            || activities
+                .iter()
+                .any(|r| r.kind != RecognitionKind::Activity)
+            || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(())
+    }
+
     pub async fn commit(&self, prepared: PreparedCommit) -> Result<CommitReceipt, CommitFailure> {
         if prepared.decision_plan.invalidations != prepared.result.effects.invalidations
             || prepared.frozen_batch.preconditions.through != prepared.prior_head

@@ -10,6 +10,14 @@ pub(crate) fn validate_transition(
     next: &DomainState,
     commit: &DomainCommitV1,
 ) -> Result<(), EngineError> {
+    if let Some(segment) = commit.records.iter().find_map(|record| match record {
+        AuthoritativeRecordV1::AccountingSegment(segment) if segment.prior_segment.is_some() => {
+            Some(segment)
+        }
+        _ => None,
+    }) {
+        return validate_segment_successor(prior, next, commit, segment);
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {
@@ -33,6 +41,42 @@ pub(crate) fn validate_transition(
                         origin: revision.origin.clone(),
                     },
                 )?)
+            }
+            AuthoritativeRecordV1::RecognitionCorrectionRevision(revision) => {
+                let Some(AuthoritativeRecordV1::Recognition(replacement)) = next
+                    .records
+                    .get(&RecordId(revision.replacement_recognition.0))
+                else {
+                    return Err(EngineError::invalid());
+                };
+                // The bounded slice is one owner and replacement, in a fixed order.
+                let [
+                    owner,
+                    adopted,
+                    AuthoritativeRecordV1::FrozenAccountingManifest(_),
+                ] = commit.records.as_slice()
+                else {
+                    return Err(EngineError::invalid());
+                };
+                if owner != record
+                    || adopted != &AuthoritativeRecordV1::Recognition(replacement.clone())
+                {
+                    return Err(EngineError::invalid());
+                }
+                let plan = crate::correction::CorrectionEngine::correct_durable(
+                    prior,
+                    revision.id,
+                    &CorrectionV1 {
+                        active_recognition: revision.prior_recognition,
+                        replacement: vec![replacement.clone()],
+                        remapping: vec![],
+                        reason: revision.reason.clone(),
+                    },
+                )?;
+                if plan.invalidations != commit.command_result.effects.invalidations {
+                    return Err(EngineError::invalid());
+                }
+                Some(plan)
             }
             AuthoritativeRecordV1::ActivityAdoption(adoption) => {
                 Some(RecognitionEngine::adopt(prior, &restore(next, adoption)?)?)
@@ -136,11 +180,13 @@ pub(crate) fn validate_transition(
         let requires_owner = match record {
             AuthoritativeRecordV1::AccountCatalogRevision(_)
             | AuthoritativeRecordV1::ActivityAdoption(_)
+            | AuthoritativeRecordV1::RecognitionCorrectionRevision(_)
             | AuthoritativeRecordV1::RelationshipCapture(_)
             | AuthoritativeRecordV1::RelationshipParseRevision(_)
             | AuthoritativeRecordV1::AssociationRevision(_)
             | AuthoritativeRecordV1::PendingExpiry(_)
-            | AuthoritativeRecordV1::AccountingSegment(_) => true,
+            | AuthoritativeRecordV1::AccountingSegment(_)
+            | AuthoritativeRecordV1::SegmentReplacementAuthority(_) => true,
             AuthoritativeRecordV1::FinancialLeg(l) => !l.allocations.is_empty(),
             AuthoritativeRecordV1::Recognition(r) => {
                 !r.evidence_allocations.is_empty() || !r.leg_ids.is_empty()
@@ -150,6 +196,112 @@ pub(crate) fn validate_transition(
         if requires_owner && !emitted.contains(record) {
             return Err(EngineError::version());
         }
+    }
+    Ok(())
+}
+
+/// Re-admit the complete standalone family claim against the old prefix.
+/// The draft is not accepted via the normal initial-adoption path.
+fn validate_segment_successor(
+    prior: &DomainState,
+    next: &DomainState,
+    commit: &DomainCommitV1,
+    successor: &AccountingSegmentV1,
+) -> Result<(), EngineError> {
+    use crate::segments::{
+        SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1, SegmentReemissionV1,
+        segment_family,
+    };
+    let invalid = EngineError::invalid;
+    let (root, None) = segment_family(prior, successor.component)?.ok_or_else(invalid)? else {
+        return Err(invalid());
+    };
+    if successor.included_activity.is_empty() {
+        return Err(invalid());
+    }
+    if successor.prior_segment != Some(root.id) {
+        return Err(EngineError::version());
+    }
+    let (records, manifest) = commit
+        .records
+        .split_last()
+        .ok_or_else(invalid)
+        .map(|(last, rest)| (rest, last))?;
+    let AuthoritativeRecordV1::FrozenAccountingManifest(manifest) = manifest else {
+        return Err(invalid());
+    };
+    let prefix = &prior.accounting.as_ref().ok_or_else(invalid)?.prefix;
+    if &manifest.preconditions != prefix {
+        return Err(invalid());
+    }
+    let restore_exact = |id| {
+        let mut candidates = records.iter().filter_map(|record| match record {
+            AuthoritativeRecordV1::ActivityAdoption(a) if a.recognition == Some(id) => Some(a),
+            _ => None,
+        });
+        let adoption = candidates.next().ok_or_else(invalid)?;
+        if candidates.next().is_some() {
+            return Err(invalid());
+        }
+        restore(next, adoption)
+    };
+    let mut owners = records.iter().filter_map(|record| match record {
+        AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Some(owner),
+        _ => None,
+    });
+    let owner = owners.next();
+    if owners.next().is_some() || owner.is_none() && successor.replacement_closure != [root.opening]
+    {
+        return Err(invalid());
+    }
+    let mut reemissions = Vec::new();
+    if let Some(owner) = owner {
+        if owner.segment != successor.id || owner.prior_segment != root.id {
+            return Err(invalid());
+        }
+        for pair in &owner.counterparts {
+            let Some(AuthoritativeRecordV1::Recognition(replacement)) =
+                next.records.get(&RecordId(pair.replacement.0))
+            else {
+                return Err(invalid());
+            };
+            reemissions.push(SegmentReemissionV1 {
+                original: pair.original,
+                replacement: pair.replacement,
+                posting_ids: replacement.postings.iter().map(|p| p.id).collect(),
+            });
+        }
+    }
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component: successor.component,
+            prior_segment: successor.prior_segment,
+            opening: successor.opening,
+            included_activity: successor.included_activity.clone(),
+            replacement_closure: successor.replacement_closure.clone(),
+            approved_accounts: successor.approved_accounts.clone(),
+            residual_disposition: successor.residual_disposition.clone(),
+        },
+        opening: restore_exact(successor.opening)?,
+        backfill: successor
+            .included_activity
+            .iter()
+            .copied()
+            .map(restore_exact)
+            .collect::<Result<Vec<_>, _>>()?,
+        reemissions,
+    };
+    let admitted = if let Some(owner) = owner {
+        SegmentEngine::replace_owned(prior, &proposal, owner.id)?
+    } else {
+        SegmentEngine::replace(prior, &proposal)?
+    };
+    let SegmentPreviewV1::Ready(plan) = admitted else {
+        return Err(invalid());
+    };
+    if plan.records != records || plan.invalidations != commit.command_result.effects.invalidations
+    {
+        return Err(invalid());
     }
     Ok(())
 }

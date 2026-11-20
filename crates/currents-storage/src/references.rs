@@ -48,7 +48,9 @@ const RECORDS: &[&str] = &[
     "RelationshipParseRevision",
     "Decision",
     "Recognition",
+    "RecognitionCorrectionRevision",
     "AccountingSegment",
+    "SegmentReplacementAuthority",
     "ReconciliationClaim",
     "Organization",
     "Rule",
@@ -594,6 +596,47 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             );
             for posting in v["postings"].as_array().ok_or_else(EngineError::invalid)? {
                 m.define("Posting", &posting["id"], 0, false);
+            }
+        }
+        AuthoritativeRecordV1::RecognitionCorrectionRevision(r) => {
+            if r.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if r.prior_recognition == r.replacement_recognition || r.reason.trim().is_empty() {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["Recognition"], &v["prior_recognition"], None);
+            m.reference(&["Recognition"], &v["replacement_recognition"], None);
+            m.define(
+                "RecognitionCorrectionSuccessor",
+                &v["prior_recognition"],
+                0,
+                false,
+            );
+        }
+        AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => {
+            if owner.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if owner.segment == owner.prior_segment
+                || owner.counterparts.is_empty()
+                || owner.counterparts.len() > 1024
+                || owner.affected_accounts.is_empty()
+                || owner.affected_accounts.len() > 4096
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["AccountingSegment"], &v["segment"], None);
+            m.reference(&["AccountingSegment"], &v["prior_segment"], None);
+            m.many(&["Account"], &v["affected_accounts"]);
+            m.define("SegmentReplacementOwner", &v["segment"], 0, false);
+            for pair in v["counterparts"]
+                .as_array()
+                .ok_or_else(EngineError::invalid)?
+            {
+                m.reference(&["Recognition"], &pair["original"], None);
+                m.reference(&["Recognition"], &pair["replacement"], None);
+                m.define("SegmentCounterpartSuccessor", &pair["original"], 0, false);
             }
         }
         AuthoritativeRecordV1::AccountingSegment(_) => {

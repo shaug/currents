@@ -5,6 +5,32 @@ use currents_types::*;
 use std::collections::BTreeSet;
 
 impl HistoryReader {
+    /// Validate frozen semantics against an authenticated commit without
+    /// staging content, opening a destination, or applying native writes.
+    pub async fn verify_retained_accounting(
+        &self,
+        state: &DomainState,
+        commit: &DomainCommitV1,
+    ) -> Result<AccountingIndexV1, EngineError> {
+        let mut manifests = commit.records.iter().filter_map(|record| match record {
+            AuthoritativeRecordV1::FrozenAccountingManifest(m) => Some(m),
+            _ => None,
+        });
+        let (instructions, batch) = if let Some(manifest) = manifests.next() {
+            if manifests.next().is_some() {
+                return Err(crate::schema::failure());
+            }
+            let instructions = self
+                .content_bytes(commit.seq, manifest.instructions.digest)
+                .await?;
+            let batch = AccountingAdapter::from_manifest(manifest, &instructions)?;
+            (instructions, Some(batch))
+        } else {
+            (Vec::new(), None)
+        };
+        verify_accounting_index(state, commit, &instructions, batch.as_ref())
+    }
+
     /// Replay exactly one already accepted commit, including every retained blob.
     /// Returns the accounting index only after the destination commit is identical.
     pub async fn rebuild_commit(
@@ -36,15 +62,7 @@ impl HistoryReader {
             }
         }
         // Independently validate frozen semantics/ownership before writing any authority.
-        let mut next = state.clone();
-        AccountingAdapter::advance_index(&mut next, commit, &instructions)?;
-        AccountingAdapter::verify_correspondence(
-            commit,
-            batch.as_ref(),
-            next.accounting
-                .as_ref()
-                .ok_or_else(crate::schema::failure)?,
-        )?;
+        let next = verify_accounting_index(state, commit, &instructions, batch.as_ref())?;
         let input = HistoryAppend {
             prior_head: state.through,
             records: commit.records.clone(),
@@ -69,6 +87,19 @@ impl HistoryReader {
         if written != *commit {
             return Err(crate::schema::failure());
         }
-        next.accounting.ok_or_else(crate::schema::failure)
+        Ok(next)
     }
+}
+
+fn verify_accounting_index(
+    state: &DomainState,
+    commit: &DomainCommitV1,
+    instructions: &[u8],
+    batch: Option<&AccountingBatchV1>,
+) -> Result<AccountingIndexV1, EngineError> {
+    let mut next = state.clone();
+    AccountingAdapter::advance_index(&mut next, commit, instructions)?;
+    let index = next.accounting.ok_or_else(crate::schema::failure)?;
+    AccountingAdapter::verify_correspondence(commit, batch, &index)?;
+    Ok(index)
 }

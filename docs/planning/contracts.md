@@ -153,6 +153,139 @@ Historical `SetAccountCatalog` and `Recognize` tags and record bytes remain unch
 
 Financial terms separately identify recognition and lineage, postings, bookkeeping date and exact DateConversionPolicy. Governing DatasetPolicy and date conversion policy are distinct typed roles, never a latest-policy default. Reconstructed DomainState retains DatasetPolicy by exact (id, version), atomically with its processed prefix; date policies use C05's verified exact-version index. Later policy records do not reinterpret earlier adopted meaning. Unexplained movement requires an explicitly named unresolved-equity control account; it does not imply income or an absolute opening balance. Supported initial opening terms contain exact component, amount, evidence, cutoff and inclusion map. This initial-anchor path supports civil-date boundaries: every opening posting effective date must equal the cutoff, and subsequent postings to the anchored account must be strictly after it independently of leg dates. Instant-valued posting dates needing conversion are rejected for these boundary checks rather than guessed; unrelated unanchored C05 date-policy conversion is unchanged. Replacement/correction and general association inference remain later owners' contracts. All new records require typed persisted reference closure and exact-prefix replay validation; a merely deserializable or unsupported version is not healthy history.
 
+### CUR-016 bounded correction checkpoint
+
+`CorrectionEngine::correct` previews an identity-only, one-for-one replacement against a validated prefix; it is not a write route. The private durable test path additionally emits a version-1 `RecognitionCorrectionRevisionV1` naming a previously adopted standalone recognition and its fresh replacement in the same commit. It declares `UnchangedStableLegs`; the old adoption, recognition, historical dates, amounts, postings and ownership stay unchanged. Replay re-admits exactly one revision and one replacement against the prior prefix, and C05 binds the whole reversal and replacement to the frozen native closure. Existing records and command tags are unchanged. A reader that does not recognize the new record cannot silently consume it.
+
+The standalone identity-only correction chain may advance only its live terminal. Each append keeps the original activity adoption as the unique historical owner, retires the preceding native recognition, and preserves the entire prior history with exactly one live terminal. Reused posting identities, forks, cycles, orphan authority and economic changes are invalid. Association-bound and dependent recognitions still require an explicit remap path; this checkpoint does not silently remap them or expose service or wire dispatch.
+
+The standalone correction can traverse the real synthetic Service approval
+lifecycle with one explicitly configured command, revision, decision, manifest
+and policy. The test binds the displayed account closure and digest, rejects
+missing approval, an altered request after approval, or a stale preview basis,
+and reopens the encrypted owner decision alongside the original adoption and
+replacement. This is not a
+public dispatcher. The legacy `CorrectRecognition` request cannot supply the
+immutable revision ID, and `ReplaceAccountingSegment` lacks the actual
+opening and backfill drafts, exact re-emission identities and owner witness.
+Do not silently fill those omissions or make a scope-only request writable.
+
+The dormant synthetic complete-candidate helper binds the caller's explicit
+revision ID, exact original adoption policy, replacement, reason, dataset,
+command and full audited prior accounting prefix with canonical bytes. It
+reads the authenticated prefix from the same Writer and performs no write.
+Its candidate digest is not a C03 closure digest, approval token, or new
+operation. The synthetic helper refuses stale preview basis and a retained
+but non-adopted policy version rather than using a latest-policy default.
+
+The local v1 codec includes dormant `CorrectRecognitionComplete` with
+`CompleteCorrectionRequestV1`: schema version 1, exact accounting basis,
+caller revision ID, active recognition, one replacement, reason and the
+exact governing policy. The outer command and all of these fields enter
+the normal canonical C03 command digest. The legacy tag and golden bytes
+remain unchanged; older codecs reject the unfamiliar tag. Only DTO
+shape is decoded: before any future route can be admitted, the outer
+expected head must agree with the candidate basis and both must agree
+with the authenticated C04/C05 prefix. The default Service planner does
+not accept the new operation, and no client support is advertised.
+
+One encrypted synthetic lifecycle test injects a test-only planner. Both
+decoded complete requests are independently checked against the same
+Writer; the planner then checks the exact body, prefix, policy and plan
+before C05 freezing. Ordinary C03 approval binds the complete command
+digest and closure without a separate host sidecar. An approval for one
+valid revision cannot authorize another, and the exact approved body
+commits and replays the same immutable correction and governing policy.
+This test does not activate a shipped route.
+
+### CUR-016 additive owned segment preview
+
+The dormant C03 v1 codec recognizes `ReplaceAccountingSegmentComplete`
+with an explicit prior segment, authority ID, exact accounting prefix,
+approved account and recognition closure, opening and ordered backfill
+drafts, and exact counterpart re-emission and posting identities. The
+complete shape does not accept a residual disposition; planner input
+uses the supported absent disposition, not a balancing decision.
+The historical segment command, canonical bytes, and unsupported
+default planner remain unchanged. Readers that do not know the new
+tag reject it.
+
+The feature-gated synthetic preview maps the decoded command into
+the owned segment planner using the same Writer's authenticated and
+replayed prefix. Both expected head and full expected basis must
+equal that Writer's audited tip. Dataset ownership is verified against
+the retained Dataset, and the tip is checked again before returning.
+The path performs no writes and forwards the typed no-plan outcomes
+without granting approval, advertising support, or enabling dispatch.
+The normal command digest binds all complete request fields.
+
+The configured synthetic Service fixture now exercises ordinary C03
+challenge, approval, and submit for complete segment commands. At queued
+execution, the feature-gated service checks the approved canonical
+command digest, rederives the exact Ready C08 plan from the same Writer,
+and verifies the accounts, result records, invalidations, policy, and
+C05 freeze. Before the C04 handoff it samples the trusted clock again
+and rechecks capability, scope, and the original challenge; expiry or
+revocation after the early execution check does not authorize a write. A separately valid authority cannot
+replace the authority the command names. A different valid body needs
+its own approval; the accepted one retains one C03 owner decision and
+all eleven native operations in the single atomic commit. The default
+planner still rejects the operation, and the service also rejects it
+without the synthetic test feature. This is not a public dispatch path.
+
+### CUR-016 bounded qualification and remaining work
+
+`cargo xtask ticket CUR-016` verifies an exact 21-test synthetic inventory
+across protocol, domain, encrypted service and correction-chain suites, with no ignored
+tests. It includes the actual 1,200-native-operation replacement midpoint
+rollback, exact retry, reopen and fresh rebuild, and the separate typed
+20,001-operation no-plan witness. The latter is an envelope limit witness,
+not a claim that all proposed entries beyond the limit were semantically
+admissible or that any 20,000-entry candidate would fit storage limits. An
+owned monetary residual is surfaced only after validating the exact owner
+identity and retained counterpart family, and exposes no writable plan.
+The `--inventory-only` switch checks names and records fixture hashes; it
+runs no tests and is not behavioral qualification. A successful inspection
+exits zero but its qualification report stays `Blocked`.
+
+See the executable synthetic inputs and limits in
+[S4](../../fixtures/journeys/s4/README.md) and
+[S5](../../fixtures/journeys/s5/README.md). This gate proves neither full
+release journeys nor public command support. The bounded transfer witness
+retains historical associations and permits exactly mapped, unchanged
+current counterparts. It does not implement general stable organization
+remapping or the full predicate dependency index. One supported identity-only
+correction and reconciled segment replacement preserve same-leg display-only
+notes and derive current-state invalidation for bounded civil-date Activity
+claims from account/date overlap. A replaced segment checks the retired anchor
+and the new anchor and backfill; exact counterpart re-emissions alone do not
+change those predicates. A retained, unallocated, single-leg root note on a
+retired anchor is surfaced as a typed `NeedsOrganizationDisposition` preview
+with the exact prior accounting basis, prior segment, organization revision
+and stable leg. The bounded preview returns no eligible candidates when
+equivalence is unproved and exposes no writable decision plan. Allocated,
+split-target or ambiguous revision shapes still fail closed. A separately
+retained economic leg is not an equivalent target merely because a correction
+leaves native postings unchanged. A future leg-changing correction must own both old
+and new economic meanings, bind explicit reviewed organization disposition
+(including organization revision and exact targets), and prove active view
+and archival replay in the same correction. The legacy relationship remap
+payload is not such an organization decision.
+The original claim is archival; replay rederives exact invalidation effects.
+Claims with explicit evidence, decision, allocation, or exclusion dependencies
+are unsupported by this scope-only predicate.
+One structural forecast witness is classified only if authenticated replay
+matches its exact immediately prior same-dataset basis to a known active
+segment anchor at its cutoff, with no other active native posting touching the
+account through that effective date (including anonymous counterpostings).
+Retirement of that selected anchor, or an affected posting on the account at
+or before the cutoff, makes the witness stale without changing its retained
+artifact. Unknown or unsupported forecast
+shapes cannot participate in correction. Forecast output, matching, producer
+semantics, cost basis, and broader claim kinds remain unsupported. Those
+dependency families remain fail-closed; this gate does not by itself complete
+CUR-016 or unblock its hard successors.
+
 <a id="c09"></a>
 
 ## C09: Queries/reconciliation, owners CUR-017, CUR-018, CUR-020

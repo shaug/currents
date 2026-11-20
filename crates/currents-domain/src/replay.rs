@@ -73,7 +73,20 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::AssociationRevision(v) => Some(v.id),
                 AuthoritativeRecordV1::RelationshipCapture(v) => Some(v.id),
                 AuthoritativeRecordV1::RelationshipParseRevision(v) => Some(v.id),
+                AuthoritativeRecordV1::RecognitionCorrectionRevision(v) => {
+                    if v.schema_version != 1 {
+                        return Err(EngineError::version());
+                    }
+                    Some(v.id)
+                }
                 AuthoritativeRecordV1::AccountingSegment(v) => Some(v.id),
+                AuthoritativeRecordV1::SegmentReplacementAuthority(v) => {
+                    if v.schema_version != 1 {
+                        return Err(EngineError::version());
+                    }
+                    Some(v.id)
+                }
+
                 // These owners have not delivered semantic validation yet. Full
                 // structural closure alone must never certify financial trust.
                 AuthoritativeRecordV1::Association(_)
@@ -106,6 +119,47 @@ impl ReplayEngine {
         projection.dataset_policies =
             crate::policy_history::PolicyHistory::project(state, &commit.records)?;
         crate::recognition_replay::validate_transition(state, &projection, commit)?;
+        for record in &commit.records {
+            if let AuthoritativeRecordV1::ForecastRun(run) = record {
+                if let Some(anchor) = crate::forecast_basis::exact_anchor(state, &projection, run) {
+                    projection.verified_forecast_anchors.insert(run.id, anchor);
+                } else {
+                    projection.verified_forecast_anchors.remove(&run.id);
+                }
+            }
+        }
+        if commit.records.iter().any(|record| match record {
+            AuthoritativeRecordV1::RecognitionCorrectionRevision(_) => true,
+            AuthoritativeRecordV1::AccountingSegment(segment) => segment.prior_segment.is_some(),
+            _ => false,
+        }) {
+            // C08 validated the complete, re-derived effects above. A raw command
+            // result or another record family cannot mark claims invalid.
+            state.invalidated_claims.extend(
+                commit
+                    .command_result
+                    .effects
+                    .invalidations
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        matches!(
+                            state.records.get(id),
+                            Some(AuthoritativeRecordV1::ReconciliationClaim(_))
+                        )
+                    }),
+            );
+            state.stale_forecasts.extend(
+                commit
+                    .command_result
+                    .effects
+                    .invalidations
+                    .iter()
+                    .copied()
+                    .filter(|id| state.verified_forecast_anchors.contains_key(id)),
+            );
+        }
+        state.verified_forecast_anchors = projection.verified_forecast_anchors;
         state.records = projection.records;
         state.dataset_policies = projection.dataset_policies;
         state.through = commit.seq;
