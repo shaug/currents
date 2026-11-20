@@ -4,22 +4,31 @@ r=Path(__file__).resolve().parents[3]; f=r/'fixtures/contracts/v1'
 def save(n,v): (f/n).write_text(json.dumps(v,ensure_ascii=False,indent=2)+'\n')
 u='00000000-0000-0000-0000-000000000001'
 s=json.loads((r/'schemas/v1/contracts.json').read_text())['$defs']
-def example(s):
- if 'const' in s:return s['const']
- if 'enum' in s:return s['enum'][0]
- if 'oneOf' in s:return example(s['oneOf'][0])
- if 'anyOf' in s:return None if any(x.get('type')=='null' for x in s['anyOf']) else example(s['anyOf'][0])
- t=s.get('type');t=t[0] if isinstance(t,list) else t
- if t=='object':return {k:example(v) for k,v in s['properties'].items()}
+def example(schema, active_refs=frozenset()):
+ def child(value):return example(value,active_refs)
+ if '$ref' in schema:
+  ref=schema['$ref']; prefix='#/$defs/'
+  if len(schema)!=1 or not isinstance(ref,str) or not ref.startswith(prefix):
+   raise ValueError(f'unsupported schema reference: {ref!r}')
+  key=ref[len(prefix):]
+  if key not in s or key in active_refs:
+   raise ValueError(f'missing or cyclic schema reference: {ref}')
+  return example(s[key],active_refs|{key})
+ if 'const' in schema:return schema['const']
+ if 'enum' in schema:return schema['enum'][0]
+ if 'oneOf' in schema:return child(schema['oneOf'][0])
+ if 'anyOf' in schema:return None if any(x.get('type')=='null' for x in schema['anyOf']) else child(schema['anyOf'][0])
+ t=schema.get('type');t=t[0] if isinstance(t,list) else t
+ if t=='object':return {k:child(v) for k,v in schema['properties'].items()}
  if t=='array':return []
  if t=='boolean':return False
  if t=='integer':return 1
  if t=='null':return None
- if s.get('format')=='uuid':return u
- if s.get('format')=='date':return '2026-11-09'
- if s.get('format')=='date-time':return '2026-11-09T12:00:00Z'
- if 'pattern' in s:
-  return '0'*64 if '64' in s['pattern'] else '1'
+ if schema.get('format')=='uuid':return u
+ if schema.get('format')=='date':return '2026-11-09'
+ if schema.get('format')=='date-time':return '2026-11-09T12:00:00Z'
+ if 'pattern' in schema:
+  return '0'*64 if '64' in schema['pattern'] else '1'
  return 'synthetic'
 records=[example(x) for x in s['AuthoritativeRecordV1']['oneOf']]
 for record in records:
