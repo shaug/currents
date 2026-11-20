@@ -45,7 +45,10 @@ class WorkflowContract(unittest.TestCase):
             else:
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)
             self.assertEqual(self.jobs[gate]["steps"][-1], step)
-        tests, pr, other, policy = self.jobs["quality-policy"]["steps"][-4:]
+        quality_policy = self.jobs["quality-policy"]
+        self.assertEqual(quality_policy["timeout-minutes"],
+                         "${{ github.event_name == 'pull_request' && 40 || 75 }}")
+        tests, pr, other, policy = quality_policy["steps"][-4:]
         self.assertEqual(tests, {
             "name": "Test PR quality orchestration",
             "if": PR,
@@ -54,7 +57,8 @@ class WorkflowContract(unittest.TestCase):
         self.assertEqual(pr, {"name": "Run PR quality checks", "if": PR,
                               "run": "cargo xtask check quality-ci"})
         self.assertEqual(other, {"name": "Run full quality gate", "if": NON_PR,
-                                 "run": "cargo xtask check quality"})
+                                 "run": "cargo xtask check quality",
+                                 "env": {"CURRENTS_CI_CORE_PHASES": "1"}})
         self.assertEqual(policy, {"name": "Qualify policy counterexamples",
                                   "run": "cargo xtask ticket CUR-003"})
 
