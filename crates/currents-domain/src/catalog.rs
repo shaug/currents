@@ -58,6 +58,7 @@ fn origin(
                 }
                 ControlRoleV1::IncomeFlow => AccountClass::Income,
                 ControlRoleV1::ExpenseFlow => AccountClass::Expense,
+                ControlRoleV1::Clearing | ControlRoleV1::TaxPrepayment => AccountClass::Asset,
             };
             if class != expected || !known_time(&control.created_at) {
                 return Err(EngineError::invalid());

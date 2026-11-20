@@ -39,11 +39,86 @@ impl ReplayCoordinator {
         };
         let mut stream = source.stream_prefix(before.through).await?;
         while let Some(commit) = stream.next().await? {
+            // Verify descriptive typed rows against the actual authenticated raw
+            // object before any destination publication or projection activation.
+            for record in &commit.records {
+                if let AuthoritativeRecordV1::RelationshipParseRevision(p) = record {
+                    let receipt = commit
+                        .records
+                        .iter()
+                        .find_map(|r| match r {
+                            AuthoritativeRecordV1::ImportReceipt(r) if r.id == p.receipt_id => {
+                                Some(r)
+                            }
+                            _ => None,
+                        })
+                        .ok_or_else(EngineError::invalid)?;
+                    if p.profile.byte_count.0 > 1_048_576 {
+                        return Err(EngineError::invalid());
+                    }
+                    let mut content = source.stream_content(commit.seq, p.profile.digest).await?;
+                    let mut bytes = Vec::new();
+                    while let Some(chunk) = content.next().await? {
+                        if bytes.len().saturating_add(chunk.len()) > 1_048_576 {
+                            return Err(EngineError::invalid());
+                        }
+                        bytes.extend_from_slice(&chunk);
+                    }
+                    currents_domain::relationship_parse::ValidatedRelationshipParseV1::new(
+                        RelationshipParseBatchV1 {
+                            receipt: receipt.clone(),
+                            revision: p.clone(),
+                            contents: vec![EvidenceContentV1 {
+                                digest: p.profile.digest,
+                                bytes,
+                            }],
+                        },
+                    )?;
+                }
+                if let AuthoritativeRecordV1::RelationshipCapture(capture) = record {
+                    let receipt = commit
+                        .records
+                        .iter()
+                        .find_map(|r| match r {
+                            AuthoritativeRecordV1::ImportReceipt(r)
+                                if r.id == capture.receipt_id =>
+                            {
+                                Some(r)
+                            }
+                            _ => None,
+                        })
+                        .ok_or_else(EngineError::invalid)?;
+                    if capture.raw.byte_count.0 > 1_048_576 {
+                        return Err(EngineError::invalid());
+                    }
+                    let mut content = source
+                        .stream_content(commit.seq, capture.raw.digest)
+                        .await?;
+                    let mut bytes = Vec::new();
+                    while let Some(chunk) = content.next().await? {
+                        if bytes.len().saturating_add(chunk.len()) > 1_048_576 {
+                            return Err(EngineError::invalid());
+                        }
+                        bytes.extend_from_slice(&chunk);
+                    }
+                    currents_domain::relationship_evidence::ValidatedRelationshipCaptureV1::new(
+                        RelationshipCaptureBatchV1 {
+                            receipt: receipt.clone(),
+                            capture: capture.clone(),
+                            contents: vec![EvidenceContentV1 {
+                                digest: capture.raw.digest,
+                                bytes,
+                            }],
+                        },
+                    )?;
+                }
+            }
             let mut projection = state.clone();
             currents_domain::ReplayEngine::apply(&mut projection, &commit)?;
             let next = source.rebuild_commit(destination, &state, &commit).await?;
             projection.accounting = Some(next);
             currents_domain::recognition::RecognitionEngine::audit(&projection)?;
+            currents_domain::associations::IdentityEngine::audit(&projection)?;
             state = projection;
         }
         let mut after = destination.history().audit_report().await?;

@@ -4,7 +4,9 @@ choices!(ControlRoleV1 {
     UnresolvedEquity,
     OpeningEquity,
     IncomeFlow,
-    ExpenseFlow
+    ExpenseFlow,
+    Clearing,
+    TaxPrepayment
 });
 dto!(InternalAccountV1 {
     role: ControlRoleV1,
@@ -39,3 +41,12 @@ dto!(OpeningBasisV1 { segment_id:RecordId, component_id:RecordId, amount:Amount,
 dto!(RecognitionTermsV1 { recognition_id:RecognitionId, lineage:RecordId, postings:Vec<PostingV1>, bookkeeping_date:TemporalValue, date_policy:PolicyReferenceV1, unresolved_account:Option<AccountId>, opening:Option<OpeningBasisV1> });
 dto!(ActivityRequestV1 { schema_version:u32, adoption_id:RecordId, event:FinancialEventV1, legs:Vec<AdoptedLegV1>, status:ActivityStatusV1, prior_pending:Option<RecordId>, interpretation:InterpretationV1, governing_policy:PolicyReferenceV1, financial:Option<RecognitionTermsV1> });
 dto!(ActivityAdoptionV1 { id:RecordId, schema_version:u32, event_id:RecordId, legs:Vec<LegId>, facets:Vec<AdoptedFacetV1>, status:ActivityStatusV1, prior_pending:Option<RecordId>, recognition:Option<RecognitionId>, interpretation:InterpretationV1, governing_policy:PolicyReferenceV1, opening:Option<OpeningBasisV1>, unresolved_account:Option<AccountId> });
+
+// Explicit owner disposition. Historic pending evidence remains immutable.
+dto!(PendingExpiryV1 {
+    id: RecordId,
+    schema_version: u32,
+    pending_adoption: RecordId,
+    interpretation: InterpretationV1,
+    governing_policy: PolicyReferenceV1
+});

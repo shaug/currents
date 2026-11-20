@@ -39,11 +39,11 @@ class WorkflowContract(unittest.TestCase):
         self.assertEqual(core["runs-on"], "${{ matrix.os }}")
         for gate in ("core", "msrv", "docs", "privacy"):
             step = {"name": f"Run {gate} gate", "run": f"cargo xtask check {gate}"}
-            if gate == "core":
-                step["env"] = {
-                    "CURRENTS_MACOS_CORE_PHASES": "${{ matrix.os == 'macos-15' && '1' || '' }}",
-                }
-                self.assertEqual(core["timeout-minutes"], 40)
+            if gate in ("core", "msrv"):
+                step["env"] = {"CURRENTS_CI_CORE_PHASES": "1"}
+                self.assertEqual(self.jobs[gate]["timeout-minutes"], 65)
+            else:
+                self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)
             self.assertEqual(self.jobs[gate]["steps"][-1], step)
         tests, pr, other, policy = self.jobs["quality-policy"]["steps"][-4:]
         self.assertEqual(tests, {

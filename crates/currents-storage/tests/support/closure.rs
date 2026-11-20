@@ -240,3 +240,48 @@ pub fn advance(state: &mut DomainState, committed: &DomainCommitV1, batch: &Acco
     )
     .unwrap();
 }
+
+/// CUR015's approved public intent, not fixture-side concatenation of batches.
+pub fn association_corrections(
+    state: &DomainState,
+) -> (AccountingBatchV1, Vec<AuthoritativeRecordV1>) {
+    let mut corrections = Vec::new();
+    let mut records = Vec::new();
+    for position in 0..RECOGNITION_COUNT {
+        let replacement = recognition(position, true);
+        corrections.push(CorrectionV1 {
+            active_recognition: recognition(position, false).id,
+            replacement: vec![replacement.clone()],
+            remapping: vec![],
+            reason: "Synthetic explicit association remap".into(),
+        });
+        records.push(AuthoritativeRecordV1::Recognition(replacement));
+    }
+    let batch =
+        AccountingAdapter::freeze(&AccountingIntent::Corrections(corrections), state).unwrap();
+    (batch, records)
+}
+
+pub fn association_initial(state: &DomainState) -> (AccountingBatchV1, Vec<AuthoritativeRecordV1>) {
+    let recognitions: Vec<_> = (0..1200)
+        .map(|position| {
+            let mut r = recognition(position, false);
+            if position.is_multiple_of(2) {
+                for posting in &mut r.postings {
+                    posting.effective = date("2024-07-01");
+                }
+            }
+            r
+        })
+        .collect();
+    let batch =
+        AccountingAdapter::freeze(&AccountingIntent::Recognitions(recognitions.clone()), state)
+            .unwrap();
+    (
+        batch,
+        recognitions
+            .into_iter()
+            .map(AuthoritativeRecordV1::Recognition)
+            .collect(),
+    )
+}

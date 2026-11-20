@@ -7,7 +7,7 @@ pub struct ValidatedEvidenceBatchV1(CaptureBatchV1);
 fn invalid<T>(_: T) -> EngineError {
     EngineError::invalid()
 }
-fn safe(bytes: &[u8]) -> bool {
+pub(crate) fn safe(bytes: &[u8]) -> bool {
     let Ok(text) = std::str::from_utf8(bytes) else {
         return false;
     };

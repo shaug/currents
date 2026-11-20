@@ -337,16 +337,14 @@ impl CorePhase {
     }
 }
 
-fn macos_core_phases(msrv: bool, has_manifest: bool) -> bool {
-    cfg!(target_os = "macos")
-        && !msrv
-        && !has_manifest
+fn ci_core_phases(has_manifest: bool) -> bool {
+    !has_manifest
         && env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
-        && env::var("CURRENTS_MACOS_CORE_PHASES").as_deref() == Ok("1")
+        && env::var("CURRENTS_CI_CORE_PHASES").as_deref() == Ok("1")
 }
 
 fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
-    let phases = macos_core_phases(msrv, manifest.is_some());
+    let phases = ci_core_phases(manifest.is_some());
     check_native_environment()?;
     let (program, rustc, version) = if msrv {
         let (c, r, v) = msrv_tools()?;
@@ -408,6 +406,7 @@ fn ticket(name: &str) -> Result<Value> {
         return crate::readiness::qualify();
     }
     if name == "CUR-007" {
+        // Later tickets share the target; retain this ticket's exact original inventory.
         let assertions = ["cur_007_1", "cur_007_2", "cur_007_3", "cur_007_4"];
         let list = cargo(&[
             "test",
@@ -416,6 +415,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-storage",
             "--test",
             "cur_007",
+            "cur_007_",
             "--",
             "--list",
         ])?;
@@ -433,6 +433,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-storage",
             "--test",
             "cur_007",
+            "cur_007_",
         ])?;
         if !text.contains("4 passed; 0 failed; 0 ignored") {
             return Err("CUR007 incomplete qualification".into());
@@ -473,6 +474,33 @@ fn ticket(name: &str) -> Result<Value> {
         }
         return Ok(
             json!({"ticket":name,"assertions":assertions,"output_sha256":sha(text.as_bytes()),"scope":"synthetic complete frozen replay through encrypted C04/C05/C06; no production host or generation activation","checkpoint_limit":"A coherent rewrite requires an independent saved checkpoint to detect."}),
+        );
+    }
+    if name == "CUR-015" {
+        let mut evidence = Vec::new();
+        for (package, target, filter, required) in [
+            ("currents-types", "relationship_parse", "", ["cur_015_3_parser_binding_preserves_v1_and_addresses_correction"].as_slice()),
+            ("currents-acquisition", "cur_015_source", "", ["relationship_source_keeps_payroll_facets_and_net_only_unknowns", "relationship_source_rejects_ambiguous_identity_and_secret_bodies", "relationship_profile_is_explicit_bounded_and_never_orders_by_arrival", "relationship_capture_retains_exact_bytes_and_separate_times_without_money"].as_slice()),
+            ("currents-domain", "cur_015", "", ["explicit_clearing_and_prepayment_are_declared_assets_not_external_openings", "cur_015_4_explicit_owner_expiry_is_nonmonetary_and_absence_is_not_expiry", "quantified_source_capacity_is_not_multiplied_by_many_to_many_edges", "corroborating_evidence_does_not_double_the_economic_leg", "association_revision_prefixes_are_immutable_and_forks_are_rejected", "captured_facets_have_exact_typed_identity_and_explicit_revision_order", "cur_015_1_complete_transfer_preserves_dates_and_separate_fee", "transfer_source_arrival_permutations_have_identical_financial_plan", "cur_015_2_payroll_requires_distinct_facets_and_explicit_withholding_choice", "complete_association_replay_rejects_balanced_wrong_role_atomically", "cur_015_3_source_revision_replaces_all_old_claims_without_mutating_history", "cur_015_4_source_tombstone_retains_history_and_never_reverses_money", "explicit_n_way_duplicates_keep_chosen_survivor_and_reverse_every_redundant_original", "cur_015_4_reconnect_is_an_explicit_stable_account_alias_not_new_money", "cur_015_opening_boundary_initial_and_remap", "cur_015_remap_preserves_existing_recognition_lineage", "cur_015_3_explicit_parser_correction_orders_without_recapture_capacity"].as_slice()),
+            ("currents-protocol", "cur_015_contracts", "", ["complete_association_is_additive_and_rejects_incomplete_bindings"].as_slice()),
+            ("currents-service", "cur_015", "", ["relationship_import_identity_binds_complete_retained_metadata", "relationship_capture_uses_real_service_staging_and_reopens_exactly", "cur_015_1_real_service_transfer_keeps_dates_and_only_separate_fee_is_spending", "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings", "cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice", "cur_015_3_real_service_remap_cancellation_reopen_and_tombstone", "cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect", "cur_015_opening_boundary_encrypted_initial_and_remap", "cur_015_remap_lineage_rejection_preserves_encrypted_replay", "cur_015_3_real_parser_remap_preserves_raw_cancellation_retry_and_reopen", "cur_015_3_parser_profile_rejects_forgery_and_preserves_capture_wire"].as_slice()),
+            ("currents-accounting", "cur_009", "cur_015", ["cur_015_atomic_multiple_corrections_use_one_prior_prefix", "cur_015_initial_recognition_set_preserves_each_effective_date", "cur_015_remap_requires_exact_native_retirement_set"].as_slice()),
+            ("currents-storage", "cur_007", "cur_015", ["cur_015_multiple_corrections_never_publish_a_partial_native_prefix", "cur_015_initial_multidate_batch_is_atomic_and_replayable", "cur_015_revision_family_preserves_prefix_and_rejects_forks", "cur_015_replay_checks_retained_capture_bytes_before_activation", "cur_015_replay_checks_retained_parser_profile_bytes_before_activation"].as_slice()),
+        ] {
+            let list = cargo(&["test", "--locked", "-p", package, "--test", target, filter, "--", "--list"])?;
+            let actual: BTreeSet<_> = list.lines().filter_map(|line| line.strip_suffix(": test")).collect();
+            if actual != required.iter().copied().collect() {
+                return Err(format!("CUR015 assertion inventory mismatch in {package}/{target}: {list}"));
+            }
+            let text = cargo(&["test", "--locked", "-p", package, "--test", target, filter])?;
+            if !text.contains(&format!("{} passed; 0 failed; 0 ignored;", required.len()))
+                || required.iter().any(|test| !text.contains(&format!("test {test} ... ok"))) {
+                return Err(format!("CUR015 incomplete qualification in {package}/{target}: {text}"));
+            }
+            evidence.push(json!({"package":package,"target":target,"assertions":required,"output_sha256":sha(text.as_bytes())}));
+        }
+        return Ok(
+            json!({"ticket":name,"suites":evidence,"scope":"synthetic explicit transfer/payroll/duplicate and immutable source revision associations through encrypted Service/native replay; no production activation or arbitrary segment correction"}),
         );
     }
     if name == "CUR-014" {
@@ -739,6 +767,7 @@ fn ticket(name: &str) -> Result<Value> {
         );
     }
     if name == "CUR-009" {
+        // Later tickets share the target; retain this ticket's exact original inventory.
         let assertions = ["cur_009_1", "cur_009_2", "cur_009_3", "cur_009_4"];
         let list = cargo(&[
             "test",
@@ -747,6 +776,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-accounting",
             "--test",
             "cur_009",
+            "cur_009_",
             "--",
             "--list",
         ])?;
@@ -764,6 +794,7 @@ fn ticket(name: &str) -> Result<Value> {
             "currents-accounting",
             "--test",
             "cur_009",
+            "cur_009_",
         ])?;
         if !text.contains("4 passed; 0 failed; 0 ignored") {
             return Err("CUR009 incomplete qualification".into());

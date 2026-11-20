@@ -34,6 +34,7 @@ const RECORDS: &[&str] = &[
     "AccountComponent",
     "AccountCatalogRevision",
     "ActivityAdoption",
+    "PendingExpiry",
     "AccountAlias",
     "OwnershipPerimeter",
     "ImportReceipt",
@@ -42,6 +43,9 @@ const RECORDS: &[&str] = &[
     "FinancialEvent",
     "FinancialLeg",
     "Association",
+    "AssociationRevision",
+    "RelationshipCapture",
+    "RelationshipParseRevision",
     "Decision",
     "Recognition",
     "AccountingSegment",
@@ -57,6 +61,8 @@ const EVIDENCE: &[&str] = &[
     "ObservationVersion",
     "ImportReceipt",
     "AddressedParseProduct",
+    "RelationshipCapture",
+    "RelationshipParseRevision",
 ];
 
 /// Result effects use family existence, not changed-record or latest-version semantics.
@@ -269,6 +275,135 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 &scoped(&v["component_id"], &v["prior_revision"]),
                 None,
             );
+        }
+        AuthoritativeRecordV1::RelationshipParseRevision(p) => {
+            if p.schema_version != 1 || p.correction.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            RelationshipSourceRowV1::validate_all(std::slice::from_ref(&p.row))?;
+            if p.id.0.is_nil()
+                || p.id == p.receipt_id
+                || p.id == p.capture
+                || p.profile.media_type != RELATIONSHIP_CORRECTION_MEDIA
+                || p.profile.byte_count.0 > 1_048_576
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["ImportReceipt"], &v["receipt_id"], None);
+            m.reference(&["RelationshipCapture"], &v["capture"], None);
+            if p.prior_parse.is_some() {
+                m.reference(&["RelationshipParseRevision"], &v["prior_parse"], None);
+            }
+            m.content(&v["profile"])?;
+        }
+        AuthoritativeRecordV1::RelationshipCapture(capture) => {
+            if capture.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            RelationshipSourceRowV1::validate_all(&capture.rows)?;
+            if capture.id.0.is_nil()
+                || capture.id == capture.receipt_id
+                || capture.raw.media_type != RELATIONSHIP_SOURCE_MEDIA
+                || capture.raw.byte_count.0 > 1_048_576
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["ImportReceipt"], &v["receipt_id"], None);
+            m.content(&v["raw"])?;
+        }
+        AuthoritativeRecordV1::AssociationRevision(revision) => {
+            if revision.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if revision.id.0.is_nil()
+                || revision.root.0.is_nil()
+                || revision.legs.is_empty()
+                || revision.legs.len() > 1024
+                || revision.captured_allocations.len() > 16384
+                || revision.recognitions.len() > 1024
+                || revision.superseded_adoptions.len() > 1024
+                || revision.residuals.len() > 1024
+                || revision.allocations.len() > 16384
+                || revision.retired_recognitions.len() > 16384
+            {
+                return Err(EngineError::invalid());
+            }
+            match revision.prior_revision {
+                None if revision.id == revision.root => {
+                    m.define("AssociationRoot", &v["root"], 0, false);
+                    m.define(
+                        "AssociationRootKind",
+                        &scoped(&v["root"], &v["kind"]),
+                        0,
+                        false,
+                    );
+                }
+                Some(prior) if prior != revision.id && revision.id != revision.root => {
+                    m.reference(
+                        &["AssociationFamilyRevision"],
+                        &scoped(&v["root"], &v["prior_revision"]),
+                        None,
+                    );
+                    m.define("AssociationSuccessor", &v["prior_revision"], 0, false);
+                }
+                _ => return Err(EngineError::invalid()),
+            }
+            m.reference(&["AssociationRoot"], &v["root"], None);
+            m.reference(
+                &["AssociationRootKind"],
+                &scoped(&v["root"], &v["kind"]),
+                None,
+            );
+            m.define(
+                "AssociationFamilyRevision",
+                &scoped(&v["root"], &v["id"]),
+                0,
+                false,
+            );
+            m.many(&["FinancialLeg"], &v["legs"]);
+            m.reference(&["FinancialLeg"], &v["survivor"], None);
+            m.many(&["Recognition"], &v["retired_recognitions"]);
+            m.many(&["Recognition"], &v["recognitions"]);
+            m.many(&["ActivityAdoption"], &v["superseded_adoptions"]);
+            for edge in v["captured_allocations"]
+                .as_array()
+                .ok_or_else(EngineError::invalid)?
+            {
+                m.reference(&["FinancialLeg"], &edge["leg"], None);
+                m.reference(&["RelationshipCapture"], &edge["source"]["capture"], None);
+                if !edge["source"]["parse_revision"].is_null() {
+                    m.reference(
+                        &["RelationshipParseRevision"],
+                        &edge["source"]["parse_revision"],
+                        None,
+                    );
+                }
+            }
+
+            for edge in v["allocations"]
+                .as_array()
+                .ok_or_else(EngineError::invalid)?
+            {
+                m.reference(&["FinancialLeg"], &edge["leg"], None);
+                m.adopted_source(&edge["source"]);
+            }
+            m.policy(&v["governing_policy"]);
+            m.interpretation(&v["interpretation"]);
+        }
+        AuthoritativeRecordV1::PendingExpiry(expiry) => {
+            if expiry.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if expiry.id.0.is_nil()
+                || expiry.pending_adoption.0.is_nil()
+                || expiry.id == expiry.pending_adoption
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["PendingAdoption"], &v["pending_adoption"], None);
+            m.define("PendingConsumption", &v["pending_adoption"], 0, false);
+            m.policy(&v["governing_policy"]);
+            m.interpretation(&v["interpretation"]);
         }
         AuthoritativeRecordV1::ActivityAdoption(a) => {
             if a.schema_version != 1 {

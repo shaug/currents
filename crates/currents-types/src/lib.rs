@@ -26,3 +26,6 @@ pub use acquisition_contracts::*;
 
 pub mod recognition_contracts;
 pub use recognition_contracts::*;
+
+pub mod association_contracts;
+pub use association_contracts::*;

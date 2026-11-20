@@ -517,3 +517,519 @@ async fn cur_007_4() {
     );
     store.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn cur_015_multiple_corrections_never_publish_a_partial_native_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic-association-remap.db");
+    let store = open(&path).await;
+    let state = seed(&store, &path).await;
+    let (batch, records) = fixtures::association_corrections(&state);
+    assert_eq!(batch.operations.len(), 1200);
+    let reader = pool(&path).await;
+    let before = leaves(reader.pool()).await;
+    let fault = test_fixtures::fault_control(test_fixtures::ClosureFault::DiskFullAfter600);
+    assert!(append(&store, 3, &batch, &records, &fault).await.is_err());
+    assert!(test_fixtures::observed_sqlite_full(&fault));
+    assert_eq!(fault.completed_operations(), 600);
+    assert_eq!(leaves(reader.pool()).await, before);
+    reader.close().await;
+    store.close().await.unwrap();
+    let store = open(&path).await;
+    assert!(
+        store
+            .writer()
+            .command_result(CommandId(uuid::Uuid::from_u128(3)), Digest([3; 32]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let reader = pool(&path).await;
+    assert_eq!(leaves(reader.pool()).await, before);
+    let committed = append(&store, 3, &batch, &records, &ClosureControl::default())
+        .await
+        .unwrap();
+    assert_eq!(committed.seq, CommitSeq(3));
+    let after = leaves(reader.pool()).await;
+    assert_ne!(after, before);
+    let retried = append(&store, 3, &batch, &records, &ClosureControl::default())
+        .await
+        .unwrap();
+    same_commit(&committed, &retried);
+    assert_eq!(leaves(reader.pool()).await, after);
+    reader.close().await;
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_015_initial_multidate_batch_is_atomic_and_replayable() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic-initial-association.db");
+    let store = open(&path).await;
+    let reader = pool(&path).await;
+    let native = AtomicStore::from_initialized_pool(reader.pool().clone(), false)
+        .await
+        .unwrap();
+    let tx = native
+        .begin_authority(CommandId(uuid::Uuid::from_u128(999999)), None)
+        .await
+        .unwrap();
+    let mut state = fixtures::initial_state(tx.native_head());
+    tx.rollback().await.unwrap();
+    reader.close().await;
+    let (metadata, metadata_records) = fixtures::metadata(&state);
+    let metadata_commit = append(
+        &store,
+        1,
+        &metadata,
+        &metadata_records,
+        &ClosureControl::default(),
+    )
+    .await
+    .unwrap();
+    fixtures::advance(&mut state, &metadata_commit, &metadata);
+    let (batch, records) = fixtures::association_initial(&state);
+    // Page cap is armed after600. A full second chunk forces native page growth;
+    // a single extra entry may fit a page and only fail later in history append.
+    assert_eq!(batch.operations.len(), 1200);
+    let dates: std::collections::BTreeSet<_> = batch
+        .operations
+        .iter()
+        .filter_map(|op| match op {
+            FrozenNativeOperationV1::Entry(entry) => Some(entry.value_date.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(dates, ["2024-06-30", "2024-07-01"].into_iter().collect());
+    let reader = pool(&path).await;
+    let before = leaves(reader.pool()).await;
+    let fault = test_fixtures::fault_control(test_fixtures::ClosureFault::DiskFullAfter600);
+    let failed = append(&store, 2, &batch, &records, &fault).await;
+    assert!(failed.is_err());
+    assert!(
+        test_fixtures::observed_sqlite_full(&fault),
+        "expected injected fault, observed {failed:?}; completed {}",
+        fault.completed_operations()
+    );
+    assert_eq!(leaves(reader.pool()).await, before);
+    reader.close().await;
+    store.close().await.unwrap();
+    let store = open(&path).await;
+    assert!(
+        store
+            .writer()
+            .command_result(CommandId(uuid::Uuid::from_u128(2)), Digest([2; 32]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let commit = append(&store, 2, &batch, &records, &ClosureControl::default())
+        .await
+        .unwrap();
+    let retry = append(&store, 2, &batch, &records, &ClosureControl::default())
+        .await
+        .unwrap();
+    same_commit(&commit, &retry);
+    let destination = open(&dir.path().join("rebuilt.db")).await;
+    let prior = fixtures::initial_state(metadata.preconditions.native_head.clone());
+    let rebuilt = store
+        .history()
+        .rebuild_commit(&destination, &prior, &metadata_commit)
+        .await
+        .unwrap();
+    let mut replayed = prior;
+    replayed.accounting = Some(rebuilt);
+    replayed.through = metadata_commit.seq;
+    let final_index = store
+        .history()
+        .rebuild_commit(&destination, &replayed, &commit)
+        .await
+        .unwrap();
+    assert_eq!(final_index.prefix.native_head, commit.native_head_after);
+    destination.close().await.unwrap();
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_015_revision_family_preserves_prefix_and_rejects_forks() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic-revision-family.db");
+    let store = open(&path).await;
+    let state = seed(&store, &path).await;
+    let id = |n| RecordId(uuid::Uuid::from_u128(n));
+    let policy = DatasetPolicyV1 {
+        id: id(7000),
+        version: 1,
+        policies: PolicyVersionsV1 {
+            selection: 1,
+            recognition: 1,
+            query: 1,
+            calendar: 1,
+            timezone_data: "synthetic".into(),
+        },
+        source_precedence: vec![],
+        freshness_seconds: CommitSeq(1),
+        opening_policy: id(7000),
+        withholding_policy: id(7000),
+    };
+    let leg = FinancialLegV1 {
+        id: LegId(id(7002).0),
+        event_id: id(7001),
+        account_id: AccountId(fixtures::id(2).0),
+        movement: Amount::new(1, 0, UnitId(fixtures::id(1).0)).unwrap(),
+        allocations: vec![],
+        effective: TemporalValue::Unknown {
+            original_text: String::new(),
+        },
+        posting: TemporalValue::Unknown {
+            original_text: String::new(),
+        },
+        relationships: vec![],
+        unresolved_residual: SourceValue::Absent,
+        interpretation: SourceValue::Absent,
+    };
+    let event = FinancialEventV1 {
+        id: id(7001),
+        legs: vec![leg.id],
+        relationships: vec![],
+        interpretation: SourceValue::Absent,
+    };
+    let root = AssociationRevisionV1 {
+        id: id(7010),
+        schema_version: 1,
+        root: id(7010),
+        prior_revision: None,
+        kind: RelationshipKind::Transfer,
+        legs: vec![leg.id],
+        allocations: vec![],
+        captured_allocations: vec![],
+        recognitions: vec![],
+        residuals: vec![],
+        superseded_adoptions: vec![],
+        survivor: None,
+        retired_recognitions: vec![],
+        interpretation: InterpretationV1 {
+            kind: DecisionKind::Interpretation,
+            authority: AuthorityKind::Owner,
+            evidence: vec![],
+            reason: "Synthetic structural family only".into(),
+        },
+        governing_policy: PolicyReferenceV1 {
+            id: policy.id,
+            version: 1,
+        },
+    };
+    let append_record = |n, prior, records| HistoryAppend {
+        prior_head: CommitSeq(prior),
+        records,
+        decisions: vec![],
+        staged: vec![],
+        native: None,
+        result: CommandResultV1 {
+            command_id: CommandId(id(n).0),
+            digest: Digest([7; 32]),
+            state: CommandState::Committed,
+            commit: None,
+            effects: EffectsV1 {
+                records: vec![],
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: vec![],
+            },
+            health: vec![],
+        },
+    };
+    let first = store
+        .writer()
+        .append(append_record(
+            7100,
+            state.through.0,
+            vec![
+                AuthoritativeRecordV1::DatasetPolicy(policy),
+                AuthoritativeRecordV1::FinancialEvent(event),
+                AuthoritativeRecordV1::FinancialLeg(leg),
+                AuthoritativeRecordV1::AssociationRevision(root.clone()),
+            ],
+        ))
+        .await
+        .unwrap();
+    let mut revision = root.clone();
+    revision.id = id(7011);
+    revision.prior_revision = Some(root.id);
+    let second = store
+        .writer()
+        .append(append_record(
+            7101,
+            first.seq.0,
+            vec![AuthoritativeRecordV1::AssociationRevision(revision.clone())],
+        ))
+        .await
+        .unwrap();
+    let mut fork = revision;
+    fork.id = id(7012);
+    assert!(
+        store
+            .writer()
+            .append(append_record(
+                7102,
+                second.seq.0,
+                vec![AuthoritativeRecordV1::AssociationRevision(fork)]
+            ))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        store.history().read_prefix(first.seq).await.unwrap().last(),
+        Some(&first)
+    );
+    store.close().await.unwrap();
+    let store = open(&path).await;
+    assert_eq!(
+        store
+            .history()
+            .read_prefix(second.seq)
+            .await
+            .unwrap()
+            .last(),
+        Some(&second)
+    );
+    let mut projection = DomainState {
+        through: CommitSeq(first.seq.0 - 1),
+        domain_digest: first.previous_digest,
+        ..DomainState::default()
+    };
+    let before = projection.clone();
+    assert!(
+        currents_domain::ReplayEngine::apply(&mut projection, &first).is_err(),
+        "structural persistence is not complete financial replay admission"
+    );
+    assert_eq!(projection.records, before.records);
+    assert_eq!(projection.through, before.through);
+    assert_eq!(projection.domain_digest, before.domain_digest);
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_015_replay_checks_retained_capture_bytes_before_activation() {
+    use sha2::{Digest as _, Sha256};
+    for forged in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(&dir.path().join("source-capture.db")).await;
+        let raw = include_bytes!("../../../fixtures/journeys/s3/relationship-source.json").to_vec();
+        let mut rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(&raw).unwrap();
+        if forged {
+            rows[0].facets[0].amount = "9999".into();
+        }
+        let content = ContentReferenceV1 {
+            digest: Digest(Sha256::digest(&raw).into()),
+            byte_count: CommitSeq(raw.len() as u64),
+            media_type: RELATIONSHIP_SOURCE_MEDIA.into(),
+        };
+        let source = SourceIdentityV1 {
+            source: "synthetic".into(),
+            connection_id: RecordId(uuid::Uuid::from_u128(8000)),
+            device_id: None,
+        };
+        let receipt = ImportReceiptV1 {
+            id: RecordId(uuid::Uuid::from_u128(8001)),
+            source: source.clone(),
+            adapter_version: "synthetic-relationships/1".into(),
+            parser_version: "1".into(),
+            requested_coverage: vec![],
+            reported_coverage: vec![],
+            received_time: serde_json::from_str("\"2026-11-02T00:00:00Z\"").unwrap(),
+            result: ImportResult::Complete,
+            cursor: SourceValue::Absent,
+            truncated: false,
+            complete: true,
+            contents: vec![content.clone()],
+        };
+        let capture = RelationshipCaptureV1 {
+            id: RecordId(uuid::Uuid::from_u128(8002)),
+            schema_version: 1,
+            receipt_id: receipt.id,
+            source,
+            original_capture_time: serde_json::from_str("\"2026-11-01T00:00:00Z\"").unwrap(),
+            raw: content,
+            rows,
+        };
+        let staged = store.stage(&raw).await.unwrap();
+        let empty =
+            fixtures::initial_state(store.writer().audited_prefix().await.unwrap().native_head);
+        let batch = AccountingAdapter::freeze(
+            &AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "synthetic capture".into(),
+            }),
+            &empty,
+        )
+        .unwrap();
+        let mut value = input(
+            8003,
+            &batch,
+            &[
+                AuthoritativeRecordV1::ImportReceipt(receipt),
+                AuthoritativeRecordV1::RelationshipCapture(capture),
+            ],
+        );
+        value.staged = vec![staged];
+        store
+            .writer()
+            .append_closure(
+                value,
+                AccountingAdapter::prepare_closure(&batch).unwrap(),
+                &ClosureControl::default(),
+            )
+            .await
+            .unwrap();
+        let destination = open(&dir.path().join("destination.db")).await;
+        let result =
+            currents_service::ReplayCoordinator::rebuild(store.history(), destination).await;
+        assert_eq!(
+            result.is_ok(),
+            !forged,
+            "typed capture row must match authenticated retained bytes"
+        );
+        store.close().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn cur_015_replay_checks_retained_parser_profile_bytes_before_activation() {
+    use sha2::{Digest as _, Sha256};
+    for forged in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(&dir.path().join("source-capture.db")).await;
+        let raw = include_bytes!("../../../fixtures/journeys/s3/relationship-source.json").to_vec();
+        let rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(&raw).unwrap();
+        let content = ContentReferenceV1 {
+            digest: Digest(Sha256::digest(&raw).into()),
+            byte_count: CommitSeq(raw.len() as u64),
+            media_type: RELATIONSHIP_SOURCE_MEDIA.into(),
+        };
+        let source = SourceIdentityV1 {
+            source: "synthetic".into(),
+            connection_id: RecordId(uuid::Uuid::from_u128(8000)),
+            device_id: None,
+        };
+        let receipt = ImportReceiptV1 {
+            id: RecordId(uuid::Uuid::from_u128(8001)),
+            source: source.clone(),
+            adapter_version: "synthetic-relationships/1".into(),
+            parser_version: "1".into(),
+            requested_coverage: vec![],
+            reported_coverage: vec![],
+            received_time: serde_json::from_str("\"2026-11-02T00:00:00Z\"").unwrap(),
+            result: ImportResult::Complete,
+            cursor: SourceValue::Absent,
+            truncated: false,
+            complete: true,
+            contents: vec![content.clone()],
+        };
+        let capture = RelationshipCaptureV1 {
+            id: RecordId(uuid::Uuid::from_u128(8002)),
+            schema_version: 1,
+            receipt_id: receipt.id,
+            source,
+            original_capture_time: serde_json::from_str("\"2026-11-01T00:00:00Z\"").unwrap(),
+            raw: content,
+            rows,
+        };
+        let staged = store.stage(&raw).await.unwrap();
+        let mut empty =
+            fixtures::initial_state(store.writer().audited_prefix().await.unwrap().native_head);
+        let batch = AccountingAdapter::freeze(
+            &AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "synthetic capture".into(),
+            }),
+            &empty,
+        )
+        .unwrap();
+        let mut value = input(
+            8003,
+            &batch,
+            &[
+                AuthoritativeRecordV1::ImportReceipt(receipt.clone()),
+                AuthoritativeRecordV1::RelationshipCapture(capture.clone()),
+            ],
+        );
+        value.staged = vec![staged];
+        let first = store
+            .writer()
+            .append_closure(
+                value,
+                AccountingAdapter::prepare_closure(&batch).unwrap(),
+                &ClosureControl::default(),
+            )
+            .await
+            .unwrap();
+        fixtures::advance(&mut empty, &first, &batch);
+        let profile = RelationshipCorrectionProfileV1 {
+            schema_version: 1,
+            source_record: "paystub-1".into(),
+            source_revision: "original".into(),
+            corrections: vec![RelationshipAmountCorrectionV1 {
+                facet: "gross".into(),
+                expected_amount: "5000".into(),
+                amount: "5200".into(),
+            }],
+        };
+        let bytes = serde_json::to_vec(&profile).unwrap();
+        let content = ContentReferenceV1 {
+            digest: Digest(Sha256::digest(&bytes).into()),
+            byte_count: CommitSeq(bytes.len() as u64),
+            media_type: RELATIONSHIP_CORRECTION_MEDIA.into(),
+        };
+        let mut typed = profile;
+        if forged {
+            typed.corrections[0].amount = "9999".into();
+        }
+        let mut receipt = receipt;
+        receipt.id = RecordId(uuid::Uuid::from_u128(8010));
+        receipt.parser_version = RELATIONSHIP_CORRECTION_PARSER.into();
+        receipt.contents = vec![content.clone()];
+        let revision = RelationshipParseRevisionV1 {
+            id: RecordId(uuid::Uuid::from_u128(8011)),
+            schema_version: 1,
+            receipt_id: receipt.id,
+            capture: capture.id,
+            prior_parse: None,
+            profile: content,
+            row: typed.apply(&capture.rows[0]).unwrap(),
+            correction: typed,
+        };
+        let batch = AccountingAdapter::freeze(
+            &AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "synthetic parse correction".into(),
+            }),
+            &empty,
+        )
+        .unwrap();
+        let mut value = input(
+            8012,
+            &batch,
+            &[
+                AuthoritativeRecordV1::ImportReceipt(receipt),
+                AuthoritativeRecordV1::RelationshipParseRevision(revision),
+            ],
+        );
+        value.staged = vec![store.stage(&bytes).await.unwrap()];
+        store
+            .writer()
+            .append_closure(
+                value,
+                AccountingAdapter::prepare_closure(&batch).unwrap(),
+                &ClosureControl::default(),
+            )
+            .await
+            .unwrap();
+        let destination = open(&dir.path().join("destination.db")).await;
+        let result =
+            currents_service::ReplayCoordinator::rebuild(store.history(), destination).await;
+        assert_eq!(
+            result.is_ok(),
+            !forged,
+            "typed parser profile must match authenticated retained bytes even when derived row is internally consistent"
+        );
+        store.close().await.unwrap();
+    }
+}
