@@ -281,32 +281,131 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
 
     f.service.close().await.unwrap();
     let source = open(&path).await;
-    let commit = source
-        .writer()
-        .commit(PreparedCommit {
-            evidence: vec![],
-            result: CommandResultV1 {
-                command_id: CommandId(fixture::id(9500).0),
-                digest: Digest([49; 32]),
-                state: CommandState::Committed,
-                commit: None,
-                effects: EffectsV1 {
-                    records: vec![revision_id, RecordId(replacement.id.0)],
-                    accounts: vec![],
-                    amounts: vec![],
-                    invalidations: plan.invalidations.clone(),
-                },
-                health: vec![],
+    let trusted_tip = source.writer().audited_prefix().await.unwrap();
+    currents_service::verify_correction_preflight(&old_basis, &trusted_tip, &plan, &frozen)
+        .expect("exact authorized correction must pass preflight");
+
+    let mut wrong_request = request.clone();
+    wrong_request.replacement[0].postings[0].amount.coefficient -= 1;
+    wrong_request.replacement[0].postings[1].amount.coefficient += 1;
+    let wrong_frozen =
+        AccountingAdapter::freeze(&AccountingIntent::Correction(wrong_request), &old_basis)
+            .expect("balanced wrong economics must pass native shape checks");
+    assert_eq!(wrong_frozen.preconditions, frozen.preconditions);
+    assert_eq!(wrong_frozen.operations.len(), frozen.operations.len());
+    assert_ne!(wrong_frozen, frozen);
+    assert!(
+        currents_service::verify_correction_preflight(
+            &old_basis,
+            &trusted_tip,
+            &plan,
+            &wrong_frozen,
+        )
+        .is_err(),
+        "a self-consistent but unauthorized C05 payload must fail before writing"
+    );
+    assert_eq!(source.writer().audited_prefix().await.unwrap(), trusted_tip);
+
+    let prepare = |control| PreparedCommit {
+        evidence: vec![],
+        result: CommandResultV1 {
+            command_id: CommandId(fixture::id(9500).0),
+            digest: Digest([49; 32]),
+            state: CommandState::Committed,
+            commit: None,
+            effects: EffectsV1 {
+                records: vec![revision_id, RecordId(replacement.id.0)],
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: plan.invalidations.clone(),
             },
-            decision_plan: plan,
-            frozen_batch: frozen,
-            prior_head: old_basis.through,
-            decisions: vec![],
-            manifest_id: fixture::id(9501),
-            control: Arc::new(CommitControl::default()),
-        })
-        .await
-        .expect("C04 must atomically commit the frozen native and typed authority");
+            health: vec![],
+        },
+        decision_plan: plan.clone(),
+        frozen_batch: frozen.clone(),
+        prior_head: old_basis.through,
+        decisions: vec![],
+        manifest_id: fixture::id(9501),
+        control,
+    };
+    use currents_accounting::test_fixtures::{ClosureFault, fault_control};
+    use currents_service::synthetic_commit_verified_correction;
+    use currents_storage::CommitFailure;
+    let writer = source.writer();
+    let mut malformed = prepare(Arc::new(CommitControl::default()));
+    malformed.frozen_batch = wrong_frozen;
+    let malformed_control = malformed.control.clone();
+    assert!(matches!(
+        synthetic_commit_verified_correction(&writer, &old_basis, malformed).await,
+        Err(CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(malformed_control.completed_operations(), 0);
+    assert_eq!(writer.audited_prefix().await.unwrap(), trusted_tip);
+    assert!(
+        writer
+            .command_result(CommandId(fixture::id(9500).0), Digest([49; 32]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let control = Arc::new(fault_control(ClosureFault::PauseBetweenCorrectionEntries));
+    let cancel_between_entries = async {
+        while control.completed_operations() == 0 {
+            tokio::task::yield_now().await;
+        }
+        let completed = control.completed_operations();
+        assert!(control.request_cancel());
+        completed
+    };
+    let (outcome, completed) = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        tokio::join!(
+            synthetic_commit_verified_correction(&writer, &old_basis, prepare(control.clone())),
+            cancel_between_entries
+        )
+    })
+    .await
+    .expect("synthetic cancellation checkpoint not reached");
+    assert_eq!(
+        completed, 1,
+        "fault must be after reversal, before replacement"
+    );
+    assert!(matches!(
+        outcome,
+        Err(CommitFailure::DefinitelyRolledBack(EngineError {
+            class: ErrorClass::Canceled,
+            ..
+        }))
+    ));
+    assert_eq!(writer.audited_prefix().await.unwrap(), trusted_tip);
+    source.close().await.unwrap();
+    let source = open(&path).await;
+    assert_eq!(source.writer().audited_prefix().await.unwrap(), trusted_tip);
+    assert!(
+        source
+            .writer()
+            .command_result(CommandId(fixture::id(9500).0), Digest([49; 32]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let writer = source.writer();
+    let commit = synthetic_commit_verified_correction(
+        &writer,
+        &old_basis,
+        prepare(Arc::new(CommitControl::default())),
+    )
+    .await
+    .expect("C04 retry must atomically commit both native and typed authority");
+    let retry = synthetic_commit_verified_correction(
+        &writer,
+        &old_basis,
+        prepare(Arc::new(CommitControl::default())),
+    )
+    .await
+    .expect("identical retry must resolve the existing correction");
+    assert_eq!(retry.commit, commit.commit);
+    assert_eq!(retry.domain_digest, commit.domain_digest);
+    assert_eq!(retry.native_head, commit.native_head);
     assert_eq!(commit.commit, CommitSeq(old_basis.through.0 + 1));
     assert_ne!(
         commit.native_head,
