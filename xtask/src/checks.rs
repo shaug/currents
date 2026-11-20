@@ -398,6 +398,7 @@ fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
             &[
                 "complete_correction_commits_caller_ids_policy_and_exact_basis_without_changing_legacy",
                 "complete_correction_has_no_implicit_revision_basis_or_policy",
+                "complete_segment_commits_authority_basis_drafts_and_reemissions",
             ],
         ),
         (
@@ -469,6 +470,7 @@ fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
     let mut fixture_hashes = serde_json::Map::new();
     for path in [
         "fixtures/contracts/v1/correction-complete.json",
+        "fixtures/contracts/v1/segment-complete.json",
         "fixtures/journeys/s4/date-floor.json",
         "fixtures/journeys/s5/refund.csv",
     ] {

@@ -198,9 +198,30 @@ valid revision cannot authorize another, and the exact approved body
 commits and replays the same immutable correction and governing policy.
 This test does not activate a shipped route.
 
+### CUR-016 additive owned segment preview
+
+The dormant C03 v1 codec recognizes `ReplaceAccountingSegmentComplete`
+with an explicit prior segment, authority ID, exact accounting prefix,
+approved account and recognition closure, opening and ordered backfill
+drafts, and exact counterpart re-emission and posting identities. The
+complete shape does not accept a residual disposition; planner input
+uses the supported absent disposition, not a balancing decision.
+The historical segment command, canonical bytes, and unsupported
+default planner remain unchanged. Readers that do not know the new
+tag reject it.
+
+The feature-gated synthetic preview maps the decoded command into
+the owned segment planner using the same Writer's authenticated and
+replayed prefix. Both expected head and full expected basis must
+equal that Writer's audited tip. Dataset ownership is verified against
+the retained Dataset, and the tip is checked again before returning.
+The path performs no writes and forwards the typed no-plan outcomes
+without granting approval, advertising support, or enabling dispatch.
+The normal command digest binds all complete request fields.
+
 ### CUR-016 bounded qualification and remaining work
 
-`cargo xtask ticket CUR-016` verifies an exact 20-test synthetic inventory
+`cargo xtask ticket CUR-016` verifies an exact 21-test synthetic inventory
 across protocol, domain, encrypted service and correction-chain suites, with no ignored
 tests. It includes the actual 1,200-native-operation replacement midpoint
 rollback, exact retry, reopen and fresh rebuild, and the separate typed

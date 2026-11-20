@@ -33513,6 +33513,22 @@
                 "value"
               ],
               "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "ReplaceAccountingSegmentComplete"
+                },
+                "value": {
+                  "$ref": "#/$defs/CompleteSegmentRequestV1"
+                }
+              },
+              "required": [
+                "kind",
+                "value"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -35800,6 +35816,158 @@
         "replacement",
         "reason",
         "governing_policy"
+      ],
+      "type": "object"
+    },
+    "CompleteSegmentRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "backfill": {
+          "items": {
+            "$ref": "#/$defs/ActivityRequestV1"
+          },
+          "maxItems": 16384,
+          "type": "array"
+        },
+        "expected_basis": {
+          "additionalProperties": false,
+          "properties": {
+            "domain_digest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "native_head": {
+              "additionalProperties": false,
+              "properties": {
+                "checkpoint": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "semantics_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "semantics_version",
+                "checkpoint"
+              ],
+              "type": "object"
+            },
+            "through": {
+              "maxLength": 20,
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "through",
+            "domain_digest",
+            "native_head"
+          ],
+          "type": "object"
+        },
+        "opening": {
+          "$ref": "#/$defs/ActivityRequestV1"
+        },
+        "reemissions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "original": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "posting_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 16384,
+                "type": "array"
+              },
+              "replacement": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "original",
+              "replacement",
+              "posting_ids"
+            ],
+            "type": "object"
+          },
+          "maxItems": 16384,
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "segment": {
+          "additionalProperties": false,
+          "properties": {
+            "approved_accounts": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 16384,
+              "type": "array"
+            },
+            "component": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "included_activity": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 16384,
+              "type": "array"
+            },
+            "opening": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "prior_segment": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "replacement_closure": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 16384,
+              "type": "array"
+            }
+          },
+          "required": [
+            "component",
+            "prior_segment",
+            "opening",
+            "included_activity",
+            "replacement_closure",
+            "approved_accounts"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "expected_basis",
+        "authority_id",
+        "segment",
+        "opening",
+        "backfill",
+        "reemissions"
       ],
       "type": "object"
     },
@@ -91191,6 +91359,22 @@
                         "value"
                       ],
                       "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "ReplaceAccountingSegmentComplete"
+                        },
+                        "value": {
+                          "$ref": "#/$defs/CompleteSegmentRequestV1"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
                     }
                   ]
                 },
@@ -107511,6 +107695,22 @@
                                 "governing_policy"
                               ],
                               "type": "object"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "ReplaceAccountingSegmentComplete"
+                            },
+                            "value": {
+                              "$ref": "#/$defs/CompleteSegmentRequestV1"
                             }
                           },
                           "required": [

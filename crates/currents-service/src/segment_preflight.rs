@@ -3,6 +3,68 @@ use currents_domain::segments::{SegmentEngine, SegmentPreviewRequestV1, SegmentP
 use currents_storage::{CommitFailure, CommitReceipt, PreparedCommit, Writer};
 use currents_types::*;
 
+/// Map a complete C03 proposal into the owned planner against the
+/// authenticated prefix of this Writer. No authority is generated, no plan is
+/// committed, and typed blocked outcomes remain non-writable.
+#[doc(hidden)]
+pub async fn synthetic_preview_owned_segment(
+    writer: &Writer,
+    body: &currents_protocol::CommandBodyV1,
+) -> Result<SegmentPreviewV1, EngineError> {
+    use currents_domain::segments::SegmentReemissionV1;
+    use currents_protocol::OperationV1;
+
+    let OperationV1::ReplaceAccountingSegmentComplete(request) = &body.operation else {
+        return Err(EngineError::version());
+    };
+    if body.dataset_id.0.is_nil() || body.command_id.0.is_nil() {
+        return Err(EngineError::invalid());
+    }
+    let stale = || crate::admission::error(ErrorClass::StaleBasis);
+    let basis = writer.audited_prefix().await?;
+    if body.expected_head != basis.through || request.expected_basis != basis {
+        return Err(stale());
+    }
+    let state = crate::verified_prefix::rehydrate(writer, &basis).await?;
+    if !matches!(
+        state.records.get(&RecordId(body.dataset_id.0)),
+        Some(AuthoritativeRecordV1::Dataset(dataset)) if dataset.id == body.dataset_id
+    ) {
+        return Err(EngineError::invalid());
+    }
+    let scope = &request.segment;
+    let outcome = SegmentEngine::replace_owned(
+        &state,
+        &SegmentPreviewRequestV1 {
+            request: SegmentRequestV1 {
+                component: scope.component,
+                prior_segment: Some(scope.prior_segment),
+                opening: scope.opening,
+                included_activity: scope.included_activity.clone(),
+                replacement_closure: scope.replacement_closure.clone(),
+                approved_accounts: scope.approved_accounts.clone(),
+                residual_disposition: SourceValue::Absent,
+            },
+            opening: request.opening.clone(),
+            backfill: request.backfill.clone(),
+            reemissions: request
+                .reemissions
+                .iter()
+                .map(|r| SegmentReemissionV1 {
+                    original: r.original,
+                    replacement: r.replacement,
+                    posting_ids: r.posting_ids.clone(),
+                })
+                .collect(),
+        },
+        request.authority_id,
+    )?;
+    if writer.audited_prefix().await? != basis {
+        return Err(stale());
+    }
+    Ok(outcome)
+}
+
 #[doc(hidden)]
 pub async fn synthetic_commit_verified_segment(
     writer: &Writer,

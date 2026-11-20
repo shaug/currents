@@ -206,8 +206,47 @@ fn strict_bounds() {
         schema["$defs"]["AuthoritativeRecordV1"],
         AuthoritativeRecordV1::schema()
     );
-    assert_eq!(schema["$defs"]["CommandBodyV1"], CommandBodyV1::schema());
+    let expanded_body = expand_schema_refs(&schema, &schema["$defs"]["CommandBodyV1"], 0);
+    assert!(
+        expanded_body == CommandBodyV1::schema(),
+        "generated command schema diverges"
+    );
+    let expanded_request = expand_schema_refs(&schema, &schema["$defs"]["RequestV1"], 0);
+    assert!(
+        expanded_request == currents_protocol::RequestV1::schema(),
+        "generated request schema diverges"
+    );
     assert_eq!(schema["$defs"]["Amount"], Amount::schema());
+}
+// The generated schema may reference an identical definition to avoid
+// inlining it throughout every operation. Compare strict structure after
+// resolving local references; a missing, external or cyclic ref fails.
+fn expand_schema_refs(root: &Value, node: &Value, depth: usize) -> Value {
+    assert!(depth <= 128, "cyclic or unexpectedly deep generated schema");
+    if let Some(reference) = node.get("$ref") {
+        assert_eq!(node.as_object().unwrap().len(), 1);
+        let pointer = reference.as_str().unwrap().strip_prefix('#').unwrap();
+        assert!(
+            pointer.starts_with("/$defs/"),
+            "only local schema definitions are supported"
+        );
+        return expand_schema_refs(root, root.pointer(pointer).unwrap(), depth + 1);
+    }
+    match node {
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(|x| expand_schema_refs(root, x, depth + 1))
+                .collect(),
+        ),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, x)| (key.clone(), expand_schema_refs(root, x, depth + 1)))
+                .collect(),
+        ),
+        _ => node.clone(),
+    }
 }
 fn temporal_precision() {
     let temporal: TemporalValue = decode(fixture("temporal.json").as_bytes()).unwrap();

@@ -1398,10 +1398,96 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         control: Arc::new(CommitControl::default()),
     };
 
+    // Ordinary C03 decode binds the full proposal; only this trusted,
+    // read-only synthetic seam can map it into the real owned planner.
+    use currents_protocol::{
+        CompleteSegmentRequestV1, CompleteSegmentScopeV1, ProtocolVersion,
+        SegmentCounterpartRequestV1, canonical_bytes, decode,
+    };
+    let mut body = f.body(51_004);
+    let expected_basis = old.accounting.as_ref().unwrap().prefix.clone();
+    body.expected_head = expected_basis.through;
+    body.operation = OperationV1::ReplaceAccountingSegmentComplete(CompleteSegmentRequestV1 {
+        schema_version: ProtocolVersion,
+        expected_basis: expected_basis.clone(),
+        authority_id: authority,
+        segment: CompleteSegmentScopeV1 {
+            component: proposal.request.component,
+            prior_segment,
+            opening: proposal.request.opening,
+            included_activity: proposal.request.included_activity.clone(),
+            replacement_closure: proposal.request.replacement_closure.clone(),
+            approved_accounts: proposal.request.approved_accounts.clone(),
+        },
+        opening: proposal.opening.clone(),
+        backfill: proposal.backfill.clone(),
+        reemissions: proposal
+            .reemissions
+            .iter()
+            .map(|r| SegmentCounterpartRequestV1 {
+                original: r.original,
+                replacement: r.replacement,
+                posting_ids: r.posting_ids.clone(),
+            })
+            .collect(),
+    });
+    let body: currents_protocol::CommandBodyV1 = decode(&canonical_bytes(&body).unwrap()).unwrap();
+    support::recover_service(&f.service).await;
+    assert_eq!(
+        f.service.preview(f.ctx(), body.clone()).unwrap_err().class,
+        ErrorClass::UnsupportedVersion
+    );
     f.service.close().await.unwrap();
     let store = open(&path).await;
     let writer = store.writer();
     let prior = writer.audited_prefix().await.unwrap();
+    assert_eq!(prior, expected_basis);
+    let preview = service_api::synthetic_preview_owned_segment(writer, &body)
+        .await
+        .unwrap();
+    let SegmentPreviewV1::Ready(authenticated) = preview else {
+        panic!("the exact encrypted prefix must produce the same ready plan");
+    };
+    assert_eq!(authenticated, plan);
+    let mut stale = body.clone();
+    stale.expected_head = CommitSeq(0);
+    assert_eq!(
+        service_api::synthetic_preview_owned_segment(writer, &stale)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::StaleBasis
+    );
+    let mut stale_basis = body.clone();
+    let OperationV1::ReplaceAccountingSegmentComplete(request) = &mut stale_basis.operation else {
+        panic!("complete segment");
+    };
+    request.expected_basis.domain_digest = Digest([63; 32]);
+    assert_eq!(
+        service_api::synthetic_preview_owned_segment(writer, &stale_basis)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::StaleBasis,
+        "a matching sequence does not authenticate a different prefix digest"
+    );
+    let mut foreign = body.clone();
+    foreign.dataset_id = DatasetId(fixture::id(51_126).0);
+    assert!(
+        service_api::synthetic_preview_owned_segment(writer, &foreign)
+            .await
+            .is_err()
+    );
+    let mut legacy = body.clone();
+    legacy.operation = OperationV1::ReplaceAccountingSegment(proposal.request.clone());
+    assert_eq!(
+        service_api::synthetic_preview_owned_segment(writer, &legacy)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::UnsupportedVersion
+    );
+    assert_eq!(writer.audited_prefix().await.unwrap(), prior);
     let mut incomplete = proposal.clone();
     let removed = incomplete.reemissions.remove(1).original;
     incomplete

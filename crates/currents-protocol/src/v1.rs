@@ -33,8 +33,32 @@ dto!(CompleteCorrectionRequestV1 {
     reason: String,
     governing_policy: PolicyReferenceV1
 });
+// The owner can authorize only a named whole-family replacement with no
+// balancing plug. This contract does not activate either segment route.
+dto!(CompleteSegmentScopeV1 {
+    component: RecordId,
+    prior_segment: RecordId,
+    opening: RecognitionId,
+    included_activity: Vec<RecognitionId>,
+    replacement_closure: Vec<RecognitionId>,
+    approved_accounts: Vec<AccountId>
+});
+dto!(SegmentCounterpartRequestV1 {
+    original: RecognitionId,
+    replacement: RecognitionId,
+    posting_ids: Vec<RecordId>
+});
+dto!(CompleteSegmentRequestV1 {
+    schema_version: ProtocolVersion,
+    expected_basis: AccountingPrefixV1,
+    authority_id: RecordId,
+    segment: CompleteSegmentScopeV1,
+    opening: ActivityRequestV1,
+    backfill: Vec<ActivityRequestV1>,
+    reemissions: Vec<SegmentCounterpartRequestV1>
+});
 tagged!(OperationV1 {
- SetAccountCatalog(SetAccountCatalogV1), SetDatasetPolicy(SetDatasetPolicyV1), RecordManualPosition(ManualPositionV1), RecordLoanPayment(LoanPaymentV1), PublishImport(PublishImportV1), AdoptInterpretation(AdoptInterpretationV1), SetOrganization(OrganizationRequestV1), SetReviewDisposition(ReviewDispositionV1), Recognize(RecognitionRequestV1), CorrectRecognition(CorrectionRequestV1), ReplaceAccountingSegment(SegmentRequestV1), AssociateLegs(AssociationRequestV1), EvaluateReconciliation(ReconciliationRequestV1), ConfirmReconciliation(ConfirmReconciliationV1), SetCommitment(CommitmentV1), SetOccurrenceMatch(OccurrenceMatchV1), SaveForecast(ForecastRunV1), Export(MaintenanceV1), Backup(MaintenanceV1), Verify(MaintenanceV1), Rebuild(MaintenanceV1), Migrate(MaintenanceV1), SetAccountCatalogComplete(CatalogRequestV1), AdoptActivity(ActivityRequestV1), ExpirePending(PendingExpiryV1), AssociateLegsComplete(CompleteAssociationRequestV1), CorrectRecognitionComplete(CompleteCorrectionRequestV1)
+ SetAccountCatalog(SetAccountCatalogV1), SetDatasetPolicy(SetDatasetPolicyV1), RecordManualPosition(ManualPositionV1), RecordLoanPayment(LoanPaymentV1), PublishImport(PublishImportV1), AdoptInterpretation(AdoptInterpretationV1), SetOrganization(OrganizationRequestV1), SetReviewDisposition(ReviewDispositionV1), Recognize(RecognitionRequestV1), CorrectRecognition(CorrectionRequestV1), ReplaceAccountingSegment(SegmentRequestV1), AssociateLegs(AssociationRequestV1), EvaluateReconciliation(ReconciliationRequestV1), ConfirmReconciliation(ConfirmReconciliationV1), SetCommitment(CommitmentV1), SetOccurrenceMatch(OccurrenceMatchV1), SaveForecast(ForecastRunV1), Export(MaintenanceV1), Backup(MaintenanceV1), Verify(MaintenanceV1), Rebuild(MaintenanceV1), Migrate(MaintenanceV1), SetAccountCatalogComplete(CatalogRequestV1), AdoptActivity(ActivityRequestV1), ExpirePending(PendingExpiryV1), AssociateLegsComplete(CompleteAssociationRequestV1), CorrectRecognitionComplete(CompleteCorrectionRequestV1), ReplaceAccountingSegmentComplete(CompleteSegmentRequestV1)
 });
 dto!(CommandBodyV1 {
     protocol_version: ProtocolVersion,
