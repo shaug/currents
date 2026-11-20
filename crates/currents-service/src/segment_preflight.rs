@@ -17,8 +17,6 @@ pub async fn synthetic_commit_verified_segment(
         .map_err(DefinitelyRolledBack)?;
     if prepared.frozen_batch.preconditions != trusted_tip
         || prepared.prior_head != trusted_tip.through
-        || !proposal.reemissions.is_empty()
-        || proposal.request.replacement_closure.len() != 1
         || proposal.request.included_activity.len() != 1
         || !prepared.evidence.is_empty()
         || !prepared.decisions.is_empty()
@@ -30,9 +28,26 @@ pub async fn synthetic_commit_verified_segment(
     let prior = crate::verified_prefix::rehydrate(writer, &trusted_tip)
         .await
         .map_err(DefinitelyRolledBack)?;
-    let SegmentPreviewV1::Ready(readmitted) =
-        SegmentEngine::replace(&prior, proposal).map_err(DefinitelyRolledBack)?
-    else {
+    let mut owners = prepared
+        .decision_plan
+        .records
+        .iter()
+        .filter_map(|record| match record {
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Some(owner),
+            _ => None,
+        });
+    let owner = owners.next();
+    if owners.next().is_some() {
+        return Err(invalid());
+    }
+    let admitted = if let Some(owner) = owner {
+        SegmentEngine::replace_owned(&prior, proposal, owner.id)
+    } else if proposal.reemissions.is_empty() && proposal.request.replacement_closure.len() == 1 {
+        SegmentEngine::replace(&prior, proposal)
+    } else {
+        return Err(invalid());
+    };
+    let SegmentPreviewV1::Ready(readmitted) = admitted.map_err(DefinitelyRolledBack)? else {
         return Err(invalid());
     };
     if *readmitted != prepared.decision_plan {
@@ -47,24 +62,22 @@ pub async fn synthetic_commit_verified_segment(
             AuthoritativeRecordV1::ActivityAdoption(a) => Ok(a.id),
             AuthoritativeRecordV1::Recognition(r) => Ok(RecordId(r.id.0)),
             AuthoritativeRecordV1::AccountingSegment(s) => Ok(s.id),
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Ok(owner.id),
             _ => Err(invalid()),
         })
         .collect::<Result<Vec<_>, _>>()?;
     let effects = &prepared.result.effects;
     if effects.records != emitted
         || effects.invalidations != readmitted.invalidations
-        || !effects.accounts.is_empty()
+        || effects.accounts.as_slice()
+            != owner.map_or(&[][..], |owner| owner.affected_accounts.as_slice())
         || !effects.amounts.is_empty()
         || !prepared.result.health.is_empty()
     {
         return Err(invalid());
     }
-    Writer::verify_standalone_segment_freeze(
-        &prior,
-        &prepared.decision_plan,
-        &prepared.frozen_batch,
-    )
-    .map_err(DefinitelyRolledBack)?;
+    Writer::verify_segment_freeze(&prior, &prepared.decision_plan, &prepared.frozen_batch)
+        .map_err(DefinitelyRolledBack)?;
     // This check above binds semantics. C04 separately verifies the actual
     // authority tip inside the write transaction, including the native head.
     writer.commit(prepared).await

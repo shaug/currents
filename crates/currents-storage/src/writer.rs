@@ -62,8 +62,8 @@ impl Writer {
         Ok(())
     }
 
-    /// C05 binding for the one-root standalone segment replay shape only.
-    pub fn verify_standalone_segment_freeze(
+    /// C05 binding for a segment owner already re-admitted from exact prior authority.
+    pub fn verify_segment_freeze(
         prior: &DomainState,
         plan: &DecisionPlan,
         supplied: &AccountingBatchV1,
@@ -71,12 +71,34 @@ impl Writer {
         let AccountingIntent::Corrections(corrections) = &plan.accounting else {
             return Err(EngineError::invalid());
         };
-        let [root] = corrections.as_slice() else {
+        let [root, counterparts @ ..] = corrections.as_slice() else {
             return Err(EngineError::invalid());
         };
         let [opening, activity] = root.replacement.as_slice() else {
             return Err(EngineError::invalid());
         };
+        let owner = plan.records.last().and_then(|record| match record {
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Some(owner),
+            _ => None,
+        });
+        if let Some(owner) = owner {
+            if owner.counterparts.is_empty() || owner.counterparts.len() != counterparts.len() {
+                return Err(EngineError::invalid());
+            }
+            for (correction, pair) in counterparts.iter().zip(&owner.counterparts) {
+                let [replacement] = correction.replacement.as_slice() else {
+                    return Err(EngineError::invalid());
+                };
+                if !correction.remapping.is_empty()
+                    || correction.active_recognition != pair.original
+                    || replacement.id != pair.replacement
+                {
+                    return Err(EngineError::invalid());
+                }
+            }
+        } else if !counterparts.is_empty() {
+            return Err(EngineError::invalid());
+        }
         if !root.remapping.is_empty()
             || opening.kind != RecognitionKind::Opening
             || activity.kind != RecognitionKind::Activity
