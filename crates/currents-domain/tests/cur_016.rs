@@ -1,0 +1,527 @@
+//! CUR-016 preview uses exact C08-admitted records and the recomputed C05 index.
+use currents_accounting::AccountingAdapter;
+use currents_domain::{ReplayEngine, associations::IdentityEngine, recognition::RecognitionEngine};
+use currents_types::*;
+use sha2::{Digest as _, Sha256};
+
+#[path = "support/associations.rs"]
+#[allow(dead_code)]
+mod associations;
+#[path = "support/recognition.rs"]
+#[allow(dead_code)]
+mod fixture;
+
+use fixture::id;
+
+/// Admit original activity through C08 and reconstruct the exact C05 sidecar
+/// from the same canonical commit. This fixture does not model native I/O.
+fn retain_frozen_plan(state: &mut DomainState, plan: DecisionPlan) {
+    let batch = AccountingAdapter::freeze(&plan.accounting, state).unwrap();
+    let seq = CommitSeq(state.through.0 + 1);
+    let native_head_after = if batch.operations.is_empty() {
+        state
+            .accounting
+            .as_ref()
+            .unwrap()
+            .prefix
+            .native_head
+            .clone()
+    } else {
+        NativeHead {
+            semantics_version: 1,
+            checkpoint: Digest([u8::try_from(seq.0).unwrap(); 32]),
+        }
+    };
+    let mut records = plan.records;
+    records.push(AuthoritativeRecordV1::FrozenAccountingManifest(
+        AccountingAdapter::manifest(id(30_000 + u32::try_from(seq.0).unwrap()), &batch).unwrap(),
+    ));
+    let mut commit = DomainCommitV1 {
+        seq,
+        previous_digest: state.domain_digest,
+        records,
+        decisions: vec![],
+        native_head_after,
+        command_result: CommandResultV1 {
+            command_id: CommandId(id(31_000 + u32::try_from(seq.0).unwrap()).0),
+            digest: Digest([7; 32]),
+            state: CommandState::Committed,
+            commit: Some(seq),
+            effects: EffectsV1 {
+                records: vec![],
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: plan.invalidations,
+            },
+            health: vec![],
+        },
+        digest: Digest::default(),
+    };
+    commit.digest =
+        Digest(Sha256::digest(serde_json_canonicalizer::to_vec(&commit).unwrap()).into());
+    let mut with_native = state.clone();
+    AccountingAdapter::advance_index(
+        &mut with_native,
+        &commit,
+        &AccountingAdapter::instruction_bytes(&batch).unwrap(),
+    )
+    .unwrap();
+    AccountingAdapter::verify_correspondence(
+        &commit,
+        Some(&batch),
+        with_native.accounting.as_ref().unwrap(),
+    )
+    .unwrap();
+    ReplayEngine::apply(state, &commit).unwrap();
+    state.accounting = with_native.accounting;
+    assert_eq!(
+        state.domain_digest,
+        state.accounting.as_ref().unwrap().prefix.domain_digest
+    );
+}
+
+fn original_segment(
+    include_legacy_movement: bool,
+) -> (DomainState, AccountingSegmentV1, Vec<RecognitionId>) {
+    let (mut state, mut transfer) = associations::transfer_request();
+    let old_prefix = state.accounting.take().unwrap().prefix;
+    let mut native = AccountingIndexV1::empty(old_prefix.native_head.clone());
+    native.prefix = old_prefix;
+    state.accounting = Some(native);
+    let mut accounts = Vec::new();
+    let mut units = Vec::new();
+    for record in state.records.values() {
+        match record {
+            AuthoritativeRecordV1::AccountComponent(account) => accounts.push(account.clone()),
+            AuthoritativeRecordV1::UnitCatalog(catalog) => units.extend(catalog.units.clone()),
+            _ => {}
+        }
+    }
+    let date_policy = state.records.remove(&id(103)).unwrap();
+    retain_frozen_plan(
+        &mut state,
+        DecisionPlan {
+            records: vec![date_policy],
+            invalidations: vec![],
+            accounting: AccountingIntent::MetadataDeclaration(MetadataDeclarationV1 {
+                accounts,
+                units,
+            }),
+        },
+    );
+    let mut opening = fixture::supported_opening(&mut state);
+    if !include_legacy_movement {
+        opening
+            .financial
+            .as_mut()
+            .unwrap()
+            .opening
+            .as_mut()
+            .unwrap()
+            .included_activity
+            .clear();
+    }
+    let old_segment_id = opening
+        .financial
+        .as_ref()
+        .unwrap()
+        .opening
+        .as_ref()
+        .unwrap()
+        .segment_id;
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    retain_frozen_plan(&mut state, plan);
+    let verified = state.records.get(&old_segment_id).unwrap().clone();
+    let AuthoritativeRecordV1::AccountingSegment(old_segment) = verified else {
+        panic!("prior segment missing");
+    };
+    associations::association_date(&mut transfer, "2026-11-03");
+    associations::retained_relationships(
+        &mut state,
+        1500,
+        associations::boundary_rows("2026-11-03", false),
+    );
+    let plan = IdentityEngine::associate(&state, &transfer).unwrap();
+    retain_frozen_plan(&mut state, plan);
+    (state, old_segment, transfer.revision.recognitions)
+}
+
+#[test]
+fn cur_016_original_segment_is_backed_by_frozen_c05_authority() {
+    let (state, segment, transfer) = original_segment(false);
+    let index = state.accounting.as_ref().unwrap();
+    assert!(!transfer.is_empty());
+    for original in std::iter::once(&segment.opening).chain(&transfer) {
+        assert!(
+            index
+                .recognitions
+                .get(original)
+                .is_some_and(|ops| !ops.is_empty())
+        );
+        assert!(!index.reversed.contains(original));
+    }
+}
+
+/// Generate synthetic immutable evidence off-prefix, then retain it without
+/// admitting any of the proposed opening/backfill activity records.
+fn retain_proposal_evidence(
+    state: &mut DomainState,
+    n: u32,
+    amount: Amount,
+    day: &str,
+    kind: ObservationKind,
+) -> SourceFacetBindingV1 {
+    let mut scratch = DomainState::default();
+    let mut source = fixture::evidence(&mut scratch, n, 1, None);
+    source.amount = amount;
+    let mut observation = scratch.records.remove(&source.observation).unwrap();
+    let AuthoritativeRecordV1::ObservationVersion(record) = &mut observation else {
+        panic!();
+    };
+    record.semantic_kind = kind;
+    record.temporal = fixture::date(day);
+    record.original_ids = vec![format!("segment-preview-{n}")];
+    let mut product = scratch.records.remove(&source.parse_product).unwrap();
+    let AuthoritativeRecordV1::AddressedParseProduct(record) = &mut product else {
+        panic!();
+    };
+    record.product.facets[0].kind = kind;
+    record.product.facets[0].amount = SourceValue::Known(amount);
+    record.product.facets[0].temporal = fixture::date(day);
+    retain_frozen_plan(
+        state,
+        DecisionPlan {
+            records: vec![observation, product],
+            invalidations: vec![],
+            accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "Retain preview source assertions, not financial drafts".into(),
+            }),
+        },
+    );
+    source
+}
+
+fn dated_draft(
+    source: SourceFacetBindingV1,
+    serial: u32,
+    counter: u32,
+    day: &str,
+) -> ActivityRequestV1 {
+    let mut draft = fixture::posted(source, serial, counter);
+    let date = fixture::date(day);
+    draft.legs[0].leg.effective = date.clone();
+    draft.legs[0].leg.posting = date.clone();
+    let terms = draft.financial.as_mut().unwrap();
+    terms.bookkeeping_date = date.clone();
+    for posting in &mut terms.postings {
+        posting.posting = date.clone();
+        posting.effective = date.clone();
+    }
+    draft
+}
+
+#[test]
+fn cur_016_1_cross_account_backfill() {
+    use currents_domain::segments::{
+        SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1, SegmentReemissionV1,
+    };
+
+    let (mut state, prior, transfer) = original_segment(false);
+    let exact = retain_proposal_evidence(
+        &mut state,
+        810,
+        fixture::amount(3400),
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    let cent = Amount::new(1, 2, exact.amount.unit_id).unwrap();
+    let discrepant = retain_proposal_evidence(
+        &mut state,
+        820,
+        exact.amount.checked_add(&cent).unwrap(),
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    let movement = retain_proposal_evidence(
+        &mut state,
+        830,
+        fixture::amount(-100),
+        "2026-10-31",
+        ObservationKind::Movement,
+    );
+    let large_amount = fixture::amount(10000000000000000000000);
+    assert!(large_amount.checked_rescale(2).is_ok());
+    assert!(large_amount.checked_rescale(18).is_err());
+    let large_open = retain_proposal_evidence(
+        &mut state,
+        840,
+        large_amount,
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    let large_movement_amount = fixture::amount(3300)
+        .checked_add(&large_amount.checked_neg().unwrap())
+        .unwrap();
+    let large_movement = retain_proposal_evidence(
+        &mut state,
+        850,
+        large_movement_amount,
+        "2026-10-31",
+        ObservationKind::Movement,
+    );
+    let opening_draft = |source: SourceFacetBindingV1| {
+        let mut draft = dated_draft(source.clone(), 900, 50, "2026-10-30");
+        draft.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+            segment_id: id(907),
+            component_id: prior.component,
+            amount: source.amount,
+            cutoff: fixture::date("2026-10-30"),
+            evidence: source,
+            included_activity: vec![],
+        });
+        draft
+    };
+    let mut backfill = dated_draft(movement, 920, 30, "2026-10-31");
+    // Distinct value and booking dates are supported, provided all posting
+    // dates agree with the explicit bookkeeping date.
+    let booked = fixture::date("2026-11-02");
+    backfill.legs[0].leg.posting = booked.clone();
+    let terms = backfill.financial.as_mut().unwrap();
+    terms.bookkeeping_date = booked.clone();
+    for posting in &mut terms.postings {
+        posting.posting = booked.clone();
+    }
+    let reemissions: Vec<_> = transfer
+        .iter()
+        .enumerate()
+        .map(|(offset, original)| {
+            let fresh = 970 + 10 * u32::try_from(offset).unwrap();
+            let AuthoritativeRecordV1::Recognition(prior) = &state.records[&RecordId(original.0)]
+            else {
+                panic!("retained original missing");
+            };
+            SegmentReemissionV1 {
+                original: *original,
+                replacement: RecognitionId(id(fresh).0),
+                posting_ids: prior
+                    .postings
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| id(fresh + 1 + u32::try_from(i).unwrap()))
+                    .collect(),
+            }
+        })
+        .collect();
+    let mut request = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component: prior.component,
+            prior_segment: Some(prior.id),
+            opening: RecognitionId(id(903).0),
+            included_activity: vec![RecognitionId(id(923).0)],
+            replacement_closure: std::iter::once(prior.opening)
+                .chain(transfer.iter().copied())
+                .collect(),
+            approved_accounts: [10, 30, 50]
+                .into_iter()
+                .map(|n| AccountId(id(n).0))
+                .collect(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening: opening_draft(exact),
+        backfill: vec![backfill],
+        reemissions,
+    };
+    let before_records = state.records.clone();
+    let before_index = state.accounting.clone();
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&state, &request).unwrap() else {
+        panic!("3400 - 100 must agree with the 3300 prior boundary");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    let original_index = state.accounting.as_ref().unwrap();
+    for old_id in &request.request.replacement_closure {
+        let [original] = original_index.recognitions[old_id].as_slice() else {
+            panic!("fixture must have exactly one frozen entry per recognition");
+        };
+        let [reversal] = frozen
+            .operations
+            .iter()
+            .filter_map(|op| match op {
+                FrozenNativeOperationV1::Entry(e) if e.reverses.as_ref() == Some(&original.key) => {
+                    Some(e)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("each affected full native recognition must reverse exactly once");
+        };
+        assert_eq!(reversal.recognition_id, *old_id);
+        assert_eq!(reversal.booking_date, original.booking_date);
+        assert_eq!(reversal.value_date, original.value_date);
+        assert_eq!(reversal.postings.len(), original.postings.len());
+        for (actual, original) in reversal.postings.iter().zip(&original.postings) {
+            let mut inverse = original.original.clone();
+            inverse.amount = inverse.amount.checked_neg().unwrap();
+            assert_eq!(actual.original, inverse);
+            assert_eq!(actual.unit, original.unit);
+        }
+    }
+    for reemission in &request.reemissions {
+        let [original] = original_index.recognitions[&reemission.original].as_slice() else {
+            panic!("fixture must have exactly one retained transfer entry");
+        };
+        let [unchanged] = frozen
+            .operations
+            .iter()
+            .filter_map(|op| match op {
+                FrozenNativeOperationV1::Entry(e) if e.recognition_id == reemission.replacement => {
+                    Some(e)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("each retained counterpart, clearing and separate fee must reemit exactly once");
+        };
+        assert!(unchanged.reverses.is_none());
+        assert_eq!(unchanged.booking_date, original.booking_date);
+        assert_eq!(unchanged.value_date, original.value_date);
+        assert_eq!(unchanged.postings.len(), original.postings.len());
+        for ((actual, original), fresh) in unchanged
+            .postings
+            .iter()
+            .zip(&original.postings)
+            .zip(&reemission.posting_ids)
+        {
+            let mut retained = original.original.clone();
+            retained.id = *fresh;
+            assert_eq!(actual.original, retained);
+            assert_eq!(actual.unit, original.unit);
+        }
+    }
+    assert!(frozen.operations.iter().any(|op| matches!(op,
+        FrozenNativeOperationV1::Entry(e)
+            if e.recognition_id == request.request.included_activity[0]
+                && e.booking_date == "2026-11-02"
+                && e.value_date == "2026-10-31"
+    )));
+    assert_eq!(
+        frozen.operations.len(),
+        request.request.replacement_closure.len() + transfer.len() + 2
+    );
+
+    let mut residual = request.clone();
+    residual.opening = opening_draft(discrepant);
+    let SegmentPreviewV1::UnresolvedResidual(amount) =
+        SegmentEngine::replace(&state, &residual).unwrap()
+    else {
+        panic!("one cent cannot yield a native plan or silent plug");
+    };
+    assert_eq!(amount, cent);
+    let mut stale = state.clone();
+    stale.accounting.as_mut().unwrap().prefix.domain_digest = Digest::default();
+    assert!(SegmentEngine::replace(&stale, &request).is_err());
+
+    let mut retired = state.clone();
+    retired
+        .accounting
+        .as_mut()
+        .unwrap()
+        .reversed
+        .insert(transfer[1]);
+    assert!(SegmentEngine::replace(&retired, &request).is_err());
+
+    let mut wrong_native_date = state.clone();
+    wrong_native_date
+        .accounting
+        .as_mut()
+        .unwrap()
+        .recognitions
+        .get_mut(&transfer[1])
+        .unwrap()[0]
+        .booking_date = "2026-11-04".into();
+    assert!(SegmentEngine::replace(&wrong_native_date, &request).is_err());
+
+    let mut duplicate_identity = request.clone();
+    duplicate_identity.reemissions[0].posting_ids[0] = duplicate_identity
+        .opening
+        .financial
+        .as_ref()
+        .unwrap()
+        .postings[0]
+        .id;
+    assert!(SegmentEngine::replace(&state, &duplicate_identity).is_err());
+
+    let (mut legacy, _, _) = original_segment(true);
+    retain_proposal_evidence(
+        &mut legacy,
+        810,
+        fixture::amount(3400),
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    retain_proposal_evidence(
+        &mut legacy,
+        830,
+        fixture::amount(-100),
+        "2026-10-31",
+        ObservationKind::Movement,
+    );
+    assert_eq!(
+        SegmentEngine::replace(&legacy, &request).unwrap_err().class,
+        ErrorClass::UnsupportedVersion,
+        "an equal aggregate must not mask unremapped movement evidence in the prior opening"
+    );
+
+    let mut wrong_backfill_booking = request.clone();
+    wrong_backfill_booking.backfill[0]
+        .financial
+        .as_mut()
+        .unwrap()
+        .postings[0]
+        .posting = fixture::date("2026-11-03");
+    assert!(
+        SegmentEngine::replace(&state, &wrong_backfill_booking).is_err(),
+        "Ready must never carry fresh draft dates rejected by C05 freeze"
+    );
+
+    let mut year_zero_booking = request.clone();
+    let terms = year_zero_booking.backfill[0].financial.as_mut().unwrap();
+    let year_zero = fixture::date("0000-01-01");
+    terms.bookkeeping_date = year_zero.clone();
+    for posting in &mut terms.postings {
+        posting.posting = year_zero.clone();
+    }
+    let result = SegmentEngine::replace(&state, &year_zero_booking);
+    if let Ok(SegmentPreviewV1::Ready(plan)) = &result {
+        assert!(AccountingAdapter::freeze(&plan.accounting, &state).is_err());
+    }
+    assert!(
+        result.is_err(),
+        "uniform booking dates outside C05's native years must not yield Ready"
+    );
+
+    let mut overflow = request.clone();
+    overflow.opening = opening_draft(large_open);
+    overflow.backfill = vec![dated_draft(large_movement, 920, 30, "2026-10-31")];
+    assert!(
+        SegmentEngine::replace(&state, &overflow).is_err(),
+        "reconciled balanced values may still be unrepresentable at signed native scale 18"
+    );
+
+    let omitted_counterpart = transfer[1];
+    request
+        .request
+        .replacement_closure
+        .retain(|id| *id != omitted_counterpart);
+    request
+        .reemissions
+        .retain(|reemit| reemit.original != omitted_counterpart);
+    assert!(SegmentEngine::replace(&state, &request).is_err());
+    assert_eq!(state.records, before_records);
+    let before_index = before_index.unwrap();
+    let after_index = state.accounting.as_ref().unwrap();
+    assert_eq!(after_index.prefix, before_index.prefix);
+    assert_eq!(after_index.recognitions, before_index.recognitions);
+    assert_eq!(after_index.reversed, before_index.reversed);
+}
