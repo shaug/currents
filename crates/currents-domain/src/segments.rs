@@ -120,16 +120,28 @@ pub(crate) fn initial(
         return Err(incomplete());
     }
     if !admission {
-        let mut anchors = state.records.values().filter_map(|r| match r {
-            AuthoritativeRecordV1::AccountingSegment(s) if s.component == c.id => Some(s),
-            _ => None,
-        });
-        let anchor = anchors.next().ok_or_else(incomplete)?;
-        if anchors.next().is_some()
-            || anchor.id != opening.segment_id
-            || anchor.opening != terms.recognition_id
-        {
+        let (root, successor) = segment_family(state, c.id)?.ok_or_else(incomplete)?;
+        let historical = if root.id == opening.segment_id {
+            root
+        } else {
+            successor
+                .filter(|s| s.id == opening.segment_id)
+                .ok_or_else(incomplete)?
+        };
+        if historical.opening != terms.recognition_id {
             return Err(EngineError::invalid());
+        }
+        if historical.prior_segment.is_some() {
+            // The owner was previously re-admitted against the complete
+            // prior prefix. Its immutable authored segment is not a new root.
+            let index = state.accounting.as_ref().ok_or_else(incomplete)?;
+            if !index.reversed.contains(&root.opening)
+                || index.reversed.contains(&historical.opening)
+                || !index.recognitions.contains_key(&historical.opening)
+            {
+                return Err(EngineError::invalid());
+            }
+            return Ok(Some(historical.clone()));
         }
     }
     Ok(Some(AccountingSegmentV1 {
@@ -143,6 +155,53 @@ pub(crate) fn initial(
         residual_disposition: SourceValue::Absent,
     }))
 }
+/// The delivered family is deliberately one root plus at most one standalone
+/// successor. No fork, self-link, second hop or reused opening is active.
+pub(crate) fn segment_family(
+    state: &DomainState,
+    component: RecordId,
+) -> Result<Option<(&AccountingSegmentV1, Option<&AccountingSegmentV1>)>, EngineError> {
+    let mut root = None;
+    let mut successor = None;
+    for (id, record) in &state.records {
+        let AuthoritativeRecordV1::AccountingSegment(segment) = record else {
+            continue;
+        };
+        if segment.component != component {
+            continue;
+        }
+        if segment.id != *id || id.0.is_nil() {
+            return Err(EngineError::invalid());
+        }
+        let slot = if segment.prior_segment.is_none() {
+            &mut root
+        } else {
+            &mut successor
+        };
+        if slot.replace(segment).is_some() {
+            return Err(EngineError::invalid());
+        }
+    }
+    let Some(root) = root else {
+        if successor.is_some() {
+            return Err(EngineError::invalid());
+        }
+        return Ok(None);
+    };
+    if let Some(s) = successor
+        && (s.prior_segment != Some(root.id)
+            || s.opening == root.opening
+            || s.replacement_closure != [root.opening]
+            || s.included_activity.len() != 1
+            || s.included_activity[0] == root.opening
+            || s.included_activity[0] == s.opening
+            || !matches!(s.residual_disposition, SourceValue::Absent))
+    {
+        return Err(EngineError::invalid());
+    }
+    Ok(Some((root, successor)))
+}
+
 /// Activity at/before a supported opening needs explicit reconciliation, not a
 /// second monetary entry. The exact included facts are also ownership checked.
 pub(crate) fn activity_boundary(
@@ -187,6 +246,16 @@ pub(crate) fn movement_boundary<'a>(
         else {
             return Err(incomplete());
         };
+        let Some((root, successor)) = segment_family(state, c.id)? else {
+            return Err(incomplete());
+        };
+        let active = successor.unwrap_or(root);
+        if active.id != opening.segment_id {
+            continue;
+        }
+        if a.recognition != Some(active.opening) {
+            return Err(EngineError::invalid());
+        }
         let cutoff = civil(&opening.cutoff)?;
         for (account, effective) in movements.clone() {
             if account == c.account_id && civil(effective)? <= cutoff {

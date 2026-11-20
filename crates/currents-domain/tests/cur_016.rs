@@ -16,7 +16,22 @@ use fixture::id;
 /// Admit original activity through C08 and reconstruct the exact C05 sidecar
 /// from the same canonical commit. This fixture does not model native I/O.
 fn retain_frozen_plan(state: &mut DomainState, plan: DecisionPlan) {
+    replay_frozen_plan(state, plan).expect("accepted original fixture must replay");
+}
+
+fn replay_frozen_plan(
+    state: &mut DomainState,
+    plan: DecisionPlan,
+) -> Result<DomainCommitV1, EngineError> {
     let batch = AccountingAdapter::freeze(&plan.accounting, state).unwrap();
+    replay_with_frozen_batch(state, plan, &batch)
+}
+
+fn replay_with_frozen_batch(
+    state: &mut DomainState,
+    plan: DecisionPlan,
+    batch: &AccountingBatchV1,
+) -> Result<DomainCommitV1, EngineError> {
     let seq = CommitSeq(state.through.0 + 1);
     let native_head_after = if batch.operations.is_empty() {
         state
@@ -34,7 +49,7 @@ fn retain_frozen_plan(state: &mut DomainState, plan: DecisionPlan) {
     };
     let mut records = plan.records;
     records.push(AuthoritativeRecordV1::FrozenAccountingManifest(
-        AccountingAdapter::manifest(id(30_000 + u32::try_from(seq.0).unwrap()), &batch).unwrap(),
+        AccountingAdapter::manifest(id(30_000 + u32::try_from(seq.0).unwrap()), batch).unwrap(),
     ));
     let mut commit = DomainCommitV1 {
         seq,
@@ -63,27 +78,26 @@ fn retain_frozen_plan(state: &mut DomainState, plan: DecisionPlan) {
     AccountingAdapter::advance_index(
         &mut with_native,
         &commit,
-        &AccountingAdapter::instruction_bytes(&batch).unwrap(),
-    )
-    .unwrap();
+        &AccountingAdapter::instruction_bytes(batch).unwrap(),
+    )?;
     AccountingAdapter::verify_correspondence(
         &commit,
-        Some(&batch),
+        Some(batch),
         with_native.accounting.as_ref().unwrap(),
-    )
-    .unwrap();
-    ReplayEngine::apply(state, &commit).unwrap();
+    )?;
+    ReplayEngine::apply(state, &commit)?;
     state.accounting = with_native.accounting;
     assert_eq!(
         state.domain_digest,
         state.accounting.as_ref().unwrap().prefix.domain_digest
     );
+    Ok(commit)
 }
 
-fn original_segment(
+fn retain_original_opening(
+    state: &mut DomainState,
     include_legacy_movement: bool,
-) -> (DomainState, AccountingSegmentV1, Vec<RecognitionId>) {
-    let (mut state, mut transfer) = associations::transfer_request();
+) -> AccountingSegmentV1 {
     let old_prefix = state.accounting.take().unwrap().prefix;
     let mut native = AccountingIndexV1::empty(old_prefix.native_head.clone());
     native.prefix = old_prefix;
@@ -99,7 +113,7 @@ fn original_segment(
     }
     let date_policy = state.records.remove(&id(103)).unwrap();
     retain_frozen_plan(
-        &mut state,
+        state,
         DecisionPlan {
             records: vec![date_policy],
             invalidations: vec![],
@@ -109,7 +123,7 @@ fn original_segment(
             }),
         },
     );
-    let mut opening = fixture::supported_opening(&mut state);
+    let mut opening = fixture::supported_opening(state);
     if !include_legacy_movement {
         opening
             .financial
@@ -129,12 +143,20 @@ fn original_segment(
         .as_ref()
         .unwrap()
         .segment_id;
-    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
-    retain_frozen_plan(&mut state, plan);
+    let plan = RecognitionEngine::adopt(state, &opening).unwrap();
+    retain_frozen_plan(state, plan);
     let verified = state.records.get(&old_segment_id).unwrap().clone();
     let AuthoritativeRecordV1::AccountingSegment(old_segment) = verified else {
         panic!("prior segment missing");
     };
+    old_segment
+}
+
+fn original_segment(
+    include_legacy_movement: bool,
+) -> (DomainState, AccountingSegmentV1, Vec<RecognitionId>) {
+    let (mut state, mut transfer) = associations::transfer_request();
+    let old_segment = retain_original_opening(&mut state, include_legacy_movement);
     associations::association_date(&mut transfer, "2026-11-03");
     associations::retained_relationships(
         &mut state,
@@ -337,6 +359,14 @@ fn cur_016_1_cross_account_backfill() {
         panic!("3400 - 100 must agree with the 3300 prior boundary");
     };
     let frozen = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    let mut durable_attempt = state.clone();
+    assert!(
+        replay_frozen_plan(&mut durable_attempt, plan.as_ref().clone()).is_err(),
+        "cross-account closure remains a preview; it cannot activate a partial family"
+    );
+    assert_eq!(durable_attempt.records, before_records);
+    assert_eq!(durable_attempt.through, state.through);
+
     let original_index = state.accounting.as_ref().unwrap();
     for old_id in &request.request.replacement_closure {
         let [original] = original_index.recognitions[old_id].as_slice() else {
@@ -524,4 +554,166 @@ fn cur_016_1_cross_account_backfill() {
     assert_eq!(after_index.prefix, before_index.prefix);
     assert_eq!(after_index.recognitions, before_index.recognitions);
     assert_eq!(after_index.reversed, before_index.reversed);
+}
+
+#[test]
+fn cur_016_standalone_segment_family_replays_without_overwriting_old_opening() {
+    use currents_domain::segments::{SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1};
+
+    // No transfer or association authority exists in this minimum durable case.
+    let mut state = fixture::monetary_state();
+    let prior = retain_original_opening(&mut state, false);
+    let balance = retain_proposal_evidence(
+        &mut state,
+        810,
+        fixture::amount(3400),
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    let movement = retain_proposal_evidence(
+        &mut state,
+        830,
+        fixture::amount(-100),
+        "2026-10-31",
+        ObservationKind::Movement,
+    );
+    let next_segment = id(907);
+    let mut opening = dated_draft(balance.clone(), 900, 50, "2026-10-30");
+    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: next_segment,
+        component_id: prior.component,
+        amount: balance.amount,
+        cutoff: fixture::date("2026-10-30"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let new_opening = RecognitionId(id(903).0);
+    let new_backfill = RecognitionId(id(923).0);
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component: prior.component,
+            prior_segment: Some(prior.id),
+            opening: new_opening,
+            included_activity: vec![new_backfill],
+            replacement_closure: vec![prior.opening],
+            approved_accounts: [10, 30, 50]
+                .into_iter()
+                .map(|n| AccountId(id(n).0))
+                .collect(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening,
+        backfill: vec![dated_draft(movement, 920, 30, "2026-10-31")],
+        reemissions: vec![],
+    };
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(&state, &proposal).unwrap() else {
+        panic!("the standalone earlier anchor reconciles exactly");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    assert_eq!(frozen.operations.len(), 3);
+    let old_prefix = state.clone();
+    let mut wrong_key = frozen.clone();
+    let FrozenNativeOperationV1::Entry(reversal) = &mut wrong_key.operations[0] else {
+        panic!("expected an original opening reversal");
+    };
+    reversal.reverses = Some("different-native-opening-key".into());
+    wrong_key.decision_digest = AccountingAdapter::prebinding_digest(&wrong_key).unwrap();
+    for operation in &mut wrong_key.operations {
+        if let FrozenNativeOperationV1::Entry(entry) = operation {
+            entry.generated_document = wrong_key.decision_digest;
+        }
+    }
+    assert!(replay_with_frozen_batch(&mut state, plan.as_ref().clone(), &wrong_key).is_err());
+
+    let mut wrong_component = plan.as_ref().clone();
+    let other_component = wrong_component
+        .records
+        .iter_mut()
+        .find_map(|record| match record {
+            AuthoritativeRecordV1::AccountingSegment(segment) => Some(segment),
+            _ => None,
+        })
+        .unwrap();
+    other_component.component = id(31); // Real component, but not the original's component.
+    assert!(state.records.contains_key(&id(31)));
+    assert!(replay_frozen_plan(&mut state, wrong_component).is_err());
+
+    let mut forged = (*plan).clone();
+    let other = forged
+        .records
+        .iter_mut()
+        .find_map(|record| match record {
+            AuthoritativeRecordV1::AccountingSegment(segment) => Some(segment),
+            _ => None,
+        })
+        .unwrap();
+    other.prior_segment = Some(next_segment); // Self-link, not a new root.
+    assert!(replay_frozen_plan(&mut state, forged).is_err());
+    assert_eq!(state.through, old_prefix.through);
+    assert_eq!(state.domain_digest, old_prefix.domain_digest);
+    assert_eq!(state.records, old_prefix.records);
+    assert_eq!(
+        state.accounting.as_ref().unwrap().prefix,
+        old_prefix.accounting.as_ref().unwrap().prefix,
+    );
+
+    let accepted = replay_frozen_plan(&mut state, *plan).expect(
+        "C08 must replay an exact standalone segment-family successor, not a new initial opening",
+    );
+    assert_eq!(state.through, CommitSeq(old_prefix.through.0 + 1));
+    for (key, record) in &old_prefix.records {
+        assert_eq!(state.records.get(key), Some(record));
+    }
+    let Some(AuthoritativeRecordV1::AccountingSegment(successor)) =
+        state.records.get(&next_segment)
+    else {
+        panic!("next immutable segment was not retained");
+    };
+    assert_eq!(successor.prior_segment, Some(prior.id));
+    assert_eq!(successor.component, prior.component);
+    assert_eq!(successor.opening, new_opening);
+    assert_eq!(successor.included_activity, vec![new_backfill]);
+    let native = state.accounting.as_ref().unwrap();
+    assert!(native.reversed.contains(&prior.opening));
+    assert!(native.recognitions.contains_key(&new_opening));
+    assert!(!native.reversed.contains(&new_opening));
+    assert!(
+        !old_prefix
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&prior.opening)
+    );
+    RecognitionEngine::audit(&state)
+        .expect("historical opening and active successor must both audit");
+
+    // Domain-only replay guard: a second append with the same root may not
+    // replace the accepted successor, even with an otherwise valid envelope.
+    let mut second = accepted;
+    second.seq = CommitSeq(state.through.0 + 1);
+    second.previous_digest = state.domain_digest;
+    second.command_result.commit = Some(second.seq);
+    second.command_result.command_id = CommandId(id(31_999).0);
+    second.digest = Digest::default();
+    second.digest =
+        Digest(Sha256::digest(serde_json_canonicalizer::to_vec(&second).unwrap()).into());
+
+    let before_fork = state.clone();
+    assert!(ReplayEngine::apply(&mut state, &second).is_err());
+    assert_eq!(state.records, before_fork.records);
+    assert_eq!(state.through, before_fork.through);
+
+    let next_source = retain_proposal_evidence(
+        &mut state,
+        860,
+        fixture::amount(-42),
+        "2026-11-01",
+        ObservationKind::Movement,
+    );
+    let retained_draft = dated_draft(next_source, 1020, 30, "2026-11-01");
+    assert!(
+        RecognitionEngine::adopt(&state, &retained_draft).is_ok(),
+        "only the active earlier cutoff governs later movements, not the archived root"
+    );
 }

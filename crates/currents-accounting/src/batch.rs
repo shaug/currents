@@ -521,6 +521,54 @@ impl AccountingAdapter {
         {
             return Err(EngineError::invalid());
         }
+        let mut successors = commit.records.iter().filter_map(|record| match record {
+            AuthoritativeRecordV1::AccountingSegment(segment)
+                if segment.prior_segment.is_some() =>
+            {
+                Some(segment)
+            }
+            _ => None,
+        });
+        if let Some(successor) = successors.next() {
+            let ([old_opening], [backfill]) = (
+                successor.replacement_closure.as_slice(),
+                successor.included_activity.as_slice(),
+            ) else {
+                return Err(EngineError::invalid());
+            };
+            let Some(
+                [
+                    FrozenNativeOperationV1::Entry(reversal),
+                    FrozenNativeOperationV1::Entry(opening),
+                    FrozenNativeOperationV1::Entry(activity),
+                ],
+            ) = batch.map(|batch| batch.operations.as_slice())
+            else {
+                return Err(EngineError::invalid());
+            };
+            let [original] = index
+                .recognitions
+                .get(old_opening)
+                .ok_or_else(EngineError::invalid)?
+                .as_slice()
+            else {
+                return Err(EngineError::invalid());
+            };
+            // advance_index separately checks full postings, dates and sign.
+            // Here bind the exact root native entry and both typed emissions.
+            if successors.next().is_some()
+                || successor.prior_segment == Some(successor.id)
+                || reversal.recognition_id != *old_opening
+                || reversal.reverses.as_ref() != Some(&original.key)
+                || !index.reversed.contains(old_opening)
+                || opening.reverses.is_some()
+                || opening.recognition_id != successor.opening
+                || activity.reverses.is_some()
+                || activity.recognition_id != *backfill
+            {
+                return Err(EngineError::invalid());
+            }
+        }
         let associations: Vec<_> = commit
             .records
             .iter()

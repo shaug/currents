@@ -10,6 +10,14 @@ pub(crate) fn validate_transition(
     next: &DomainState,
     commit: &DomainCommitV1,
 ) -> Result<(), EngineError> {
+    if let Some(segment) = commit.records.iter().find_map(|record| match record {
+        AuthoritativeRecordV1::AccountingSegment(segment) if segment.prior_segment.is_some() => {
+            Some(segment)
+        }
+        _ => None,
+    }) {
+        return validate_segment_successor(prior, next, commit, segment);
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {
@@ -183,6 +191,74 @@ pub(crate) fn validate_transition(
         if requires_owner && !emitted.contains(record) {
             return Err(EngineError::version());
         }
+    }
+    Ok(())
+}
+
+/// Re-admit the complete standalone family claim against the old prefix.
+/// The draft is not accepted via the normal initial-adoption path.
+fn validate_segment_successor(
+    prior: &DomainState,
+    next: &DomainState,
+    commit: &DomainCommitV1,
+    successor: &AccountingSegmentV1,
+) -> Result<(), EngineError> {
+    use crate::segments::{
+        SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1, segment_family,
+    };
+    let invalid = EngineError::invalid;
+    let (root, None) = segment_family(prior, successor.component)?.ok_or_else(invalid)? else {
+        return Err(invalid());
+    };
+    let [backfill] = successor.included_activity.as_slice() else {
+        return Err(EngineError::version());
+    };
+    if successor.prior_segment != Some(root.id) || successor.replacement_closure != [root.opening] {
+        return Err(EngineError::version());
+    }
+    let (records, manifest) = commit
+        .records
+        .split_last()
+        .ok_or_else(invalid)
+        .map(|(last, rest)| (rest, last))?;
+    let AuthoritativeRecordV1::FrozenAccountingManifest(manifest) = manifest else {
+        return Err(invalid());
+    };
+    let prefix = &prior.accounting.as_ref().ok_or_else(invalid)?.prefix;
+    if &manifest.preconditions != prefix {
+        return Err(invalid());
+    }
+    let restore_exact = |id| {
+        let mut candidates = records.iter().filter_map(|record| match record {
+            AuthoritativeRecordV1::ActivityAdoption(a) if a.recognition == Some(id) => Some(a),
+            _ => None,
+        });
+        let adoption = candidates.next().ok_or_else(invalid)?;
+        if candidates.next().is_some() {
+            return Err(invalid());
+        }
+        restore(next, adoption)
+    };
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component: successor.component,
+            prior_segment: successor.prior_segment,
+            opening: successor.opening,
+            included_activity: successor.included_activity.clone(),
+            replacement_closure: successor.replacement_closure.clone(),
+            approved_accounts: successor.approved_accounts.clone(),
+            residual_disposition: successor.residual_disposition.clone(),
+        },
+        opening: restore_exact(successor.opening)?,
+        backfill: vec![restore_exact(*backfill)?],
+        reemissions: vec![],
+    };
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(prior, &proposal)? else {
+        return Err(invalid());
+    };
+    if plan.records != records || plan.invalidations != commit.command_result.effects.invalidations
+    {
+        return Err(invalid());
     }
     Ok(())
 }
