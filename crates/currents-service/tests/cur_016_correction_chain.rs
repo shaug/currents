@@ -777,3 +777,132 @@ async fn cur_016_2_synthetic_service_approves_exact_correction_and_replays_owner
     assert!(!index.reversed.contains(&replacement));
     assert!(index.recognitions.contains_key(&replacement));
 }
+
+#[tokio::test]
+async fn cur_016_2_typed_candidate_pins_authenticated_policy_and_revision() {
+    use service_api::{SyntheticCorrectionCandidate, synthetic_preview_correction_candidate};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("typed-correction-candidate.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, &path, 200, "1", "2026-11-01").await;
+    let purchase = fixture::posted(legacy_binding(200), 300, 30);
+    let original = purchase.financial.as_ref().unwrap().recognition_id;
+    let adopted_policy = purchase.governing_policy.clone();
+    let adoption = purchase.adoption_id;
+    submit(&mut f, 59_001, OperationV1::AdoptActivity(purchase)).await;
+    let before = refresh_financial(&mut f, &path, None).await;
+    let mut later_policy =
+        before.dataset_policies[&(adopted_policy.id, adopted_policy.version)].clone();
+    later_policy.version += 1;
+    let accounting = AccountingIntent::NoEffect(NoEffectV1 {
+        reason: "retain later synthetic policy".into(),
+    });
+    let frozen = AccountingAdapter::freeze(&accounting, &before).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let writer = store.writer();
+    writer
+        .commit(PreparedCommit {
+            evidence: vec![],
+            decision_plan: DecisionPlan {
+                records: vec![AuthoritativeRecordV1::DatasetPolicy(later_policy.clone())],
+                invalidations: vec![],
+                accounting,
+            },
+            frozen_batch: frozen,
+            prior_head: before.through,
+            decisions: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(59_004).0),
+                digest: Digest([85; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![later_policy.id],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            manifest_id: fixture::id(59_005),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .unwrap();
+
+    let current = writer.audited_prefix().await.unwrap();
+    let domain_request = fresh_correction(&before, original, 59_020);
+    let candidate = SyntheticCorrectionCandidate {
+        dataset: DatasetId(support::id(1000).0),
+        command: CommandId(fixture::id(59_002).0),
+        expected_basis: current.clone(),
+        revision: fixture::id(59_010),
+        active_recognition: original,
+        replacement: domain_request.replacement[0].clone(),
+        reason: domain_request.reason.clone(),
+        governing_policy: adopted_policy.clone(),
+    };
+    let preview = synthetic_preview_correction_candidate(writer, &candidate).await
+        .expect("exact same-writer candidate must bind the adopted policy even after a newer policy is retained");
+    let same = synthetic_preview_correction_candidate(writer, &candidate.clone())
+        .await
+        .unwrap();
+    assert_eq!(preview, same);
+    assert_eq!(
+        preview.plan,
+        CorrectionEngine::correct_durable(&before, candidate.revision, &domain_request).unwrap()
+    );
+    assert_eq!(preview.basis, current);
+    assert_eq!(preview.policy, adopted_policy);
+    let mut altered = candidate.clone();
+    altered.revision = fixture::id(59_011);
+    let second = synthetic_preview_correction_candidate(writer, &altered)
+        .await
+        .unwrap();
+    assert_ne!(second.candidate_digest, preview.candidate_digest);
+    assert_ne!(second.plan.records, preview.plan.records);
+
+    let mut stale = candidate.clone();
+    stale.expected_basis = before.accounting.as_ref().unwrap().prefix.clone();
+    assert_eq!(
+        synthetic_preview_correction_candidate(writer, &stale)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::StaleBasis
+    );
+    let mut forged_basis = candidate.clone();
+    forged_basis.expected_basis.native_head.checkpoint = Digest([42; 32]);
+    assert_eq!(
+        synthetic_preview_correction_candidate(writer, &forged_basis)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::StaleBasis
+    );
+    let mut wrong = candidate.clone();
+    wrong.governing_policy.version = later_policy.version;
+    assert!(
+        synthetic_preview_correction_candidate(writer, &wrong)
+            .await
+            .is_err()
+    );
+    let mut occupied = candidate.clone();
+    occupied.revision = adoption;
+    assert!(
+        synthetic_preview_correction_candidate(writer, &occupied)
+            .await
+            .is_err()
+    );
+    let mut foreign = candidate.clone();
+    foreign.dataset = DatasetId(fixture::id(59_012).0);
+    assert!(
+        synthetic_preview_correction_candidate(writer, &foreign)
+            .await
+            .is_err()
+    );
+    assert_eq!(writer.audited_prefix().await.unwrap(), current);
+}

@@ -2,8 +2,9 @@
 
 use currents_types::{
     AccountingIndexV1, AccountingIntent, ActivityAdoptionV1, ActivityStatusV1,
-    AuthoritativeRecordV1, DecisionPlan, DomainState, EngineError, RecognitionCorrectionRemapV1,
-    RecognitionCorrectionRevisionV1, RecognitionId, RecognitionKind, RecognitionV1, RecordId,
+    AuthoritativeRecordV1, DecisionPlan, DomainState, EngineError, PolicyReferenceV1,
+    RecognitionCorrectionRemapV1, RecognitionCorrectionRevisionV1, RecognitionId, RecognitionKind,
+    RecognitionV1, RecordId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -87,6 +88,26 @@ impl CorrectionEngine {
         revision_id: RecordId,
         request: &CorrectionRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
+        Self::correct_durable_inner(state, revision_id, request, None)
+    }
+
+    /// Complete candidate preview must bind the exact original adoption policy,
+    /// not whichever policy is newest at the time of the compensation.
+    pub fn correct_durable_at_policy(
+        state: &DomainState,
+        revision_id: RecordId,
+        request: &CorrectionRequestV1,
+        policy: &PolicyReferenceV1,
+    ) -> Result<DecisionPlan, EngineError> {
+        Self::correct_durable_inner(state, revision_id, request, Some(policy))
+    }
+
+    fn correct_durable_inner(
+        state: &DomainState,
+        revision_id: RecordId,
+        request: &CorrectionRequestV1,
+        policy: Option<&PolicyReferenceV1>,
+    ) -> Result<DecisionPlan, EngineError> {
         let mut plan = Self::correct(state, request)?;
         let original_id = request.active_recognition;
         let replacement = &request.replacement[0];
@@ -108,6 +129,15 @@ impl CorrectionEngine {
         let chains = correction_chains(state)?;
         let root = chains.root_of(original_id);
         let owner = original_adoption(state, root)?;
+        if let Some(policy) = policy
+            && (&owner.governing_policy != policy
+                || !state
+                    .dataset_policies
+                    .contains_key(&(policy.id, policy.version)))
+        {
+            return Err(EngineError::invalid());
+        }
+
         let in_family = |candidate: &RecognitionId| chains.root_of(*candidate) == root;
         let target_in_family = |candidate: &RecordId| in_family(&RecognitionId(candidate.0));
         if state.records.values().any(|record| match record {

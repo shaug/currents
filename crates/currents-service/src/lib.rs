@@ -32,3 +32,12 @@ pub use segment_preflight::synthetic_commit_verified_segment;
 
 #[cfg(feature = "synthetic-test-fixtures")]
 mod verified_prefix;
+
+#[cfg(feature = "synthetic-test-fixtures")]
+mod correction_candidate;
+#[cfg(feature = "synthetic-test-fixtures")]
+#[doc(hidden)]
+pub use correction_candidate::{
+    SyntheticCorrectionCandidate, SyntheticCorrectionCandidatePreview,
+    synthetic_preview_correction_candidate,
+};
