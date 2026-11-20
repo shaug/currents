@@ -759,27 +759,11 @@ impl RecognitionEngine {
         // Replay has admitted each immutable correction owner against its exact
         // prior prefix. Keep the original adoption's reconstruction independent
         // of the replacement while binding both to the verified native index.
-        let mut corrections = BTreeMap::new();
-        for record in state.records.values() {
-            if let AuthoritativeRecordV1::RecognitionCorrectionRevision(revision) = record {
-                let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
-                if !index.reversed.contains(&revision.prior_recognition)
-                    || index.reversed.contains(&revision.replacement_recognition)
-                    || !index
-                        .recognitions
-                        .contains_key(&revision.replacement_recognition)
-                    || corrections
-                        .insert(revision.replacement_recognition, revision.prior_recognition)
-                        .is_some()
-                {
-                    return Err(EngineError::invalid());
-                }
-            }
-        }
+        let corrections = crate::correction::correction_chains(state)?;
         let mut lineage_owners = BTreeMap::<RecordId, Vec<RecognitionId>>::new();
         for record in state.records.values() {
             if let AuthoritativeRecordV1::Recognition(r) = record
-                && !corrections.contains_key(&r.id)
+                && !corrections.is_replacement(r.id)
             {
                 lineage_owners.entry(r.lineage).or_default().push(r.id);
             }

@@ -716,6 +716,34 @@ fn cur_016_standalone_segment_family_replays_without_overwriting_old_opening() {
         RecognitionEngine::adopt(&state, &retained_draft).is_ok(),
         "only the active earlier cutoff governs later movements, not the archived root"
     );
+
+    // The archived root may remain readable, but the active successor is
+    // still an opening. A second independent account root would overlap it.
+    let another_balance = retain_proposal_evidence(
+        &mut state,
+        870,
+        fixture::amount(4100),
+        "2026-12-01",
+        ObservationKind::Balance,
+    );
+    let mut overlap = dated_draft(another_balance.clone(), 1080, 50, "2026-12-01");
+    overlap.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: id(1087),
+        component_id: prior.component,
+        amount: another_balance.amount,
+        cutoff: fixture::date("2026-12-01"),
+        evidence: another_balance,
+        included_activity: vec![],
+    });
+    let unchanged_prefix = state.accounting.as_ref().unwrap().prefix.clone();
+    assert_eq!(
+        RecognitionEngine::adopt(&state, &overlap)
+            .unwrap_err()
+            .class,
+        ErrorClass::IncompleteBasis
+    );
+    assert_eq!(state.accounting.as_ref().unwrap().prefix, unchanged_prefix);
+    assert!(!state.records.contains_key(&id(1087)));
 }
 
 #[test]

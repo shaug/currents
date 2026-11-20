@@ -157,7 +157,7 @@ Financial terms separately identify recognition and lineage, postings, bookkeepi
 
 `CorrectionEngine::correct` previews an identity-only, one-for-one replacement against a validated prefix; it is not a write route. The private durable test path additionally emits a version-1 `RecognitionCorrectionRevisionV1` naming a previously adopted standalone recognition and its fresh replacement in the same commit. It declares `UnchangedStableLegs`; the old adoption, recognition, historical dates, amounts, postings and ownership stay unchanged. Replay re-admits exactly one revision and one replacement against the prior prefix, and C05 binds the whole reversal and replacement to the frozen native closure. Existing records and command tags are unchanged. A reader that does not recognize the new record cannot silently consume it.
 
-This checkpoint does not expose service or wire dispatch. It rejects association-bound or dependent recognition, remapping, and another correction of either end of an existing revision. It does not qualify general corrections, multi-hop history, segment replacement, or trusted writer preflight for malformed input.
+The standalone identity-only correction chain may advance only its live terminal. Each append keeps the original activity adoption as the unique historical owner, retires the preceding native recognition, and preserves the entire prior history with exactly one live terminal. Reused posting identities, forks, cycles, orphan authority and economic changes are invalid. Association-bound and dependent recognitions still require an explicit remap path; this checkpoint does not silently remap them or expose service or wire dispatch.
 
 <a id="c09"></a>
 
