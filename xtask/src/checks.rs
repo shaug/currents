@@ -7,7 +7,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Output},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 type Result<T> = std::result::Result<T, String>;
@@ -307,7 +307,46 @@ pub(crate) fn check_native_environment() -> Result<()> {
     }
     Ok(())
 }
+enum CorePhase {
+    Build,
+    Test,
+    NativeDriver,
+}
+
+impl CorePhase {
+    fn run<T>(self, enabled: bool, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+        if !enabled {
+            return operation();
+        }
+        let label = match self {
+            Self::Build => "workspace-build",
+            Self::Test => "workspace-test",
+            Self::NativeDriver => "native-driver",
+        };
+        // Best-effort diagnostics must not change command results or captured evidence.
+        let _ = writeln!(std::io::stderr().lock(), "core phase={label} start");
+        let start = Instant::now();
+        let result = operation();
+        let status = if result.is_ok() { "ok" } else { "error" };
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "core phase={label} finish status={status} duration_ms={}",
+            start.elapsed().as_millis()
+        );
+        result
+    }
+}
+
+fn macos_core_phases(msrv: bool, has_manifest: bool) -> bool {
+    cfg!(target_os = "macos")
+        && !msrv
+        && !has_manifest
+        && env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+        && env::var("CURRENTS_MACOS_CORE_PHASES").as_deref() == Ok("1")
+}
+
 fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
+    let phases = macos_core_phases(msrv, manifest.is_some());
     check_native_environment()?;
     let (program, rustc, version) = if msrv {
         let (c, r, v) = msrv_tools()?;
@@ -334,12 +373,17 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     }
     test.extend(["--", "--test-threads=1"]);
     let mut evidence = vec![];
-    for args in [build, test] {
-        let text = checked(&program, &args, &root(), rustc.as_deref())?;
+    for (phase, args) in [(CorePhase::Build, build), (CorePhase::Test, test)] {
+        let text = phase.run(phases, || {
+            checked(&program, &args, &root(), rustc.as_deref())
+        })?;
         evidence.push(json!({"command":args,"stdout_sha256":sha(text.as_bytes())}));
     }
     let driver = if manifest.is_none() {
-        Some(crate::cipher::driver(&program, rustc.as_deref())?)
+        Some(
+            CorePhase::NativeDriver
+                .run(phases, || crate::cipher::driver(&program, rustc.as_deref()))?,
+        )
     } else {
         None
     };
@@ -913,7 +957,7 @@ pub(crate) fn native_source() -> Result<Value> {
         json!({"sys_manifest":expected,"source":native,"scope":"fixed upstream source bytes and one native stack; runtime behavior separately tested"}),
     )
 }
-fn quality() -> Result<Value> {
+fn quality_checks() -> Result<Value> {
     native_source()?;
     workspace()?;
     direction(&root().join("Cargo.toml"))?;
@@ -928,8 +972,15 @@ fn quality() -> Result<Value> {
         "warnings",
     ])?;
     crate::quality::all()?;
-    let tests = ticket("CUR-001")?;
+    ticket("CUR-001")
+}
+fn quality() -> Result<Value> {
+    let tests = quality_checks()?;
     Ok(json!({"tests":tests,"core":core(false, None)?}))
+}
+fn quality_ci() -> Result<Value> {
+    let tests = quality_checks()?;
+    Ok(json!({"tests":tests,"scope":"PR policy checks only; core required separately"}))
 }
 fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
     let Some(i) = args.iter().position(|a| a == name) else {
@@ -956,7 +1007,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let result = (|| {
         match (command,gate) {
         ("ticket",name)=>ticket(name),
-        ("check","quality")=>quality(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
+        ("check","quality")=>quality(), ("check","quality-ci")=>quality_ci(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
         ("check","docs")=>crate::quality::docs(None),
         ("check","privacy")=>crate::quality::privacy(&root()),
         ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),

@@ -20,6 +20,43 @@
     "quality": {
       "name": "quality",
       "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 5,
+      "needs": [
+        "core",
+        "quality-policy",
+        "msrv",
+        "docs",
+        "privacy"
+      ],
+      "if": "${{ !cancelled() }}",
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
+        },
+        {
+          "name": "Check all gate results",
+          "env": {
+            "CORE_RESULT": "${{ needs.core.result }}",
+            "QUALITY_POLICY_RESULT": "${{ needs.quality-policy.result }}",
+            "MSRV_RESULT": "${{ needs.msrv.result }}",
+            "DOCS_RESULT": "${{ needs.docs.result }}",
+            "PRIVACY_RESULT": "${{ needs.privacy.result }}"
+          },
+          "run": "status=0\ncheck() {\n  if [ \"$2\" != success ]; then\n    echo \"::error::$1 did not pass (result: ${2:-missing})\"\n    status=1\n  fi\n}\ncheck core \"${CORE_RESULT:-}\"\ncheck quality-policy \"${QUALITY_POLICY_RESULT:-}\"\ncheck msrv \"${MSRV_RESULT:-}\"\ncheck docs \"${DOCS_RESULT:-}\"\ncheck privacy \"${PRIVACY_RESULT:-}\"\nexit \"$status\""
+        }
+      ]
+    },
+    "quality-policy": {
+      "name": "quality-policy",
+      "runs-on": "ubuntu-24.04",
       "timeout-minutes": 40,
       "steps": [
         {
@@ -28,6 +65,10 @@
           "with": {
             "persist-credentials": false
           }
+        },
+        {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
         },
         {
           "name": "Install exact Rust toolchain",
@@ -42,7 +83,18 @@
           "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
         },
         {
-          "name": "Run quality gate",
+          "name": "Test PR quality orchestration",
+          "if": "${{ github.event_name == 'pull_request' }}",
+          "run": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p test_pr_quality.py"
+        },
+        {
+          "name": "Run PR quality checks",
+          "if": "${{ github.event_name == 'pull_request' }}",
+          "run": "cargo xtask check quality-ci"
+        },
+        {
+          "name": "Run full quality gate",
+          "if": "${{ github.event_name != 'pull_request' }}",
           "run": "cargo xtask check quality"
         },
         {
@@ -64,6 +116,10 @@
           }
         },
         {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
+        },
+        {
           "name": "Install exact Rust toolchain",
           "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
         },
@@ -77,7 +133,10 @@
         },
         {
           "name": "Run core gate",
-          "run": "cargo xtask check core"
+          "run": "cargo xtask check core",
+          "env": {
+            "CURRENTS_MACOS_CORE_PHASES": "${{ matrix.os == 'macos-15' && '1' || '' }}"
+          }
         }
       ],
       "strategy": {
@@ -100,6 +159,10 @@
           "with": {
             "persist-credentials": false
           }
+        },
+        {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
         },
         {
           "name": "Install exact Rust toolchain",
@@ -132,6 +195,10 @@
           }
         },
         {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
+        },
+        {
           "name": "Install exact Rust toolchain",
           "run": "rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt\nrustup default 1.99.0"
         },
@@ -160,6 +227,10 @@
           "with": {
             "persist-credentials": false
           }
+        },
+        {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
         },
         {
           "name": "Install exact Rust toolchain",
