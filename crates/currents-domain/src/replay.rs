@@ -119,6 +119,15 @@ impl ReplayEngine {
         projection.dataset_policies =
             crate::policy_history::PolicyHistory::project(state, &commit.records)?;
         crate::recognition_replay::validate_transition(state, &projection, commit)?;
+        for record in &commit.records {
+            if let AuthoritativeRecordV1::ForecastRun(run) = record {
+                if let Some(anchor) = crate::forecast_basis::exact_anchor(state, &projection, run) {
+                    projection.verified_forecast_anchors.insert(run.id, anchor);
+                } else {
+                    projection.verified_forecast_anchors.remove(&run.id);
+                }
+            }
+        }
         if commit.records.iter().any(|record| match record {
             AuthoritativeRecordV1::RecognitionCorrectionRevision(_) => true,
             AuthoritativeRecordV1::AccountingSegment(segment) => segment.prior_segment.is_some(),
@@ -140,7 +149,17 @@ impl ReplayEngine {
                         )
                     }),
             );
+            state.stale_forecasts.extend(
+                commit
+                    .command_result
+                    .effects
+                    .invalidations
+                    .iter()
+                    .copied()
+                    .filter(|id| state.verified_forecast_anchors.contains_key(id)),
+            );
         }
+        state.verified_forecast_anchors = projection.verified_forecast_anchors;
         state.records = projection.records;
         state.dataset_policies = projection.dataset_policies;
         state.through = commit.seq;

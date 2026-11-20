@@ -11,6 +11,7 @@ pub(crate) fn invalidations(
     state: &DomainState,
     changed: &[&RecognitionV1],
     obsolete_legs: &[LegId],
+    retired_segments: &[RecordId],
 ) -> Result<BTreeSet<RecordId>, EngineError> {
     let mut dependent_claims = BTreeSet::new();
     for record in state.records.values() {
@@ -58,6 +59,28 @@ pub(crate) fn invalidations(
                     };
                     if start <= *civil && *civil <= end {
                         dependent_claims.insert(claim.id);
+                    }
+                }
+            }
+            AuthoritativeRecordV1::ForecastRun(run) => {
+                let anchor = state
+                    .verified_forecast_anchors
+                    .get(&run.id)
+                    .ok_or_else(EngineError::version)?;
+                if retired_segments.contains(&anchor.segment) {
+                    dependent_claims.insert(run.id);
+                } else {
+                    for posting in changed
+                        .iter()
+                        .flat_map(|recognition| &recognition.postings)
+                        .filter(|posting| posting.account_id == anchor.account)
+                    {
+                        let TemporalValue::Date { civil, .. } = &posting.effective else {
+                            return Err(EngineError::version());
+                        };
+                        if *civil <= anchor.as_of.0 {
+                            dependent_claims.insert(run.id);
+                        }
                     }
                 }
             }

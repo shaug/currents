@@ -414,6 +414,7 @@ fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
                 "cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family",
                 "cur_016_3_2024_date_floor_preserves_old_basis_and_repairs_current_as_of",
                 "cur_016_4_real_1200_operation_replacement_is_atomic_at_c04_midpoint",
+                "cur_016_forecast_anchor_rejects_other_live_counterposting_through_cutoff",
             ],
         ),
         (

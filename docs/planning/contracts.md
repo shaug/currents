@@ -161,7 +161,7 @@ The standalone identity-only correction chain may advance only its live terminal
 
 ### CUR-016 bounded qualification and remaining work
 
-`cargo xtask ticket CUR-016` verifies an exact 15-test synthetic inventory
+`cargo xtask ticket CUR-016` verifies an exact 16-test synthetic inventory
 across domain, encrypted service and correction-chain suites, with no ignored
 tests. It includes the actual 1,200-native-operation replacement midpoint
 rollback, exact retry, reopen and fresh rebuild, and the separate typed
@@ -188,9 +188,17 @@ remap and is rejected by this bounded path.
 The original claim is archival; replay rederives exact invalidation effects.
 Claims with explicit evidence, decision, allocation, or exclusion dependencies
 are unsupported by this scope-only predicate.
-Occurrence matches, cost basis and broader claim kinds remain unsupported. Unsupported dependency
-families remain fail-closed; this gate does not by itself complete CUR-016
-or unblock its hard successors.
+One structural forecast witness is classified only if authenticated replay
+matches its exact immediately prior same-dataset basis to a known active
+segment anchor at its cutoff, with no other active native posting touching the
+account through that effective date (including anonymous counterpostings).
+Retirement of that selected anchor, or an affected posting on the account at
+or before the cutoff, makes the witness stale without changing its retained
+artifact. Unknown or unsupported forecast
+shapes cannot participate in correction. Forecast output, matching, producer
+semantics, cost basis, and broader claim kinds remain unsupported. Those
+dependency families remain fail-closed; this gate does not by itself complete
+CUR-016 or unblock its hard successors.
 
 <a id="c09"></a>
 

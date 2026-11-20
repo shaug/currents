@@ -338,6 +338,13 @@ dto!(CorrectionV1 { active_recognition:RecognitionId, replacement:Vec<Recognitio
 dto!(NoEffectV1 { reason: String });
 tagged!(AccountingIntent { MetadataDeclaration(MetadataDeclarationV1), Recognition(RecognitionV1), Recognitions(Vec<RecognitionV1>), Correction(CorrectionV1), Corrections(Vec<CorrectionV1>), NoEffect(NoEffectV1) });
 dto!(DecisionPlan { records:Vec<AuthoritativeRecordV1>, invalidations:Vec<RecordId>, accounting:AccountingIntent });
+/// Bounded replay-verified starting scope; never a wire record or validated forecast output.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifiedForecastAnchor {
+    pub account: AccountId,
+    pub as_of: CivilDateV1,
+    pub segment: RecordId,
+}
 /// A nonauthoritative in-memory replay index. It deliberately has no wire/history serialization.
 #[derive(Clone, Debug, Default)]
 pub struct DomainState {
@@ -348,6 +355,8 @@ pub struct DomainState {
     pub accounting: Option<AccountingIndexV1>,
     /// Claim IDs retired by semantically re-admitted effects in this exact prefix.
     pub invalidated_claims: std::collections::BTreeSet<RecordId>,
+    pub verified_forecast_anchors: BTreeMap<RecordId, VerifiedForecastAnchor>,
+    pub stale_forecasts: std::collections::BTreeSet<RecordId>,
     pub records: BTreeMap<RecordId, AuthoritativeRecordV1>,
     pub through: CommitSeq,
 }
@@ -362,6 +371,12 @@ impl DomainState {
         } else {
             claim.status
         })
+    }
+    /// Unsupported artifacts have no current-state classification.
+    pub fn forecast_is_stale(&self, id: RecordId) -> Option<bool> {
+        self.verified_forecast_anchors
+            .contains_key(&id)
+            .then(|| self.stale_forecasts.contains(&id))
     }
 }
 impl Schema for Health {

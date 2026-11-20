@@ -113,8 +113,7 @@ impl CorrectionEngine {
         if state.records.values().any(|record| match record {
             AuthoritativeRecordV1::Association(_)
             | AuthoritativeRecordV1::Allocation(_)
-            | AuthoritativeRecordV1::OccurrenceMatch(_)
-            | AuthoritativeRecordV1::ForecastRun(_) => true,
+            | AuthoritativeRecordV1::OccurrenceMatch(_) => true,
             AuthoritativeRecordV1::AssociationRevision(a) => {
                 a.recognitions.iter().any(in_family)
                     || a.retired_recognitions.iter().any(in_family)
@@ -146,6 +145,7 @@ impl CorrectionEngine {
             .extend(crate::correction_dependents::invalidations(
                 state,
                 &[replacement],
+                &[],
                 &[],
             )?);
         plan.records.insert(

@@ -943,6 +943,29 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
     });
     submit(&mut f, 51_001, OperationV1::AdoptActivity(original_opening)).await;
     refresh_financial(&mut f, &path, None).await;
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let other_basis =
+        retain_segment_assertion(&store, 850, -96, "2026-11-01", ObservationKind::Balance).await;
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    refresh_financial(&mut f, &path, None).await;
+    let disjoint_segment = fixture::id(727);
+    let mut disjoint_opening = fixture::posted(other_basis.clone(), 720, 50);
+    let disjoint_account = AccountId(fixture::id(60).0);
+    disjoint_opening.legs[0].leg.account_id = disjoint_account;
+    let terms = disjoint_opening.financial.as_mut().unwrap();
+    terms.postings[0].account_id = disjoint_account;
+    terms.opening = Some(OpeningBasisV1 {
+        segment_id: disjoint_segment,
+        component_id: fixture::id(61),
+        amount: other_basis.amount,
+        cutoff: fixture::date("2026-11-01"),
+        evidence: other_basis,
+        included_activity: vec![],
+    });
+    submit(&mut f, 51_106, OperationV1::AdoptActivity(disjoint_opening)).await;
+    refresh_financial(&mut f, &path, None).await;
 
     // Same fixture adapter and capture IDs as the real C15 transfer route.
     let rows = transfer_fixture::boundary_rows("2026-11-03", false);
@@ -1068,6 +1091,30 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
     store.close().await.unwrap();
     f.service = f.reopen().await;
     let old = refresh_financial(&mut f, &path, None).await;
+    let forecast = retain_forecast_witness(
+        &mut f,
+        &path,
+        &old,
+        prior_segment,
+        AccountId(fixture::id(10).0),
+        57_010,
+    )
+    .await;
+    let old = refresh_financial(&mut f, &path, None).await;
+    let disjoint_forecast = retain_forecast_witness(
+        &mut f,
+        &path,
+        &old,
+        disjoint_segment,
+        disjoint_account,
+        57_020,
+    )
+    .await;
+    let old = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(
+        old.records[&forecast.id],
+        AuthoritativeRecordV1::ForecastRun(forecast.clone())
+    );
     assert_eq!(old.records[&retained_note], note);
     assert_eq!(
         old.reconciliation_status(affected_claim),
@@ -1139,11 +1186,22 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         reemissions,
     };
     let authority = fixture::id(941);
+    let mut unsupported = old.clone();
+    unsupported.verified_forecast_anchors.remove(&forecast.id);
+    assert_eq!(
+        SegmentEngine::replace_owned(&unsupported, &proposal, authority)
+            .unwrap_err()
+            .class,
+        EngineError::version().class,
+        "a structurally retained run without verified basis may not be treated as disjoint"
+    );
     let SegmentPreviewV1::Ready(plan) =
         SegmentEngine::replace_owned(&old, &proposal, authority).unwrap()
     else {
         panic!("the cross-account owner's earlier balance reconciles");
     };
+    assert!(!plan.invalidations.contains(&disjoint_forecast.id));
+    assert!(plan.invalidations.contains(&forecast.id));
     assert!(plan.invalidations.contains(&affected_claim));
     assert!(!plan.invalidations.contains(&unchanged_claim));
     assert!(!plan.invalidations.contains(&retained_note));
@@ -1256,19 +1314,21 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
             .is_none()
     );
 
-    let mut forged_invalidations = make_prepared();
-    forged_invalidations
-        .decision_plan
-        .invalidations
-        .retain(|id| *id != affected_claim);
-    forged_invalidations.result.effects.invalidations =
-        forged_invalidations.decision_plan.invalidations.clone();
-    assert!(
-        synthetic_commit_verified_segment(writer, &proposal, forged_invalidations)
-            .await
-            .is_err()
-    );
-    assert_eq!(writer.audited_prefix().await.unwrap(), prior);
+    for missing in [affected_claim, forecast.id] {
+        let mut forged_invalidations = make_prepared();
+        forged_invalidations
+            .decision_plan
+            .invalidations
+            .retain(|id| *id != missing);
+        forged_invalidations.result.effects.invalidations =
+            forged_invalidations.decision_plan.invalidations.clone();
+        assert!(
+            synthetic_commit_verified_segment(writer, &proposal, forged_invalidations)
+                .await
+                .is_err()
+        );
+        assert_eq!(writer.audited_prefix().await.unwrap(), prior);
+    }
 
     let receipt = synthetic_commit_verified_segment(writer, &proposal, make_prepared())
         .await
@@ -1291,24 +1351,30 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         .unwrap()
         .pop()
         .unwrap();
-    let mut forged = committed.clone();
-    forged
-        .command_result
-        .effects
-        .invalidations
-        .retain(|id| *id != affected_claim);
-    forged
-        .command_result
-        .effects
-        .invalidations
-        .push(unchanged_claim);
-    let mut unchanged = old.clone();
-    assert!(currents_domain::ReplayEngine::apply(&mut unchanged, &forged).is_err());
-    assert_eq!(unchanged.through, old.through);
-    assert_eq!(
-        unchanged.reconciliation_status(affected_claim),
-        Some(ReconciliationStatus::Matched)
-    );
+    for (missing, replacement) in [
+        (affected_claim, unchanged_claim),
+        (forecast.id, disjoint_forecast.id),
+    ] {
+        let mut forged = committed.clone();
+        forged
+            .command_result
+            .effects
+            .invalidations
+            .retain(|id| *id != missing);
+        forged
+            .command_result
+            .effects
+            .invalidations
+            .push(replacement);
+        let mut unchanged = old.clone();
+        assert!(currents_domain::ReplayEngine::apply(&mut unchanged, &forged).is_err());
+        assert_eq!(unchanged.through, old.through);
+        assert_eq!(
+            unchanged.reconciliation_status(affected_claim),
+            Some(ReconciliationStatus::Matched)
+        );
+        assert_eq!(unchanged.forecast_is_stale(forecast.id), Some(false));
+    }
     let Some(AuthoritativeRecordV1::FrozenAccountingManifest(manifest)) = committed.records.last()
     else {
         panic!("actual authority commit must retain its exact native closure");
@@ -1341,6 +1407,9 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         Some(ReconciliationStatus::Matched)
     );
     assert_eq!(current.records[&retained_note], note);
+    assert_eq!(old.forecast_is_stale(forecast.id), Some(false));
+    assert_eq!(current.forecast_is_stale(forecast.id), Some(true));
+    assert_eq!(current.forecast_is_stale(disjoint_forecast.id), Some(false));
     for (id, archived) in &old.records {
         assert_eq!(current.records.get(id), Some(archived));
     }
@@ -2003,4 +2072,269 @@ async fn cur_016_4_real_1200_operation_replacement_is_atomic_at_c04_midpoint() {
     let fresh = open(&dir.path().join("bulk-fresh-rebuild.db")).await;
     let rebuilt = ReplayCoordinator::rebuild(history, fresh).await.unwrap();
     assert_eq!(rebuilt.native_head, committed.native_head);
+}
+
+async fn retain_forecast_witness(
+    f: &mut support::Fixture,
+    path: &std::path::Path,
+    prefix: &DomainState,
+    anchor_segment: RecordId,
+    account: AccountId,
+    serial: u32,
+) -> ForecastRunV1 {
+    use currents_accounting::AccountingAdapter;
+    use currents_planning::calendar::CalendarEngine;
+    use currents_storage::{CommitControl, PreparedCommit};
+    use std::sync::Arc;
+
+    let TemporalValue::Date { civil, .. } = fixture::date("2026-11-01") else {
+        panic!("fixture date")
+    };
+    let now: RecordedInstant = serde_json::from_str("\"2026-11-02T00:00:00Z\"").unwrap();
+    let basis = ReadBasis {
+        dataset_id: DatasetId(support::id(1000).0),
+        through_commit: prefix.through,
+        effective_scope: DateScope {
+            start: Some(civil),
+            end: Some(civil),
+            basis: DateBasis::Effective,
+        },
+        evaluation_instant: now.0,
+        query_semantics_version: 1,
+        selection_policy_version: 1,
+        unit_catalog_version: 1,
+    };
+    let (zone, bytes) = jiff_tzdb::get("UTC").unwrap();
+    let calendar = CalendarEngine::new(zone, jiff_tzdb::VERSION.unwrap(), bytes)
+        .unwrap()
+        .calendar_data();
+    let scenario_id = fixture::id(serial);
+    let run_id = fixture::id(serial + 1);
+    let run = ForecastRunV1 {
+        id: run_id,
+        request: ForecastRequestV1 {
+            basis: basis.clone(),
+            start: CivilDateV1(civil),
+            months: ForecastMonthsV1::One,
+            commitment_versions: vec![],
+            assumption_versions: vec![],
+            scenario: scenario_id,
+        },
+        expanded_inputs: ExpandedForecastInputsV1 {
+            commitments: vec![],
+            occurrences: vec![],
+            assumptions: vec![],
+            starting_positions: vec![ForecastStartingPositionV1 {
+                account,
+                as_of: CivilDateV1(civil),
+                amount: SourceValue::Known(fixture::amount(-96)),
+                selected_basis: vec![anchor_segment],
+                inclusion_map: vec![],
+            }],
+            matches: vec![],
+        },
+        calendar_data: calendar.clone(),
+        algorithm_version: 1,
+        // This fixture proves retained structural references, not forecast calculation.
+        outputs: vec![],
+    };
+    let accounting = AccountingIntent::NoEffect(NoEffectV1 {
+        reason: "retain synthetic starting-basis witness".into(),
+    });
+    let frozen_batch = AccountingAdapter::freeze(&accounting, prefix).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(path).await;
+    let receipt = store
+        .writer()
+        .commit(PreparedCommit {
+            evidence: vec![EvidenceContentV1 {
+                digest: calendar.timezone_data.digest,
+                bytes: bytes.to_vec(),
+            }],
+            decision_plan: DecisionPlan {
+                records: vec![
+                    AuthoritativeRecordV1::Scenario(ScenarioV1 {
+                        id: scenario_id,
+                        version: 1,
+                        basis,
+                        commitments: vec![],
+                        assumptions: vec![],
+                    }),
+                    AuthoritativeRecordV1::ForecastRun(run.clone()),
+                ],
+                invalidations: vec![],
+                accounting,
+            },
+            frozen_batch,
+            prior_head: prefix.through,
+            decisions: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(serial + 2).0),
+                digest: Digest([97; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![scenario_id, run_id],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            manifest_id: fixture::id(serial + 3),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .expect("structural C04 retained forecast");
+    assert_eq!(receipt.commit, CommitSeq(prefix.through.0 + 1));
+    store
+        .history()
+        .verify_checkpoint(prefix.through, prefix.domain_digest)
+        .await
+        .unwrap();
+    let exact = store
+        .history()
+        .read_prefix(receipt.commit)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    for shape in 0..3 {
+        let mut edited = exact.clone();
+        let Some(AuthoritativeRecordV1::ForecastRun(mut run)) = edited.records.get(1).cloned()
+        else {
+            panic!("authoritative run fixture");
+        };
+        match shape {
+            0 => {
+                run.request.basis.through_commit = CommitSeq(prefix.through.0 - 1);
+                let AuthoritativeRecordV1::Scenario(scenario) = &mut edited.records[0] else {
+                    panic!()
+                };
+                scenario.basis = run.request.basis.clone();
+            }
+            1 => run.expanded_inputs.starting_positions[0].amount = SourceValue::Absent,
+            2 => run.expanded_inputs.starting_positions[0].selected_basis = vec![fixture::id(11)],
+            _ => unreachable!(),
+        }
+        edited.records[1] = AuthoritativeRecordV1::ForecastRun(run.clone());
+        let mut projected = prefix.clone();
+        // Differential semantic replay, not a replacement of encrypted history.
+        currents_domain::ReplayEngine::apply(&mut projected, &edited).unwrap();
+        assert_eq!(
+            projected.records[&run_id],
+            AuthoritativeRecordV1::ForecastRun(run)
+        );
+        assert_eq!(projected.forecast_is_stale(run_id), None);
+    }
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    run
+}
+
+#[tokio::test]
+async fn cur_016_forecast_anchor_rejects_other_live_counterposting_through_cutoff() {
+    use currents_accounting::AccountingAdapter;
+    use currents_protocol::OperationV1;
+    use currents_storage::{CommitControl, PreparedCommit};
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("forecast-incomplete-anchor.db");
+    let (mut f, _) = bootstrap_with_balance(&path, true).await;
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    let initial = legacy_binding(250);
+    let anchor_segment = fixture::id(707);
+    let mut opening = fixture::posted(initial.clone(), 700, 50);
+    let terms = opening.financial.as_mut().unwrap();
+    let opening_id = terms.recognition_id;
+    let account = terms.postings[0].account_id;
+    terms.opening = Some(OpeningBasisV1 {
+        segment_id: anchor_segment,
+        component_id: fixture::id(11),
+        amount: initial.amount,
+        cutoff: fixture::date("2026-11-01"),
+        evidence: initial,
+        included_activity: vec![],
+    });
+    submit(&mut f, 57_030, OperationV1::AdoptActivity(opening)).await;
+    let state = refresh_financial(&mut f, &path, None).await;
+    let AuthoritativeRecordV1::Recognition(anchor) = &state.records[&RecordId(opening_id.0)] else {
+        panic!("authenticated opening");
+    };
+    // Anonymous legacy native entry: the affected account is the second posting,
+    // has no owned economic leg, and does not appear in an adoption request.
+    let mut legacy = anchor.clone();
+    legacy.id = RecognitionId(fixture::id(57_031).0);
+    legacy.lineage = fixture::id(57_032);
+    legacy.kind = RecognitionKind::Activity;
+    legacy.leg_ids.clear();
+    legacy.evidence_allocations.clear();
+    legacy.postings.reverse();
+    legacy.postings[0].id = fixture::id(57_033);
+    legacy.postings[1].id = fixture::id(57_034);
+    legacy.postings[0].amount = fixture::amount(5);
+    legacy.postings[1].amount = fixture::amount(-5);
+    assert_eq!(legacy.postings[1].account_id, account);
+    let intent = AccountingIntent::Recognition(legacy.clone());
+    let batch = AccountingAdapter::freeze(&intent, &state).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .writer()
+        .commit(PreparedCommit {
+            evidence: vec![],
+            decision_plan: DecisionPlan {
+                records: vec![AuthoritativeRecordV1::Recognition(legacy.clone())],
+                invalidations: vec![],
+                accounting: intent,
+            },
+            frozen_batch: batch,
+            prior_head: state.through,
+            decisions: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(57_035).0),
+                digest: Digest([93; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![RecordId(legacy.id.0)],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            manifest_id: fixture::id(57_036),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .expect("C04 retains a structurally supported anonymous legacy posting");
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let before = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(
+        before.accounting.as_ref().unwrap().recognitions[&legacy.id][0].postings[1].original,
+        legacy.postings[1]
+    );
+    assert!(
+        !before
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&legacy.id)
+    );
+    let run =
+        retain_forecast_witness(&mut f, &path, &before, anchor_segment, account, 57_040).await;
+    let current = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(
+        current.records.get(&run.id),
+        Some(&AuthoritativeRecordV1::ForecastRun(run.clone()))
+    );
+    assert_eq!(
+        current.forecast_is_stale(run.id),
+        None,
+        "an anchor alone cannot certify a known position while a second live posting also touches the effective cutoff"
+    );
 }

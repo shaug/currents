@@ -628,7 +628,6 @@ impl SegmentEngine {
                     AuthoritativeRecordV1::Association(_)
                     | AuthoritativeRecordV1::Allocation(_)
                     | AuthoritativeRecordV1::OccurrenceMatch(_)
-                    | AuthoritativeRecordV1::ForecastRun(_)
                     | AuthoritativeRecordV1::Review(_) => return Err(EngineError::version()),
                     _ => {}
                 }
@@ -828,7 +827,12 @@ impl SegmentEngine {
             let changed = std::iter::once(old_anchor)
                 .chain(replacements.iter())
                 .collect::<Vec<_>>();
-            crate::correction_dependents::invalidations(state, &changed, &old_anchor.leg_ids)?
+            crate::correction_dependents::invalidations(
+                state,
+                &changed,
+                &old_anchor.leg_ids,
+                &[prior.id],
+            )?
         };
         let mut corrections = vec![CorrectionV1 {
             active_recognition: prior.opening,
