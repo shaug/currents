@@ -329,3 +329,233 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
     assert_eq!(refund.postings[0].original.amount, fixture::amount(96));
     assert!(after.records.contains_key(&refund_event));
 }
+
+#[tokio::test]
+async fn cur_016_2_correction_preserves_note_and_invalidates_only_matching_predicate() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("dependent-correction.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, &path, 200, "1", "2026-11-01").await;
+    let purchase = fixture::posted(legacy_binding(200), 300, 30);
+    let source_leg = RecordId(purchase.legs[0].leg.id.0);
+    let original = purchase.financial.as_ref().unwrap().recognition_id;
+    submit(&mut f, 56_001, OperationV1::AdoptActivity(purchase)).await;
+    let before = refresh_financial(&mut f, &path, None).await;
+    let date = |civil: &str| {
+        let TemporalValue::Date { civil, .. } = fixture::date(civil) else {
+            panic!("fixture civil date");
+        };
+        civil
+    };
+    let claim = |serial, start, end| {
+        AuthoritativeRecordV1::ReconciliationClaim(ReconciliationClaimV1 {
+            id: fixture::id(serial),
+            comparison_type: "Activity".into(),
+            scope: vec![AccountId(fixture::id(10).0)],
+            cutoffs: DateScope {
+                start: Some(date(start)),
+                end: Some(date(end)),
+                basis: DateBasis::Effective,
+            },
+            evidence_dependencies: vec![],
+            decision_dependencies: vec![],
+            dependency_digest: Digest([87; 32]),
+            matched_allocations: vec![],
+            differences: vec![],
+            exclusions: vec![],
+            status: ReconciliationStatus::Matched,
+            reason: "Retained synthetic comparison".into(),
+        })
+    };
+    let affected_claim = fixture::id(56_100);
+    let unrelated_claim = fixture::id(56_101);
+    let note_id = fixture::id(56_102);
+    let note = AuthoritativeRecordV1::Organization(OrganizationRecordV1 {
+        id: note_id,
+        version: 1,
+        kind: OrganizationKind::Note,
+        targets: vec![source_leg],
+        parent: None,
+        text: "Synthetic note attached to the stable economic leg".into(),
+        allocations: vec![],
+        supersedes: None,
+    });
+    let records = vec![
+        claim(56_100, "2026-11-01", "2026-11-30"),
+        claim(56_101, "2026-12-01", "2026-12-31"),
+        note.clone(),
+    ];
+    let accounting = AccountingIntent::NoEffect(NoEffectV1 {
+        reason: "retain synthetic dependent records".into(),
+    });
+    let frozen_batch = AccountingAdapter::freeze(&accounting, &before).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .writer()
+        .commit(PreparedCommit {
+            evidence: vec![],
+            decision_plan: DecisionPlan {
+                records,
+                invalidations: vec![],
+                accounting,
+            },
+            frozen_batch,
+            prior_head: before.through,
+            decisions: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(56_002).0),
+                digest: Digest([88; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![affected_claim, unrelated_claim, note_id],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            manifest_id: fixture::id(56_003),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .unwrap();
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let retained = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(retained.records[&note_id], note);
+    assert_eq!(
+        retained.records[&affected_claim],
+        claim(56_100, "2026-11-01", "2026-11-30")
+    );
+    assert_eq!(
+        retained.records[&unrelated_claim],
+        claim(56_101, "2026-12-01", "2026-12-31")
+    );
+
+    let request = fresh_correction(&retained, original, 56_110);
+    // Differential shapes exercise the planner only; the positive baseline
+    // above is retained encrypted authority, not a manually seeded projection.
+    for field in 0..3 {
+        let mut unsupported = retained.clone();
+        let Some(AuthoritativeRecordV1::ReconciliationClaim(claim)) =
+            unsupported.records.get_mut(&affected_claim)
+        else {
+            panic!("retained claim")
+        };
+        match field {
+            0 => claim.evidence_dependencies.push(fixture::id(200)),
+            1 => claim.decision_dependencies.push(fixture::id(201)),
+            2 => claim.exclusions.push(source_leg),
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            CorrectionEngine::correct_durable(&unsupported, fixture::id(56_120), &request)
+                .unwrap_err()
+                .class,
+            EngineError::version().class,
+            "unsupported claim dependency shape {field}"
+        );
+    }
+    let prepared = prepare(&retained, &request, 56_120)
+        .expect("bounded predicates must not prohibit a correction of their exact prior");
+    assert!(
+        prepared
+            .decision_plan
+            .invalidations
+            .contains(&affected_claim)
+    );
+    assert!(
+        !prepared
+            .decision_plan
+            .invalidations
+            .contains(&unrelated_claim)
+    );
+    assert!(!prepared.decision_plan.invalidations.contains(&note_id));
+    assert_eq!(
+        retained.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Matched)
+    );
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let mut forged = prepare(&retained, &request, 56_120).unwrap();
+    forged
+        .decision_plan
+        .invalidations
+        .retain(|id| *id != affected_claim);
+    forged.result.effects.invalidations = forged.decision_plan.invalidations.clone();
+    assert!(
+        synthetic_commit_verified_correction(store.writer(), forged)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        store.writer().audited_prefix().await.unwrap().through,
+        retained.through
+    );
+    let committed = synthetic_commit_verified_correction(store.writer(), prepared)
+        .await
+        .unwrap();
+    let exact = store
+        .history()
+        .read_prefix(committed.commit)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    for contaminate in [false, true] {
+        let mut forged = exact.clone();
+        forged
+            .command_result
+            .effects
+            .invalidations
+            .retain(|id| *id != affected_claim);
+        if contaminate {
+            forged
+                .command_result
+                .effects
+                .invalidations
+                .push(unrelated_claim);
+        }
+        let mut untouched = retained.clone();
+        assert!(currents_domain::ReplayEngine::apply(&mut untouched, &forged).is_err());
+        assert_eq!(untouched.through, retained.through);
+        assert_eq!(
+            untouched.reconciliation_status(affected_claim),
+            Some(ReconciliationStatus::Matched)
+        );
+    }
+    let fresh_path = dir.path().join("dependent-rebuild.db");
+    let fresh = open(&fresh_path).await;
+    let replay = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(replay, store.history().audit_report().await.unwrap());
+    store
+        .history()
+        .verify_checkpoint(retained.through, retained.domain_digest)
+        .await
+        .unwrap();
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let current = refresh_financial(&mut f, &path, None).await;
+    assert_eq!(current.records[&note_id], note);
+    assert_eq!(
+        current.records[&affected_claim],
+        retained.records[&affected_claim]
+    );
+    assert_eq!(
+        retained.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Matched)
+    );
+    assert_eq!(
+        current.reconciliation_status(affected_claim),
+        Some(ReconciliationStatus::Invalidated)
+    );
+    assert_eq!(
+        current.reconciliation_status(unrelated_claim),
+        Some(ReconciliationStatus::Matched)
+    );
+}

@@ -63,7 +63,7 @@ pub(crate) fn validate_transition(
                 {
                     return Err(EngineError::invalid());
                 }
-                Some(crate::correction::CorrectionEngine::correct_durable(
+                let plan = crate::correction::CorrectionEngine::correct_durable(
                     prior,
                     revision.id,
                     &CorrectionV1 {
@@ -72,7 +72,11 @@ pub(crate) fn validate_transition(
                         remapping: vec![],
                         reason: revision.reason.clone(),
                     },
-                )?)
+                )?;
+                if plan.invalidations != commit.command_result.effects.invalidations {
+                    return Err(EngineError::invalid());
+                }
+                Some(plan)
             }
             AuthoritativeRecordV1::ActivityAdoption(adoption) => {
                 Some(RecognitionEngine::adopt(prior, &restore(next, adoption)?)?)

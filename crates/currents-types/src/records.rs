@@ -346,8 +346,23 @@ pub struct DomainState {
     /// Reconstructed exact-version governing policies at this processed prefix.
     pub dataset_policies: BTreeMap<(RecordId, u32), DatasetPolicyV1>,
     pub accounting: Option<AccountingIndexV1>,
+    /// Claim IDs retired by semantically re-admitted effects in this exact prefix.
+    pub invalidated_claims: std::collections::BTreeSet<RecordId>,
     pub records: BTreeMap<RecordId, AuthoritativeRecordV1>,
     pub through: CommitSeq,
+}
+impl DomainState {
+    /// Current status at this projection's prefix. Original record bytes remain archival.
+    pub fn reconciliation_status(&self, id: RecordId) -> Option<ReconciliationStatus> {
+        let AuthoritativeRecordV1::ReconciliationClaim(claim) = self.records.get(&id)? else {
+            return None;
+        };
+        Some(if self.invalidated_claims.contains(&id) {
+            ReconciliationStatus::Invalidated
+        } else {
+            claim.status
+        })
+    }
 }
 impl Schema for Health {
     fn schema() -> serde_json::Value {

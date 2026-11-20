@@ -119,6 +119,29 @@ impl ReplayEngine {
         projection.dataset_policies =
             crate::policy_history::PolicyHistory::project(state, &commit.records)?;
         crate::recognition_replay::validate_transition(state, &projection, commit)?;
+        if commit.records.iter().any(|record| {
+            matches!(
+                record,
+                AuthoritativeRecordV1::RecognitionCorrectionRevision(_)
+            )
+        }) {
+            // C08 validated the complete, re-derived effects above. A raw command
+            // result or another record family cannot mark claims invalid.
+            state.invalidated_claims.extend(
+                commit
+                    .command_result
+                    .effects
+                    .invalidations
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        matches!(
+                            state.records.get(id),
+                            Some(AuthoritativeRecordV1::ReconciliationClaim(_))
+                        )
+                    }),
+            );
+        }
         state.records = projection.records;
         state.dataset_policies = projection.dataset_policies;
         state.through = commit.seq;

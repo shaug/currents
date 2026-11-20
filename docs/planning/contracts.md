@@ -161,7 +161,7 @@ The standalone identity-only correction chain may advance only its live terminal
 
 ### CUR-016 bounded qualification and remaining work
 
-`cargo xtask ticket CUR-016` verifies an exact 14-test synthetic inventory
+`cargo xtask ticket CUR-016` verifies an exact 15-test synthetic inventory
 across domain, encrypted service and correction-chain suites, with no ignored
 tests. It includes the actual 1,200-native-operation replacement midpoint
 rollback, exact retry, reopen and fresh rebuild, and the separate typed
@@ -178,8 +178,13 @@ See the executable synthetic inputs and limits in
 release journeys nor public command support. The bounded transfer witness
 retains historical associations and permits exactly mapped, unchanged
 current counterparts. It does not implement general stable organization
-remapping or the predicate dependency index needed to invalidate current
-claims, occurrence matches and cost basis atomically. Unsupported dependency
+remapping or the full predicate dependency index. One supported identity-only
+correction preserves same-leg display-only notes and derives current-state
+invalidation for bounded civil-date Activity claims from account/date overlap.
+The original claim is archival; replay rederives exact invalidation effects.
+Claims with explicit evidence, decision, allocation, or exclusion dependencies
+are unsupported by this scope-only predicate.
+Occurrence matches, cost basis and broader claim kinds remain unsupported. Unsupported dependency
 families remain fail-closed; this gate does not by itself complete CUR-016
 or unblock its hard successors.
 
