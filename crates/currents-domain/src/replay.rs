@@ -80,6 +80,13 @@ impl ReplayEngine {
                     Some(v.id)
                 }
                 AuthoritativeRecordV1::AccountingSegment(v) => Some(v.id),
+                AuthoritativeRecordV1::SegmentReplacementAuthority(v) => {
+                    if v.schema_version != 1 {
+                        return Err(EngineError::version());
+                    }
+                    Some(v.id)
+                }
+
                 // These owners have not delivered semantic validation yet. Full
                 // structural closure alone must never certify financial trust.
                 AuthoritativeRecordV1::Association(_)

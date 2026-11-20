@@ -362,6 +362,33 @@ impl IdentityEngine {
     /// Each historical transition is separately admitted against its own prefix;
     /// this final audit must not reinterpret old evidence using the latest parser.
     pub fn audit(state: &DomainState) -> Result<(), EngineError> {
+        let mut counterparts = BTreeMap::new();
+        for (id, record) in &state.records {
+            let AuthoritativeRecordV1::SegmentReplacementAuthority(owner) = record else {
+                continue;
+            };
+            let Some(AuthoritativeRecordV1::AccountingSegment(segment)) =
+                state.records.get(&owner.segment)
+            else {
+                return Err(conflict());
+            };
+            if *id != owner.id
+                || owner.schema_version != 1
+                || owner.counterparts.is_empty()
+                || segment.prior_segment != Some(owner.prior_segment)
+            {
+                return Err(conflict());
+            }
+            for pair in &owner.counterparts {
+                if pair.original == pair.replacement
+                    || counterparts
+                        .insert(pair.original, pair.replacement)
+                        .is_some()
+                {
+                    return Err(conflict());
+                }
+            }
+        }
         let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
         for (id, record) in &state.records {
             if let AuthoritativeRecordV1::AssociationRevision(revision) = record {
@@ -375,7 +402,11 @@ impl IdentityEngine {
             }
         }
         if families.is_empty() {
-            return Ok(());
+            return if counterparts.is_empty() {
+                Ok(())
+            } else {
+                Err(conflict())
+            };
         }
         let index = state.accounting.as_ref().ok_or_else(conflict)?;
         if index.prefix.through != state.through
@@ -410,11 +441,25 @@ impl IdentityEngine {
                 }
             }
             let current = chain.last().ok_or_else(conflict)?;
-            for id in &current.recognitions {
-                if !active.insert(*id)
-                    || index.reversed.contains(id)
-                    || index.recognitions.get(id).is_none_or(Vec::is_empty)
-                    || !matches!(state.records.get(&RecordId(id.0)),Some(AuthoritativeRecordV1::Recognition(r)) if r.id == *id)
+            for original in &current.recognitions {
+                let id = if let Some(next) = counterparts.remove(original) {
+                    if current.kind != RelationshipKind::Transfer
+                        || current.prior_revision.is_some()
+                        || !index.reversed.contains(original)
+                        || !retired.insert(*original)
+                        || index.recognitions.get(original).is_none_or(Vec::is_empty)
+                        || !unchanged_counterpart(state, *original, next)
+                    {
+                        return Err(conflict());
+                    }
+                    next
+                } else {
+                    *original
+                };
+                if !active.insert(id)
+                    || index.reversed.contains(&id)
+                    || index.recognitions.get(&id).is_none_or(Vec::is_empty)
+                    || !matches!(state.records.get(&RecordId(id.0)),Some(AuthoritativeRecordV1::Recognition(r)) if r.id == id)
                 {
                     return Err(conflict());
                 }
@@ -429,9 +474,35 @@ impl IdentityEngine {
                 }
             }
         }
-        if !active.is_disjoint(&retired) {
+        if !counterparts.is_empty() || !active.is_disjoint(&retired) {
             return Err(conflict());
         }
         Ok(())
     }
+}
+
+fn unchanged_counterpart(
+    state: &DomainState,
+    original: RecognitionId,
+    next: RecognitionId,
+) -> bool {
+    let Some(AuthoritativeRecordV1::Recognition(old)) = state.records.get(&RecordId(original.0))
+    else {
+        return false;
+    };
+    let Some(AuthoritativeRecordV1::Recognition(new)) = state.records.get(&RecordId(next.0)) else {
+        return false;
+    };
+    if old.id != original || new.id != next || old.postings.len() != new.postings.len() {
+        return false;
+    }
+    let mut historical = new.clone();
+    historical.id = old.id;
+    for (posting, before) in historical.postings.iter_mut().zip(&old.postings) {
+        if posting.id == before.id {
+            return false;
+        }
+        posting.id = before.id;
+    }
+    &historical == old
 }

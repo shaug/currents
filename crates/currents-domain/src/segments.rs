@@ -191,13 +191,39 @@ pub(crate) fn segment_family(
     if let Some(s) = successor
         && (s.prior_segment != Some(root.id)
             || s.opening == root.opening
-            || s.replacement_closure != [root.opening]
+            || s.replacement_closure.first() != Some(&root.opening)
             || s.included_activity.len() != 1
             || s.included_activity[0] == root.opening
             || s.included_activity[0] == s.opening
             || !matches!(s.residual_disposition, SourceValue::Absent))
     {
         return Err(EngineError::invalid());
+    }
+    if let Some(s) = successor {
+        let mut owners = state.records.values().filter_map(|record| match record {
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) if owner.segment == s.id => {
+                Some(owner)
+            }
+            _ => None,
+        });
+        if let Some(owner) = owners.next() {
+            if owner.schema_version != 1
+                || owner.prior_segment != root.id
+                || owner.affected_accounts.is_empty()
+                || owner.counterparts.is_empty()
+                || owners.next().is_some()
+                || owner
+                    .counterparts
+                    .iter()
+                    .map(|pair| pair.original)
+                    .collect::<BTreeSet<_>>()
+                    != s.replacement_closure.iter().copied().skip(1).collect()
+            {
+                return Err(EngineError::invalid());
+            }
+        } else if s.replacement_closure != [root.opening] {
+            return Err(EngineError::invalid());
+        }
     }
     Ok(Some((root, successor)))
 }
@@ -767,5 +793,114 @@ impl SegmentEngine {
                 .collect(),
             accounting: AccountingIntent::Corrections(corrections),
         })))
+    }
+}
+
+impl SegmentEngine {
+    /// Re-emit a retained transfer's entire exact family with one typed
+    /// witness. No external dispatch or dependency remapping is enabled.
+    pub fn replace_owned(
+        state: &DomainState,
+        preview: &SegmentPreviewRequestV1,
+        authority_id: RecordId,
+    ) -> Result<SegmentPreviewV1, EngineError> {
+        let invalid = EngineError::invalid;
+        if authority_id.0.is_nil()
+            || state.records.contains_key(&authority_id)
+            || preview.reemissions.is_empty()
+        {
+            return Err(invalid());
+        }
+        let mut plan = match Self::replace(state, preview)? {
+            SegmentPreviewV1::Ready(plan) => plan,
+            residual => return Ok(residual),
+        };
+        let Some(AuthoritativeRecordV1::AccountingSegment(segment)) = plan.records.last() else {
+            return Err(invalid());
+        };
+        let prior_segment = segment.prior_segment.ok_or_else(invalid)?;
+        if plan.records.iter().any(|record| match record {
+            AuthoritativeRecordV1::FinancialEvent(e) => e.id == authority_id,
+            AuthoritativeRecordV1::FinancialLeg(l) => RecordId(l.id.0) == authority_id,
+            AuthoritativeRecordV1::ActivityAdoption(a) => a.id == authority_id,
+            AuthoritativeRecordV1::Recognition(r) => {
+                RecordId(r.id.0) == authority_id
+                    || r.lineage == authority_id
+                    || r.postings.iter().any(|p| p.id == authority_id)
+            }
+            AuthoritativeRecordV1::AccountingSegment(s) => s.id == authority_id,
+            _ => true,
+        }) {
+            return Err(invalid());
+        }
+        let (root, None) = segment_family(state, segment.component)?.ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        if prior_segment != root.id || segment.replacement_closure.first() != Some(&root.opening) {
+            return Err(invalid());
+        }
+        let index = state.accounting.as_ref().ok_or_else(incomplete)?;
+        if index
+            .recognitions
+            .values()
+            .flatten()
+            .flat_map(|entry| &entry.postings)
+            .any(|p| p.original.id == authority_id)
+        {
+            return Err(invalid());
+        }
+        let AccountingIntent::Corrections(corrections) = &plan.accounting else {
+            return Err(invalid());
+        };
+        let mut affected = BTreeSet::new();
+        for correction in corrections {
+            let old = original_recognition(state, index, correction.active_recognition)?;
+            affected.extend(old.postings.iter().map(|p| p.account_id));
+            affected.extend(
+                correction
+                    .replacement
+                    .iter()
+                    .flat_map(|r| &r.postings)
+                    .map(|p| p.account_id),
+            );
+        }
+        let mut counterparts = Vec::with_capacity(preview.reemissions.len());
+        for r in &preview.reemissions {
+            let mut owners = state.records.values().filter_map(|record| match record {
+                AuthoritativeRecordV1::AssociationRevision(a)
+                    if a.recognitions.contains(&r.original) =>
+                {
+                    Some(a)
+                }
+                _ => None,
+            });
+            let owner = owners.next().ok_or_else(incomplete)?;
+            if owners.next().is_some()
+                || owner.kind != RelationshipKind::Transfer
+                || owner.prior_revision.is_some()
+                || !owner.retired_recognitions.is_empty()
+            {
+                return Err(EngineError::version());
+            }
+            counterparts.push(SegmentCounterpartBindingV1 {
+                original: r.original,
+                replacement: r.replacement,
+            });
+        }
+        if affected.is_empty() || affected.len() > 4096 {
+            return Err(invalid());
+        }
+        plan.records
+            .push(AuthoritativeRecordV1::SegmentReplacementAuthority(
+                SegmentReplacementAuthorityV1 {
+                    id: authority_id,
+                    schema_version: 1,
+                    segment: segment.id,
+                    prior_segment,
+                    affected_accounts: affected.into_iter().collect(),
+                    counterparts,
+                },
+            ));
+        Ok(SegmentPreviewV1::Ready(plan))
     }
 }

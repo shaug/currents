@@ -7820,6 +7820,80 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "SegmentReplacementAuthority"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "affected_accounts": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "counterparts": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "original": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "replacement": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "original",
+                      "replacement"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "prior_segment": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "segment": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "segment",
+                "prior_segment",
+                "affected_accounts",
+                "counterparts"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "ReconciliationClaim"
             },
             "value": {
@@ -41574,6 +41648,80 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "SegmentReplacementAuthority"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "affected_accounts": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "counterparts": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "original": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "replacement": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "original",
+                            "replacement"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior_segment": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "segment": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "segment",
+                      "prior_segment",
+                      "affected_accounts",
+                      "counterparts"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "ReconciliationClaim"
                   },
                   "value": {
@@ -55043,6 +55191,80 @@
                       "replacement_closure",
                       "approved_accounts",
                       "residual_disposition"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "SegmentReplacementAuthority"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "affected_accounts": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "counterparts": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "original": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "replacement": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "original",
+                            "replacement"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior_segment": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "segment": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "segment",
+                      "prior_segment",
+                      "affected_accounts",
+                      "counterparts"
                     ],
                     "type": "object"
                   }

@@ -717,3 +717,233 @@ fn cur_016_standalone_segment_family_replays_without_overwriting_old_opening() {
         "only the active earlier cutoff governs later movements, not the archived root"
     );
 }
+
+#[test]
+fn cur_016_1_cross_account_backfill_replays_the_entire_transfer_family() {
+    use currents_domain::segments::{
+        SegmentEngine, SegmentPreviewRequestV1, SegmentPreviewV1, SegmentReemissionV1,
+    };
+    use std::collections::BTreeSet;
+
+    let (mut state, prior, transfer) = original_segment(false);
+    let balance = retain_proposal_evidence(
+        &mut state,
+        810,
+        fixture::amount(3400),
+        "2026-10-30",
+        ObservationKind::Balance,
+    );
+    let movement = retain_proposal_evidence(
+        &mut state,
+        830,
+        fixture::amount(-100),
+        "2026-10-31",
+        ObservationKind::Movement,
+    );
+    let new_segment = id(907);
+    let mut opening = dated_draft(balance.clone(), 900, 50, "2026-10-30");
+    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: new_segment,
+        component_id: prior.component,
+        amount: balance.amount,
+        cutoff: fixture::date("2026-10-30"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let reemissions: Vec<_> = transfer
+        .iter()
+        .enumerate()
+        .map(|(ordinal, original)| {
+            let fresh = 1070 + 10 * u32::try_from(ordinal).unwrap();
+            let AuthoritativeRecordV1::Recognition(r) = &state.records[&RecordId(original.0)]
+            else {
+                panic!("retained transfer recognition missing");
+            };
+            SegmentReemissionV1 {
+                original: *original,
+                replacement: RecognitionId(id(fresh).0),
+                posting_ids: r
+                    .postings
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| id(fresh + 1 + u32::try_from(i).unwrap()))
+                    .collect(),
+            }
+        })
+        .collect();
+    let covered: Vec<_> = std::iter::once(prior.opening)
+        .chain(transfer.iter().copied())
+        .collect();
+    let fixed_approval: Vec<_> = [10, 30, 50]
+        .into_iter()
+        .map(|n| AccountId(id(n).0))
+        .collect();
+    let proposal = SegmentPreviewRequestV1 {
+        request: SegmentRequestV1 {
+            component: prior.component,
+            prior_segment: Some(prior.id),
+            opening: RecognitionId(id(903).0),
+            included_activity: vec![RecognitionId(id(923).0)],
+            replacement_closure: covered.clone(),
+            approved_accounts: fixed_approval.clone(),
+            residual_disposition: SourceValue::Absent,
+        },
+        opening,
+        backfill: vec![dated_draft(movement, 920, 30, "2026-10-31")],
+        reemissions,
+    };
+    let authority_id = id(941);
+    let SegmentPreviewV1::Ready(plan) =
+        SegmentEngine::replace_owned(&state, &proposal, authority_id).unwrap()
+    else {
+        panic!("the complete, approved earlier opening reconciles exactly");
+    };
+    let frozen = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    assert_eq!(frozen.operations.len(), covered.len() + transfer.len() + 2);
+    let affected: BTreeSet<_> = frozen
+        .operations
+        .iter()
+        .flat_map(|op| match op {
+            FrozenNativeOperationV1::Entry(entry) => entry.postings.iter(),
+            _ => panic!("segment must freeze to whole native entries"),
+        })
+        .map(|posting| posting.original.account_id)
+        .collect();
+    assert_eq!(
+        affected,
+        [10, 30, 50, 60, 70, 80]
+            .into_iter()
+            .map(|n| AccountId(id(n).0))
+            .collect()
+    );
+    assert_ne!(affected, fixed_approval.iter().copied().collect());
+    let Some(AuthoritativeRecordV1::SegmentReplacementAuthority(owner)) = plan.records.last()
+    else {
+        panic!("qualified cross-account closure requires a typed witness");
+    };
+    assert_eq!(owner.id, authority_id);
+    assert_eq!(
+        owner
+            .affected_accounts
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        affected
+    );
+    assert_eq!(owner.counterparts.len(), transfer.len());
+
+    let before = state.clone();
+    let mut incomplete = plan.as_ref().clone();
+    let segment = incomplete
+        .records
+        .iter_mut()
+        .find_map(|r| match r {
+            AuthoritativeRecordV1::AccountingSegment(s) => Some(s),
+            _ => None,
+        })
+        .unwrap();
+    let omitted_counterpart = transfer[1];
+    segment
+        .replacement_closure
+        .retain(|id| *id != omitted_counterpart);
+    assert!(replay_with_frozen_batch(&mut state, incomplete, &frozen).is_err());
+    assert_eq!(state.records, before.records);
+    assert_eq!(
+        state.accounting.as_ref().unwrap().prefix,
+        before.accounting.as_ref().unwrap().prefix
+    );
+
+    for forged_accounts in [true, false] {
+        let mut forged = plan.as_ref().clone();
+        let Some(AuthoritativeRecordV1::SegmentReplacementAuthority(owner)) =
+            forged.records.last_mut()
+        else {
+            panic!("typed simulated owner required");
+        };
+        if forged_accounts {
+            owner.affected_accounts.pop();
+        } else {
+            owner.counterparts[1].replacement = owner.counterparts[0].replacement;
+        }
+        assert!(replay_with_frozen_batch(&mut state, forged, &frozen).is_err());
+        assert_eq!(state.records, before.records);
+        assert_eq!(state.through, before.through);
+    }
+
+    let mut with_dependency = state.clone();
+    retain_frozen_plan(
+        &mut with_dependency,
+        DecisionPlan {
+            records: vec![AuthoritativeRecordV1::Review(ReviewRecordV1 {
+                id: id(1234),
+                targets: vec![RecordId(transfer[1].0)],
+                disposition: ReviewDisposition::NeedsEvidence,
+                reason: "Existing predicate dependency must be preserved".into(),
+            })],
+            invalidations: vec![],
+            accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "Retained reviewed dependency".into(),
+            }),
+        },
+    );
+    assert!(SegmentEngine::replace_owned(&with_dependency, &proposal, authority_id).is_err());
+
+    replay_with_frozen_batch(&mut state, *plan, &frozen)
+        .expect("C08 and C05 must activate the entire retained cross-account family together");
+    let Some(AuthoritativeRecordV1::AccountingSegment(next)) = state.records.get(&new_segment)
+    else {
+        panic!("atomic family replay lost its immutable successor");
+    };
+    assert_eq!(next.prior_segment, Some(prior.id));
+    assert_eq!(next.replacement_closure, covered);
+    assert_eq!(next.approved_accounts, fixed_approval);
+    assert!(matches!(state.records.get(&authority_id),
+        Some(AuthoritativeRecordV1::SegmentReplacementAuthority(authority))
+            if authority.segment == new_segment && authority.prior_segment == prior.id
+                && authority.affected_accounts.iter().copied().collect::<BTreeSet<_>>() == affected
+    ));
+    for (key, record) in &before.records {
+        assert_eq!(state.records.get(key), Some(record));
+    }
+    let old_index = before.accounting.as_ref().unwrap();
+    let current = state.accounting.as_ref().unwrap();
+    for original in &covered {
+        assert!(current.reversed.contains(original));
+        assert!(!old_index.reversed.contains(original));
+    }
+    for reemission in &proposal.reemissions {
+        let [old] = old_index.recognitions[&reemission.original].as_slice() else {
+            panic!()
+        };
+        let [new] = current.recognitions[&reemission.replacement].as_slice() else {
+            panic!()
+        };
+        assert!(!current.reversed.contains(&reemission.replacement));
+        assert_eq!(new.booking_date, old.booking_date);
+        assert_eq!(new.value_date, old.value_date);
+        assert_eq!(new.postings.len(), old.postings.len());
+        for ((original, copied), fresh_id) in old
+            .postings
+            .iter()
+            .zip(&new.postings)
+            .zip(&reemission.posting_ids)
+        {
+            let mut expected = original.clone();
+            expected.original.id = *fresh_id;
+            assert_eq!(*copied, expected);
+        }
+    }
+    RecognitionEngine::audit(&state).unwrap();
+    IdentityEngine::audit(&state).unwrap();
+    let current_counterpart = proposal.reemissions[1].replacement;
+    let mut changed_current = state.clone();
+    let Some(AuthoritativeRecordV1::Recognition(r)) = changed_current
+        .records
+        .get_mut(&RecordId(current_counterpart.0))
+    else {
+        panic!("expected the preserved live recognition");
+    };
+    r.postings[0].amount.coefficient -= 1;
+    r.postings[1].amount.coefficient += 1;
+    assert!(IdentityEngine::audit(&changed_current).is_err());
+}
