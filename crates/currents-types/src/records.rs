@@ -279,6 +279,23 @@ dto!(PostingV1 {
     posting: TemporalValue
 });
 dto!(RecognitionV1 { id:RecognitionId, lineage:RecordId, postings:Vec<PostingV1>, kind:RecognitionKind, evidence_allocations:Vec<EvidenceAllocationV1>, leg_ids:Vec<LegId>, scope:DateScope, bookkeeping_date:TemporalValue, date_policy:PolicyReferenceV1 });
+dto!(RecognitionCorrectionRevisionV1 {
+    id: RecordId,
+    schema_version: u32,
+    prior_recognition: RecognitionId,
+    replacement_recognition: RecognitionId,
+    reason: String,
+    remap_disposition: RecognitionCorrectionRemapV1
+});
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum RecognitionCorrectionRemapV1 {
+    UnchangedStableLegs,
+}
+impl Schema for RecognitionCorrectionRemapV1 {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"enum": ["UnchangedStableLegs"]})
+    }
+}
 dto!(AccountingSegmentV1 { id:RecordId, component:RecordId, prior_segment:Option<RecordId>, opening:RecognitionId, included_activity:Vec<RecognitionId>, replacement_closure:Vec<RecognitionId>, approved_accounts:Vec<AccountId>, residual_disposition:SourceValue<String> });
 dto!(ReconciliationClaimV1 { id:RecordId, comparison_type:String, scope:Vec<AccountId>, cutoffs:DateScope, evidence_dependencies:Vec<RecordId>, decision_dependencies:Vec<RecordId>, dependency_digest:Digest, matched_allocations:Vec<EvidenceAllocationV1>, differences:Vec<Amount>, exclusions:Vec<RecordId>, status:ReconciliationStatus, reason:String });
 dto!(OrganizationRecordV1 { id:RecordId, version:u32, kind:OrganizationKind, targets:Vec<RecordId>, parent:Option<RecordId>, text:String, allocations:Vec<EvidenceAllocationV1>, supersedes:Option<RecordId> });
@@ -288,7 +305,7 @@ dto!(ScenarioV1 { id:RecordId, version:u32, basis:ReadBasis, commitments:Vec<Com
 dto!(ForecastPointV1 { account_id:AccountId, at:TemporalValue, amount:SourceValue<Amount>, uncertainty:Vec<String> });
 dto!(DecisionEnvelopeV1 { id:RecordId, commit:CommitSeq, item_position:u32, decision_type:DecisionKind, schema_version:u32, actor:RecordId, authority:AuthorityKind, grant_id:Option<GrantId>, command_id:CommandId, command_digest:Digest, references:Vec<RecordId>, recorded_time:RecordedInstant, adopted_result:Vec<RecordId>, policy:PolicyReferenceV1, corrections:Vec<RecordId>, supersedes:Vec<RecordId> });
 tagged!(AuthoritativeRecordV1 {
- DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1)
+ DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1)
 });
 choices!(CommandState {
     Committed,
