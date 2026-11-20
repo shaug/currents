@@ -184,7 +184,13 @@ notes and derive current-state invalidation for bounded civil-date Activity
 claims from account/date overlap. A replaced segment checks the retired anchor
 and the new anchor and backfill; exact counterpart re-emissions alone do not
 change those predicates. A note on a retired anchor leg requires an explicit
-remap and is rejected by this bounded path.
+remap and is rejected by this bounded path. A separately retained economic
+leg is not an equivalent target merely because a correction leaves native
+postings unchanged. A future leg-changing correction must own both old
+and new economic meanings, bind explicit reviewed organization disposition
+(including organization revision and exact targets), and prove active view
+and archival replay in the same correction. The legacy relationship remap
+payload is not such an organization decision.
 The original claim is archival; replay rederives exact invalidation effects.
 Claims with explicit evidence, decision, allocation, or exclusion dependencies
 are unsupported by this scope-only predicate.

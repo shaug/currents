@@ -202,6 +202,26 @@ async fn cur_016_2_replayed_retirement_blocks_correction() {
     reject(|r| r.replacement[0].postings[0].amount.coefficient += 1);
     reject(|r| r.replacement[0].postings[0].effective = fixture::date("2026-10-01"));
     reject(|r| r.replacement[0].lineage = fixture::id(9602));
+    {
+        let mut r = retained_request.clone();
+        // Identical native postings do not authorize replacing the stable
+        // economic leg, even when the caller already retains a different leg.
+        let other = deduped
+            .records
+            .values()
+            .find_map(|record| match record {
+                AuthoritativeRecordV1::FinancialLeg(leg)
+                    if !r.replacement[0].leg_ids.contains(&leg.id) =>
+                {
+                    Some(leg.id)
+                }
+                _ => None,
+            })
+            .expect("real independently retained leg");
+        assert!(!r.replacement[0].leg_ids.is_empty());
+        r.replacement[0].leg_ids[0] = other;
+        assert!(CorrectionEngine::correct(&deduped, &r).is_err());
+    }
     let mut wrong_prefix = deduped.clone();
     wrong_prefix
         .accounting
