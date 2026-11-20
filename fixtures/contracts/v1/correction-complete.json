@@ -1,0 +1,49 @@
+{
+  "command_id": "00000000-0000-0000-0000-000000000001",
+  "dataset_id": "00000000-0000-0000-0000-000000000001",
+  "expected_head": "1",
+  "operation": {
+    "kind": "CorrectRecognitionComplete",
+    "value": {
+      "active_recognition": "00000000-0000-0000-0000-000000000022",
+      "expected_basis": {
+        "domain_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+        "native_head": {
+          "checkpoint": "2222222222222222222222222222222222222222222222222222222222222222",
+          "semantics_version": 1
+        },
+        "through": "1"
+      },
+      "governing_policy": {
+        "id": "00000000-0000-0000-0000-000000000023",
+        "version": 1
+      },
+      "reason": "synthetic transport fixture",
+      "replacement": {
+        "bookkeeping_date": {
+          "civil": "2026-11-09",
+          "kind": "Date",
+          "original_text": "synthetic"
+        },
+        "date_policy": {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "version": 1
+        },
+        "evidence_allocations": [],
+        "id": "00000000-0000-0000-0000-000000000001",
+        "kind": "Activity",
+        "leg_ids": [],
+        "lineage": "00000000-0000-0000-0000-000000000001",
+        "postings": [],
+        "scope": {
+          "basis": "Effective",
+          "end": "2026-11-09",
+          "start": "2026-11-09"
+        }
+      },
+      "revision_id": "00000000-0000-0000-0000-000000000029",
+      "schema_version": 1
+    }
+  },
+  "protocol_version": 1
+}

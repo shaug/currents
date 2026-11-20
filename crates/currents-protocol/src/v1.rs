@@ -22,8 +22,19 @@ impl Schema for ProtocolVersion {
         serde_json::json!({"const":1})
     }
 }
+// Additive bounded correction contract. Decoding does not admit a write.
+// A future planner must agree with the outer expected head and audited basis.
+dto!(CompleteCorrectionRequestV1 {
+    schema_version: ProtocolVersion,
+    expected_basis: AccountingPrefixV1,
+    revision_id: RecordId,
+    active_recognition: RecognitionId,
+    replacement: RecognitionV1,
+    reason: String,
+    governing_policy: PolicyReferenceV1
+});
 tagged!(OperationV1 {
- SetAccountCatalog(SetAccountCatalogV1), SetDatasetPolicy(SetDatasetPolicyV1), RecordManualPosition(ManualPositionV1), RecordLoanPayment(LoanPaymentV1), PublishImport(PublishImportV1), AdoptInterpretation(AdoptInterpretationV1), SetOrganization(OrganizationRequestV1), SetReviewDisposition(ReviewDispositionV1), Recognize(RecognitionRequestV1), CorrectRecognition(CorrectionRequestV1), ReplaceAccountingSegment(SegmentRequestV1), AssociateLegs(AssociationRequestV1), EvaluateReconciliation(ReconciliationRequestV1), ConfirmReconciliation(ConfirmReconciliationV1), SetCommitment(CommitmentV1), SetOccurrenceMatch(OccurrenceMatchV1), SaveForecast(ForecastRunV1), Export(MaintenanceV1), Backup(MaintenanceV1), Verify(MaintenanceV1), Rebuild(MaintenanceV1), Migrate(MaintenanceV1), SetAccountCatalogComplete(CatalogRequestV1), AdoptActivity(ActivityRequestV1), ExpirePending(PendingExpiryV1), AssociateLegsComplete(CompleteAssociationRequestV1)
+ SetAccountCatalog(SetAccountCatalogV1), SetDatasetPolicy(SetDatasetPolicyV1), RecordManualPosition(ManualPositionV1), RecordLoanPayment(LoanPaymentV1), PublishImport(PublishImportV1), AdoptInterpretation(AdoptInterpretationV1), SetOrganization(OrganizationRequestV1), SetReviewDisposition(ReviewDispositionV1), Recognize(RecognitionRequestV1), CorrectRecognition(CorrectionRequestV1), ReplaceAccountingSegment(SegmentRequestV1), AssociateLegs(AssociationRequestV1), EvaluateReconciliation(ReconciliationRequestV1), ConfirmReconciliation(ConfirmReconciliationV1), SetCommitment(CommitmentV1), SetOccurrenceMatch(OccurrenceMatchV1), SaveForecast(ForecastRunV1), Export(MaintenanceV1), Backup(MaintenanceV1), Verify(MaintenanceV1), Rebuild(MaintenanceV1), Migrate(MaintenanceV1), SetAccountCatalogComplete(CatalogRequestV1), AdoptActivity(ActivityRequestV1), ExpirePending(PendingExpiryV1), AssociateLegsComplete(CompleteAssociationRequestV1), CorrectRecognitionComplete(CompleteCorrectionRequestV1)
 });
 dto!(CommandBodyV1 {
     protocol_version: ProtocolVersion,

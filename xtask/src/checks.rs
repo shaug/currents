@@ -391,7 +391,15 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
 }
 fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
     let mut evidence = Vec::new();
-    let suites: [(&str, &str, &[&str]); 3] = [
+    let suites: [(&str, &str, &[&str]); 4] = [
+        (
+            "currents-protocol",
+            "cur_016_contracts",
+            &[
+                "complete_correction_commits_caller_ids_policy_and_exact_basis_without_changing_legacy",
+                "complete_correction_has_no_implicit_revision_basis_or_policy",
+            ],
+        ),
         (
             "currents-domain",
             "cur_016",
@@ -460,6 +468,7 @@ fn ticket_cur_016(inventory_only: bool) -> Result<Value> {
     }
     let mut fixture_hashes = serde_json::Map::new();
     for path in [
+        "fixtures/contracts/v1/correction-complete.json",
         "fixtures/journeys/s4/date-floor.json",
         "fixtures/journeys/s5/refund.csv",
     ] {

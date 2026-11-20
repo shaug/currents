@@ -186,10 +186,21 @@ token or a second valid candidate's digest cannot authorize it. The
 candidate digest is test-host evidence, not a field in the production
 protocol or the replayed owner decision.
 
+The local v1 codec includes dormant `CorrectRecognitionComplete` with
+`CompleteCorrectionRequestV1`: schema version 1, exact accounting basis,
+caller revision ID, active recognition, one replacement, reason and the
+exact governing policy. The outer command and all of these fields enter
+the normal canonical C03 command digest. The legacy tag and golden bytes
+remain unchanged; older codecs reject the unfamiliar tag. Only DTO
+shape is decoded: before any future route can be admitted, the outer
+expected head must agree with the candidate basis and both must agree
+with the authenticated C04/C05 prefix. The current Service planner does
+not accept the new operation, and no client support is advertised.
+
 ### CUR-016 bounded qualification and remaining work
 
-`cargo xtask ticket CUR-016` verifies an exact 18-test synthetic inventory
-across domain, encrypted service and correction-chain suites, with no ignored
+`cargo xtask ticket CUR-016` verifies an exact 20-test synthetic inventory
+across protocol, domain, encrypted service and correction-chain suites, with no ignored
 tests. It includes the actual 1,200-native-operation replacement midpoint
 rollback, exact retry, reopen and fresh rebuild, and the separate typed
 20,001-operation no-plan witness. The latter is an envelope limit witness,

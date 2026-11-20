@@ -1091,4 +1091,25 @@ async fn cur_016_2_typed_candidate_pins_authenticated_policy_and_revision() {
             .is_err()
     );
     assert_eq!(writer.audited_prefix().await.unwrap(), current);
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    support::recover_service(&f.service).await;
+    let mut body = f.body(59_002);
+    body.expected_head = candidate.expected_basis.through;
+    body.operation =
+        OperationV1::CorrectRecognitionComplete(currents_protocol::CompleteCorrectionRequestV1 {
+            schema_version: currents_protocol::ProtocolVersion,
+            expected_basis: candidate.expected_basis,
+            revision_id: candidate.revision,
+            active_recognition: candidate.active_recognition,
+            replacement: candidate.replacement,
+            reason: candidate.reason,
+            governing_policy: candidate.governing_policy,
+        });
+    assert_eq!(
+        f.service.preview(f.ctx(), body).unwrap_err().class,
+        ErrorClass::UnsupportedVersion,
+        "structural negotiation must not activate the new operation in the unchanged planner"
+    );
+    assert_eq!(f.prefix().await, current);
 }
