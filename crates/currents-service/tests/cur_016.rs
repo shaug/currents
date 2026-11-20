@@ -930,6 +930,39 @@ async fn cur_016_standalone_segment_commit_reopens_and_rebuilds_native_authority
 #[allow(dead_code)]
 mod transfer_fixture;
 
+struct ExactSyntheticSegmentPlanner(Vec<(Digest, service_api::CommandPlan)>);
+
+impl service_api::CommandPlanner for ExactSyntheticSegmentPlanner {
+    fn prepare(
+        &self,
+        body: &currents_protocol::CommandBodyV1,
+        prefix: &AccountingPrefixV1,
+    ) -> Result<service_api::CommandPlan, EngineError> {
+        let currents_protocol::OperationV1::ReplaceAccountingSegmentComplete(request) =
+            &body.operation
+        else {
+            return Err(EngineError::version());
+        };
+        if &request.expected_basis != prefix || body.expected_head != prefix.through {
+            return Err(EngineError::invalid());
+        }
+        let digest = currents_protocol::command_digest(body)?;
+        self.0
+            .iter()
+            .find(|(known, _)| *known == digest)
+            .map(|(_, plan)| plan.clone())
+            .ok_or_else(EngineError::invalid)
+    }
+
+    fn query(
+        &self,
+        _: &currents_protocol::QueryV1,
+        _: &AccountingPrefixV1,
+    ) -> Result<currents_protocol::QueryResponseV1, EngineError> {
+        Err(EngineError::version())
+    }
+}
+
 #[tokio::test]
 async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family() {
     use currents_accounting::AccountingAdapter;
@@ -1543,27 +1576,161 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         assert_eq!(writer.audited_prefix().await.unwrap(), prior);
     }
 
-    let receipt = synthetic_commit_verified_segment(writer, &proposal, make_prepared())
+    let digest = currents_protocol::command_digest(&body).unwrap();
+    let mut alternate = body.clone();
+    let OperationV1::ReplaceAccountingSegmentComplete(request) = &mut alternate.operation else {
+        panic!("complete segment command");
+    };
+    request.authority_id = fixture::id(51_128);
+    let alternate: currents_protocol::CommandBodyV1 =
+        decode(&canonical_bytes(&alternate).unwrap()).unwrap();
+    let alternate_digest = currents_protocol::command_digest(&alternate).unwrap();
+    assert_ne!(alternate_digest, digest);
+    let SegmentPreviewV1::Ready(alternate_plan) =
+        service_api::synthetic_preview_owned_segment(writer, &alternate)
+            .await
+            .unwrap()
+    else {
+        panic!("another explicit authority ID also plans successfully");
+    };
+    assert_ne!(alternate_plan, plan);
+    let proposed = |decision_plan: &DecisionPlan, decision: RecordId| {
+        let mut effects = make_prepared().result.effects;
+        let Some(AuthoritativeRecordV1::SegmentReplacementAuthority(witness)) =
+            decision_plan.records.last()
+        else {
+            panic!("explicit segment authority")
+        };
+        *effects.records.last_mut().unwrap() = witness.id;
+        service_api::CommandPlan {
+            import: None,
+            decision_plan: decision_plan.clone(),
+            frozen_batch: AccountingAdapter::freeze(&decision_plan.accounting, &old).unwrap(),
+            effects,
+            warnings: vec![],
+            approval_scope: currents_protocol::ApprovalScopeV1 {
+                accounts: witness.affected_accounts.clone(),
+                operation: DecisionKind::Correction,
+                fields: vec!["accounting_segment".into()],
+            },
+            decision_id: decision,
+            manifest_id: fixture::id(51_005),
+            policy: proposal.opening.governing_policy.clone(),
+        }
+    };
+    let mut mismatched = body.clone();
+    mismatched.command_id = CommandId(fixture::id(51_129).0);
+    let mismatched_digest = currents_protocol::command_digest(&mismatched).unwrap();
+    let planner = Arc::new(ExactSyntheticSegmentPlanner(vec![
+        (digest, proposed(&plan, fixture::id(51_130))),
+        (
+            alternate_digest,
+            proposed(&alternate_plan, fixture::id(51_131)),
+        ),
+        // A different valid ledger plan cannot become an approved command
+        // simply because the planner returned it for this particular body.
+        (
+            mismatched_digest,
+            proposed(&alternate_plan, fixture::id(51_132)),
+        ),
+    ]));
+    f.host.reconnect();
+    f.service = service_api::Service::new(
+        store,
+        body.dataset_id,
+        f.ctx().instance_id,
+        service_api::ServiceProfile::Synthetic,
+        f.host.clone(),
+        planner,
+        f.clock.clone(),
+    )
+    .await
+    .unwrap();
+    support::recover_service(&f.service).await;
+    let control = Arc::new(CommitControl::default());
+    f.service
+        .set_test_control(mismatched.command_id, control.clone())
+        .unwrap();
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), mismatched.clone(), f.approve(&mismatched))
+            .await
+            .expect_err("execution must rederive the C08 authority from the exact command")
+            .class,
+        ErrorClass::InvalidReference
+    );
+    assert_eq!(control.completed_operations(), 0);
+    assert_eq!(f.prefix().await, prior);
+    let alternate_preview = f.service.preview(f.ctx(), alternate.clone()).unwrap();
+    assert_eq!(alternate_preview.digest, alternate_digest);
+    assert_eq!(
+        alternate_preview.effects.records.last(),
+        Some(&fixture::id(51_128))
+    );
+    let preview = f.service.preview(f.ctx(), body.clone()).unwrap();
+    assert_eq!(preview.digest, digest);
+    assert_eq!(preview.effects.accounts, owner.affected_accounts);
+    assert_eq!(preview.effects.records, effect_records);
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), body.clone(), f.auth(None))
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::Unauthorized
+    );
+    let first_approval = f.approve(&body);
+    assert_eq!(
+        f.service
+            .submit(f.ctx(), alternate, first_approval)
+            .await
+            .unwrap_err()
+            .class,
+        ErrorClass::Unauthorized
+    );
+    assert_eq!(f.prefix().await, prior);
+    let result = f
+        .service
+        .submit(f.ctx(), body.clone(), f.approve(&body))
         .await
-        .expect("same-writer authority must commit all eleven cross-account operations together");
-    assert_eq!(receipt.commit, CommitSeq(old.through.0 + 1));
-    assert_ne!(receipt.native_head, prior.native_head);
-    store.close().await.unwrap();
+        .expect("the exact owner-approved command must commit all eleven operations");
+    assert_eq!(result.state, CommandState::Committed);
+    assert_eq!(result.effects, preview.effects);
+    let commit = result.commit.unwrap();
+    assert_eq!(commit, CommitSeq(old.through.0 + 1));
+    let current_prefix = f.prefix().await;
+    assert_ne!(current_prefix.native_head, prior.native_head);
+    f.service.close().await.unwrap();
     let store = open(&path).await;
     let reopened = store.writer().audited_prefix().await.unwrap();
-    assert_eq!(reopened.native_head, receipt.native_head);
-    assert_eq!(reopened.domain_digest, receipt.domain_digest);
+    assert_eq!(reopened, current_prefix);
+    assert!(
+        store
+            .writer()
+            .command_result(mismatched.command_id, mismatched_digest)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let history = store.history();
     history
         .verify_checkpoint(old.through, old.domain_digest)
         .await
         .unwrap();
-    let committed = history
-        .read_prefix(receipt.commit)
-        .await
-        .unwrap()
-        .pop()
-        .unwrap();
+    let committed = history.read_prefix(commit).await.unwrap().pop().unwrap();
+    let [decision] = committed.decisions.as_slice() else {
+        panic!("matched C03 approval must be retained");
+    };
+    assert_eq!(decision.decision_type, DecisionKind::Correction);
+    assert_eq!(decision.authority, AuthorityKind::Owner);
+    assert_eq!(decision.command_id, body.command_id);
+    assert_eq!(decision.command_digest, digest);
+    assert_eq!(decision.adopted_result, preview.effects.records);
+    assert_eq!(decision.policy, proposal.opening.governing_policy);
+    assert_eq!(
+        committed.records[..committed.records.len() - 1],
+        plan.records
+    );
     for (missing, replacement) in [
         (affected_claim, unchanged_claim),
         (forecast.id, disjoint_forecast.id),
@@ -1596,13 +1763,13 @@ async fn cur_016_1_encrypted_cross_account_segment_commits_full_transfer_family(
         manifest.result_expectations.native_operation_count,
         CommitSeq(11)
     );
-    assert_eq!(receipt.result.effects.accounts, owner.affected_accounts);
+    assert_eq!(result.effects.accounts, owner.affected_accounts);
     let destination = open(&dir.path().join("fresh-cross-account-rebuild.db")).await;
     let report = ReplayCoordinator::rebuild(store.history(), destination)
         .await
         .unwrap();
-    assert_eq!(report.through, receipt.commit);
-    assert_eq!(report.native_head, receipt.native_head);
+    assert_eq!(report.through, commit);
+    assert_eq!(report.native_head, reopened.native_head);
     store.close().await.unwrap();
 
     f.service = f.reopen().await;

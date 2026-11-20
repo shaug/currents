@@ -219,6 +219,18 @@ The path performs no writes and forwards the typed no-plan outcomes
 without granting approval, advertising support, or enabling dispatch.
 The normal command digest binds all complete request fields.
 
+The configured synthetic Service fixture now exercises ordinary C03
+challenge, approval, and submit for complete segment commands. At queued
+execution, the feature-gated service checks the approved canonical
+command digest, rederives the exact Ready C08 plan from the same Writer,
+and verifies the accounts, result records, invalidations, policy, and
+C05 freeze before entering C04. A separately valid authority cannot
+replace the authority the command names. A different valid body needs
+its own approval; the accepted one retains one C03 owner decision and
+all eleven native operations in the single atomic commit. The default
+planner still rejects the operation, and the service also rejects it
+without the synthetic test feature. This is not a public dispatch path.
+
 ### CUR-016 bounded qualification and remaining work
 
 `cargo xtask ticket CUR-016` verifies an exact 21-test synthetic inventory

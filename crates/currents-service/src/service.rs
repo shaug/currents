@@ -248,6 +248,13 @@ impl Service {
         if body.expected_head != prefix.through {
             return Err(error(ErrorClass::StaleBasis));
         }
+        #[cfg(not(feature = "synthetic-test-fixtures"))]
+        if matches!(
+            body.operation,
+            OperationV1::ReplaceAccountingSegmentComplete(_)
+        ) {
+            return Err(EngineError::version());
+        }
         let plan = self.inner.planner.prepare(&body, &prefix)?;
         plan.validate_scope()?;
         match (&body.operation, &plan.import) {
@@ -530,6 +537,21 @@ impl Service {
             return Err(error(ErrorClass::StaleBasis));
         }
         let plan = job.preview.plan;
+        let store = self.inner.store.read().await;
+        let writer = store
+            .as_ref()
+            .ok_or_else(|| error(ErrorClass::Locked))?
+            .writer();
+        #[cfg(feature = "synthetic-test-fixtures")]
+        if matches!(
+            job.body.operation,
+            OperationV1::ReplaceAccountingSegmentComplete(_)
+        ) {
+            crate::segment_preflight::verify_approved_owned_segment(
+                writer, &job.body, digest, &plan,
+            )
+            .await?;
+        }
         let result = CommandResultV1 {
             command_id: job.body.command_id,
             digest,
@@ -569,11 +591,7 @@ impl Service {
             corrections: vec![],
             supersedes: vec![],
         };
-        let store = self.inner.store.read().await;
-        let outcome = store
-            .as_ref()
-            .ok_or_else(|| error(ErrorClass::Locked))?
-            .writer()
+        let outcome = writer
             .commit(PreparedCommit {
                 evidence: plan
                     .import

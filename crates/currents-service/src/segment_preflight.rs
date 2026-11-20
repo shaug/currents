@@ -11,6 +11,15 @@ pub async fn synthetic_preview_owned_segment(
     writer: &Writer,
     body: &currents_protocol::CommandBodyV1,
 ) -> Result<SegmentPreviewV1, EngineError> {
+    authenticated_owned_segment(writer, body)
+        .await
+        .map(|(_, outcome)| outcome)
+}
+
+async fn authenticated_owned_segment(
+    writer: &Writer,
+    body: &currents_protocol::CommandBodyV1,
+) -> Result<(DomainState, SegmentPreviewV1), EngineError> {
     use currents_domain::segments::SegmentReemissionV1;
     use currents_protocol::OperationV1;
 
@@ -62,7 +71,60 @@ pub async fn synthetic_preview_owned_segment(
     if writer.audited_prefix().await? != basis {
         return Err(stale());
     }
-    Ok(outcome)
+    Ok((state, outcome))
+}
+
+pub(crate) async fn verify_approved_owned_segment(
+    writer: &Writer,
+    body: &currents_protocol::CommandBodyV1,
+    approved_digest: Digest,
+    supplied: &crate::CommandPlan,
+) -> Result<(), EngineError> {
+    use currents_protocol::{OperationV1, command_digest};
+    let invalid = EngineError::invalid;
+    let OperationV1::ReplaceAccountingSegmentComplete(request) = &body.operation else {
+        return Err(EngineError::version());
+    };
+    if command_digest(body)? != approved_digest {
+        return Err(invalid());
+    }
+    let (prior, SegmentPreviewV1::Ready(expected)) =
+        authenticated_owned_segment(writer, body).await?
+    else {
+        return Err(invalid());
+    };
+    let Some(AuthoritativeRecordV1::SegmentReplacementAuthority(owner)) = expected.records.last()
+    else {
+        return Err(invalid());
+    };
+    if expected.as_ref() != &supplied.decision_plan
+        || supplied.import.is_some()
+        || supplied.effects.records != segment_effect_records(&expected)?
+        || supplied.effects.invalidations != expected.invalidations
+        || supplied.effects.accounts != owner.affected_accounts
+        || !supplied.effects.amounts.is_empty()
+        || supplied.approval_scope.accounts != owner.affected_accounts
+        || supplied.approval_scope.operation != DecisionKind::Correction
+        || supplied.policy != request.opening.governing_policy
+    {
+        return Err(invalid());
+    }
+    Writer::verify_segment_freeze(&prior, &expected, &supplied.frozen_batch)
+}
+
+fn segment_effect_records(plan: &DecisionPlan) -> Result<Vec<RecordId>, EngineError> {
+    plan.records
+        .iter()
+        .map(|record| match record {
+            AuthoritativeRecordV1::FinancialEvent(e) => Ok(e.id),
+            AuthoritativeRecordV1::FinancialLeg(l) => Ok(RecordId(l.id.0)),
+            AuthoritativeRecordV1::ActivityAdoption(a) => Ok(a.id),
+            AuthoritativeRecordV1::Recognition(r) => Ok(RecordId(r.id.0)),
+            AuthoritativeRecordV1::AccountingSegment(s) => Ok(s.id),
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Ok(owner.id),
+            _ => Err(EngineError::invalid()),
+        })
+        .collect()
 }
 
 #[doc(hidden)]
@@ -115,19 +177,7 @@ pub async fn synthetic_commit_verified_segment(
     if *readmitted != prepared.decision_plan {
         return Err(invalid());
     }
-    let emitted = readmitted
-        .records
-        .iter()
-        .map(|record| match record {
-            AuthoritativeRecordV1::FinancialEvent(e) => Ok(e.id),
-            AuthoritativeRecordV1::FinancialLeg(l) => Ok(RecordId(l.id.0)),
-            AuthoritativeRecordV1::ActivityAdoption(a) => Ok(a.id),
-            AuthoritativeRecordV1::Recognition(r) => Ok(RecordId(r.id.0)),
-            AuthoritativeRecordV1::AccountingSegment(s) => Ok(s.id),
-            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Ok(owner.id),
-            _ => Err(invalid()),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let emitted = segment_effect_records(&readmitted).map_err(DefinitelyRolledBack)?;
     let effects = &prepared.result.effects;
     if effects.records != emitted
         || effects.invalidations != readmitted.invalidations
