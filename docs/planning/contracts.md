@@ -161,6 +161,15 @@ Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,
 
 `ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoff, evidence, exclusions, basis }`; `ClaimV1 { id, inputs, dependency_digest, predicate_dependencies, differences, status, basis }`; `ReconciliationEngine::evaluate(state,&request)->Result<ClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
+The bounded in-process Activity comparison compares caller-selected source
+and allocation lines by exact observation/facet identity, scope, selected
+civil date, unit and normalized signed amount. Offsetting omissions cannot
+net out; same-amount rows with distinct identities cannot substitute.
+Split/repeated identities touching scope remain unsupported (callers
+must supply all sibling rows, including those outside scope). An empty
+difference list proves neither account-period completeness nor retained
+allocation eligibility; this is not claim confirmation or service dispatch.
+
 <a id="c10"></a>
 
 ## C10: Organization and deterministic rules, owner CUR-019
