@@ -162,9 +162,13 @@ Writer's audited retained history, then re-admits and re-freezes the proposed
 correction; caller projections are not inputs to that write helper. Encrypted
 tests exercise cancellation between reversal and replacement, exact retry, and
 fresh rebuild. There is no default service or wire dispatch. This slice
-rejects association-bound or dependent recognition, remapping, and another
-correction of either end of an existing revision. General corrections,
-multi-hop history, and segment replacement remain outside this checkpoint.
+now allows another identity-only correction of the authenticated live tip
+of a standalone chain. Replayed activity retains one adoption root and
+one native live tip. Reversing archived entries, revision forks, reused
+posting identities, ownership changes and dependency remapping remain
+unsupported. A real refund is new economic activity at its own date, not
+compensation of an archived posting. General corrections and segment
+replacement remain outside this checkpoint.
 
 <a id="c09"></a>
 
