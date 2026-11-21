@@ -23,3 +23,6 @@ mod correction_preflight;
 #[doc(hidden)]
 pub use correction_preflight::synthetic_commit_verified_correction;
 pub use correction_preflight::verify_correction_preflight;
+
+#[cfg(feature = "synthetic-test-fixtures")]
+mod verified_prefix;

@@ -336,7 +336,7 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
     malformed.frozen_batch = wrong_frozen;
     let malformed_control = malformed.control.clone();
     assert!(matches!(
-        synthetic_commit_verified_correction(&writer, &old_basis, malformed).await,
+        synthetic_commit_verified_correction(writer, malformed).await,
         Err(CommitFailure::DefinitelyRolledBack(_))
     ));
     assert_eq!(malformed_control.completed_operations(), 0);
@@ -359,7 +359,7 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
     };
     let (outcome, completed) = tokio::time::timeout(std::time::Duration::from_secs(30), async {
         tokio::join!(
-            synthetic_commit_verified_correction(&writer, &old_basis, prepare(control.clone())),
+            synthetic_commit_verified_correction(writer, prepare(control.clone())),
             cancel_between_entries
         )
     })
@@ -389,20 +389,14 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
             .is_none()
     );
     let writer = source.writer();
-    let commit = synthetic_commit_verified_correction(
-        &writer,
-        &old_basis,
-        prepare(Arc::new(CommitControl::default())),
-    )
-    .await
-    .expect("C04 retry must atomically commit both native and typed authority");
-    let retry = synthetic_commit_verified_correction(
-        &writer,
-        &old_basis,
-        prepare(Arc::new(CommitControl::default())),
-    )
-    .await
-    .expect("identical retry must resolve the existing correction");
+    let commit =
+        synthetic_commit_verified_correction(writer, prepare(Arc::new(CommitControl::default())))
+            .await
+            .expect("C04 retry must atomically commit both native and typed authority");
+    let retry =
+        synthetic_commit_verified_correction(writer, prepare(Arc::new(CommitControl::default())))
+            .await
+            .expect("identical retry must resolve the existing correction");
     assert_eq!(retry.commit, commit.commit);
     assert_eq!(retry.domain_digest, commit.domain_digest);
     assert_eq!(retry.native_head, commit.native_head);

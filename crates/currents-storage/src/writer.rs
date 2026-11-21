@@ -41,6 +41,11 @@ impl Writer {
     pub(crate) fn new(accounting: AtomicStore, pool: sqlx::SqlitePool) -> Self {
         Self { accounting, pool }
     }
+    /// Read-only retained history from this exact authority writer.
+    pub fn retained_history(&self) -> crate::HistoryReader {
+        crate::HistoryReader::new(self.pool.clone())
+    }
+
     /// C05 pre-write binding for a C08 plan re-admitted by the service.
     /// Freshly freeze trusted intent; a well-formed but different batch cannot
     /// substitute another native interpretation of the same accepted prefix.

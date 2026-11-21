@@ -38,10 +38,12 @@ pub fn verify_correction_preflight(
 #[doc(hidden)]
 pub async fn synthetic_commit_verified_correction(
     writer: &Writer,
-    prior: &DomainState,
     prepared: currents_storage::PreparedCommit,
 ) -> Result<currents_storage::CommitReceipt, currents_storage::CommitFailure> {
     use currents_storage::CommitFailure::DefinitelyRolledBack;
+    if !prepared.evidence.is_empty() || prepared.result.commit.is_some() {
+        return Err(DefinitelyRolledBack(EngineError::invalid()));
+    }
     let frozen_prefix = &prepared.frozen_batch.preconditions;
     let trusted_tip = if let Some(existing) = writer
         .command_result(prepared.result.command_id, prepared.result.digest)
@@ -55,9 +57,12 @@ pub async fn synthetic_commit_verified_correction(
         else {
             return Err(DefinitelyRolledBack(EngineError::invalid()));
         };
+        let mut submitted_result = prepared.result.clone();
+        submitted_result.commit = Some(existing.seq);
         if existing.previous_digest != frozen_prefix.domain_digest
             || existing.seq.0.checked_sub(1) != Some(frozen_prefix.through.0)
             || &manifest.preconditions != frozen_prefix
+            || submitted_result != existing.command_result
         {
             return Err(DefinitelyRolledBack(EngineError::invalid()));
         }
@@ -68,8 +73,11 @@ pub async fn synthetic_commit_verified_correction(
             .await
             .map_err(DefinitelyRolledBack)?
     };
+    let prior = crate::verified_prefix::rehydrate(writer, &trusted_tip)
+        .await
+        .map_err(DefinitelyRolledBack)?;
     verify_correction_preflight(
-        prior,
+        &prior,
         &trusted_tip,
         &prepared.decision_plan,
         &prepared.frozen_batch,
