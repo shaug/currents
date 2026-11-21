@@ -41,6 +41,27 @@ impl Writer {
     pub(crate) fn new(accounting: AtomicStore, pool: sqlx::SqlitePool) -> Self {
         Self { accounting, pool }
     }
+    /// Read-only retained history from this exact authority writer.
+    pub fn retained_history(&self) -> crate::HistoryReader {
+        crate::HistoryReader::new(self.pool.clone())
+    }
+
+    /// C05 pre-write binding for a C08 plan re-admitted by the service.
+    /// Freshly freeze trusted intent; a well-formed but different batch cannot
+    /// substitute another native interpretation of the same accepted prefix.
+    pub fn verify_correction_freeze(
+        prior: &DomainState,
+        plan: &DecisionPlan,
+        supplied: &AccountingBatchV1,
+    ) -> Result<(), EngineError> {
+        if !matches!(&plan.accounting, AccountingIntent::Correction(_))
+            || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
+        {
+            return Err(EngineError::invalid());
+        }
+        Ok(())
+    }
+
     pub async fn commit(&self, prepared: PreparedCommit) -> Result<CommitReceipt, CommitFailure> {
         if prepared.decision_plan.invalidations != prepared.result.effects.invalidations
             || prepared.frozen_batch.preconditions.through != prepared.prior_head

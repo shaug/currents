@@ -489,6 +489,38 @@ impl AccountingAdapter {
         batch: Option<&AccountingBatchV1>,
         index: &AccountingIndexV1,
     ) -> Result<(), EngineError> {
+        if let [
+            AuthoritativeRecordV1::RecognitionCorrectionRevision(revision),
+            AuthoritativeRecordV1::Recognition(replacement),
+            AuthoritativeRecordV1::FrozenAccountingManifest(_),
+        ] = commit.records.as_slice()
+        {
+            let Some(
+                [
+                    FrozenNativeOperationV1::Entry(reversal),
+                    FrozenNativeOperationV1::Entry(emitted),
+                ],
+            ) = batch.map(|batch| batch.operations.as_slice())
+            else {
+                return Err(EngineError::invalid());
+            };
+            // advance_index has independently checked the exact original
+            // entry key, full inverse postings, and both frozen dates.
+            if reversal.recognition_id != revision.prior_recognition
+                || reversal.reverses.is_none()
+                || emitted.reverses.is_some()
+                || emitted.recognition_id != revision.replacement_recognition
+                || replacement.id != emitted.recognition_id
+            {
+                return Err(EngineError::invalid());
+            }
+        } else if commit
+            .records
+            .iter()
+            .any(|r| matches!(r, AuthoritativeRecordV1::RecognitionCorrectionRevision(_)))
+        {
+            return Err(EngineError::invalid());
+        }
         let associations: Vec<_> = commit
             .records
             .iter()

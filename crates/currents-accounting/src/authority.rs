@@ -71,6 +71,38 @@ impl AuthorityTransaction<'_> {
         control: &crate::ClosureControl,
     ) -> Result<(), EngineError> {
         batch.validate_limits()?;
+        #[cfg(feature = "synthetic-test-fixtures")]
+        if control.test_fault.load(std::sync::atomic::Ordering::SeqCst) == 6 {
+            // Test C04 outer transaction rollback after an actual persisted
+            // reversal and before the replacement. Production grouping is
+            // unchanged; this does not inject inside a native Op::Batch.
+            use doubleentry::{BatchItem, store::Op};
+            let [prepared] = batch.operations.as_slice() else {
+                return Err(EngineError::invalid());
+            };
+            let Op::Batch(items) = &prepared.operation else {
+                return Err(EngineError::invalid());
+            };
+            let [BatchItem::Record(reversal), BatchItem::Record(replacement)] = items.as_slice()
+            else {
+                return Err(EngineError::invalid());
+            };
+            if reversal.get_reverses().is_none() || replacement.get_reverses().is_some() {
+                return Err(EngineError::invalid());
+            }
+            for (offset, item) in items.iter().enumerate() {
+                control.check_cancelled()?;
+                self.apply_native(&crate::PreparedNativeOperation {
+                    operation: Op::Batch(vec![item.clone()]),
+                })
+                .await?;
+                control.advance(1);
+                if offset == 0 {
+                    control.test_pause().await;
+                }
+            }
+            return control.check_cancelled();
+        }
         for operation in &batch.operations {
             control.check_cancelled()?;
             self.inner

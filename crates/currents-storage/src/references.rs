@@ -48,6 +48,7 @@ const RECORDS: &[&str] = &[
     "RelationshipParseRevision",
     "Decision",
     "Recognition",
+    "RecognitionCorrectionRevision",
     "AccountingSegment",
     "ReconciliationClaim",
     "Organization",
@@ -595,6 +596,22 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             for posting in v["postings"].as_array().ok_or_else(EngineError::invalid)? {
                 m.define("Posting", &posting["id"], 0, false);
             }
+        }
+        AuthoritativeRecordV1::RecognitionCorrectionRevision(r) => {
+            if r.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if r.prior_recognition == r.replacement_recognition || r.reason.trim().is_empty() {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["Recognition"], &v["prior_recognition"], None);
+            m.reference(&["Recognition"], &v["replacement_recognition"], None);
+            m.define(
+                "RecognitionCorrectionSuccessor",
+                &v["prior_recognition"],
+                0,
+                false,
+            );
         }
         AuthoritativeRecordV1::AccountingSegment(_) => {
             m.reference(&["AccountComponent"], &v["component"], None);
