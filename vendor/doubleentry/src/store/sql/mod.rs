@@ -85,6 +85,16 @@ impl Default for SqlOptions {
     }
 }
 
+/// Apply the standalone Currents qualification's connection ownership policy.
+#[cfg(feature = "sqlite")]
+fn qualify_sqlite_connection_options(
+    options: sqlx::sqlite::SqliteConnectOptions,
+) -> sqlx::sqlite::SqliteConnectOptions {
+    #[cfg(feature = "currents-qualification-join")]
+    let options = options.join_worker_on_drop(true);
+    options
+}
+
 /// A ledger kept in a SQL database: SQLite (feature `sqlite`) or PostgreSQL
 /// (feature `postgres`).
 ///

@@ -143,7 +143,7 @@ impl Driver for Sqlite {
                     }
                 })
             })
-            .connect_with(connect)
+            .connect_with(super::qualify_sqlite_connection_options(connect))
             .await
             .map_err(|error| super::failure::<Self>("connect", &error, false).with_source(error))
     }

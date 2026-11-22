@@ -1,0 +1,68 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index f4583c4..d45bde3 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2781,8 +2781,6 @@ dependencies = [
+ [[package]]
+ name = "sqlx-sqlite"
+ version = "0.9.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c"
+ dependencies = [
+  "atoi",
+  "flume",
+diff --git a/Cargo.toml b/Cargo.toml
+index 284a00f..228e5e8 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -58,6 +58,8 @@ postgres-tls = ["postgres", "sqlx/tls-rustls-aws-lc-rs"]
+ ## `SqlStore<Sqlite>`, on sqlx, with SQLite bundled. One schema,
+ ## `doubleentry/2`; no migrations.
+ sqlite = ["dep:sqlx", "sqlx/sqlite-bundled", "sqlx/sqlite-unlock-notify"]
++# Private, default-off CUR-005 qualification only; never select in the workspace.
++currents-qualification-join = ["sqlite"]
+
+ ## Ed25519 for `transparency`: `LogKey` signs checkpoints; cosignatures and
+ ## policies are verified; `WitnessSession` and `Verifier` work. The C2SP text
+@@ -225,6 +227,7 @@ opt-level = 3
+ # Currents qualification uses the same reviewed SQLCipher source as its workspace.
+ [patch.crates-io]
+ libsqlite3-sys = { path = "../libsqlite3-sys" }
++sqlx-sqlite = { path = "../sqlx-sqlite" }
+
+ [target.'cfg(target_os = "macos")'.dev-dependencies]
+ libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["bundled-sqlcipher"] }
+diff --git a/src/store/sql/mod.rs b/src/store/sql/mod.rs
+index 0016075..e57056f 100644
+--- a/src/store/sql/mod.rs
++++ b/src/store/sql/mod.rs
+@@ -85,6 +85,16 @@ impl Default for SqlOptions {
+     }
+ }
+
++/// Apply the standalone Currents qualification's connection ownership policy.
++#[cfg(feature = "sqlite")]
++fn qualify_sqlite_connection_options(
++    options: sqlx::sqlite::SqliteConnectOptions,
++) -> sqlx::sqlite::SqliteConnectOptions {
++    #[cfg(feature = "currents-qualification-join")]
++    let options = options.join_worker_on_drop(true);
++    options
++}
++
+ /// A ledger kept in a SQL database: SQLite (feature `sqlite`) or PostgreSQL
+ /// (feature `postgres`).
+ ///
+diff --git a/src/store/sql/sqlite.rs b/src/store/sql/sqlite.rs
+index 5a794fc..7515da5 100644
+--- a/src/store/sql/sqlite.rs
++++ b/src/store/sql/sqlite.rs
+@@ -143,7 +143,7 @@ impl Driver for Sqlite {
+                     }
+                 })
+             })
+-            .connect_with(connect)
++            .connect_with(super::qualify_sqlite_connection_options(connect))
+             .await
+             .map_err(|error| super::failure::<Self>("connect", &error, false).with_source(error))
+     }

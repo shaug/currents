@@ -16,7 +16,7 @@ fn native_test(name: &str) {
         .arg(manifest)
         .args([
             "--features",
-            "sqlite,testing",
+            "sqlite,testing,currents-qualification-join",
             "--lib",
             name,
             "--",
@@ -62,7 +62,7 @@ fn cur_005_3() {
         .env("CARGO_INCREMENTAL", "0")
         .args(["test", "--locked", "--manifest-path"])
         .arg(root.join("vendor/doubleentry/Cargo.toml"))
-        .args(["--features", "sqlite,testing"])
+        .args(["--features", "sqlite,testing,currents-qualification-join"])
         .output()
         .expect("run complete pinned upstream suite");
     let stdout = String::from_utf8_lossy(&output.stdout);

@@ -40,6 +40,19 @@ not key initialization, encrypted connection qualification or production access.
 The only injected I/O modes are compiled under `cfg(test)` inside the native
 crate and cannot be selected by production clients or imports.
 
+## Qualification-only worker lifetime
+
+The standalone lockfile resolves the already-reviewed local SQLx SQLite driver.
+The existing CUR-005 harness explicitly selects the default-off
+`currents-qualification-join` feature: only then does doubleentry's shared SQL
+setup opt SQLite connections into the driver's existing worker-join-on-drop
+behavior. The dialect delegates to this policy without adding dialect logic.
+Workspace dependencies do not select this feature. The guarded option and
+standalone manifest/lock changes are separately recorded in
+`qualification-worker-lifetime.patch`; verification still reconstructs the
+original source and requires byte-identical upstream tests. This is defensive
+connection ownership, not a change to ledger behavior or test selection.
+
 ## Reproduction
 
 - `cargo test --locked -p currents-storage --test cur_005`
