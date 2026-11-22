@@ -58,6 +58,8 @@ postgres-tls = ["postgres", "sqlx/tls-rustls-aws-lc-rs"]
 ## `SqlStore<Sqlite>`, on sqlx, with SQLite bundled. One schema,
 ## `doubleentry/2`; no migrations.
 sqlite = ["dep:sqlx", "sqlx/sqlite-bundled", "sqlx/sqlite-unlock-notify"]
+# Private, default-off CUR-005 qualification only; never select in the workspace.
+currents-qualification-join = ["sqlite"]
 
 ## Ed25519 for `transparency`: `LogKey` signs checkpoints; cosignatures and
 ## policies are verified; `WitnessSession` and `Verifier` work. The C2SP text
@@ -225,6 +227,7 @@ opt-level = 3
 # Currents qualification uses the same reviewed SQLCipher source as its workspace.
 [patch.crates-io]
 libsqlite3-sys = { path = "../libsqlite3-sys" }
+sqlx-sqlite = { path = "../sqlx-sqlite" }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 libsqlite3-sys = { version = "=0.37.0", default-features = false, features = ["bundled-sqlcipher"] }
