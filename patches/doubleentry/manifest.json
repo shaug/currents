@@ -36,11 +36,11 @@
     },
     "Cargo.lock": {
       "upstream_sha256": "072ce8be2c6a1b605aa029b80524044179f2fe7588cb48e55c8002ae5d350f05",
-      "patched_sha256": "4cebdae5c9f1e0df2559493658edeada150bceceeaf37f25946e72a8332cf68e"
+      "patched_sha256": "7ece300ffcedfd1a812bd7767d9c7135e821449adf96457804683d765f52eed8"
     },
     "Cargo.toml": {
       "upstream_sha256": "0ea037bbdd701554282ef42d80da736d7aebe5b370064799d3a55fecd5427fd8",
-      "patched_sha256": "599e4f667c1d099b20bfb628b238754e11f3de5442f466267ac83fbb11d264d9"
+      "patched_sha256": "a3bfd5652c4e75cd82261b3ea971d066e9ec1b9c8b29a291924977c4afd3091c"
     },
     "LICENSE-APACHE": {
       "upstream_sha256": "17639e28e9226bf64e33f5862488cdf81847e8e300f9ef556aed8b1e1ee6854e",
@@ -1220,7 +1220,7 @@
     },
     "src/store/sql/mod.rs": {
       "upstream_sha256": "8f18bd537ea8c8292761ae820fd1df384372a027984cc38e792b2e62b5d9a72f",
-      "patched_sha256": "dad73997b6c1f152ae4bffbde3d5bd0513b78fd40b51f308c2ddfa62987ceb7c"
+      "patched_sha256": "c8270ba702614a2a3065bfae222226b9afbb2490be44e69f8e613fdd7f51637f"
     },
     "src/store/sql/no_replace_sqlite.sql": {
       "upstream_sha256": "ecc158ec77d2a965201906290d1b81ec5cf1112d4f336b725c8609c1e15b41ab",
@@ -1244,7 +1244,7 @@
     },
     "src/store/sql/sqlite.rs": {
       "upstream_sha256": "a873c3646eba3e26d98b0d466ae194a4e681c15ff254b57b17a6708aaeed1ad6",
-      "patched_sha256": "a873c3646eba3e26d98b0d466ae194a4e681c15ff254b57b17a6708aaeed1ad6"
+      "patched_sha256": "aadd702a1f39b6e20c5d2e0c2a195741bbb82d4381d6defb28bf73c370387489"
     },
     "src/store/sql/statements.rs": {
       "upstream_sha256": "fd104799bb378acff36f8d6a8be16c357e7094e9c80ffd55fdc1d96898c652b6",
@@ -2009,5 +2009,6 @@
   },
   "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544",
   "authority_patch_sha256": "3c3ce9d852f04e1fdf40c4e7e18f7d72fb834d947729e121720d45c1852b6668",
-  "multi_operation_patch_sha256": "3a271ba4fd08b83557b2ec2218bd41818ef33b5ceb6a9c74a736857da29398b9"
+  "multi_operation_patch_sha256": "3a271ba4fd08b83557b2ec2218bd41818ef33b5ceb6a9c74a736857da29398b9",
+  "qualification_worker_patch_sha256": "9746091455853f64c4741f5739b999403871a3c74e5f5c82c055e8932ad06ad5"
 }

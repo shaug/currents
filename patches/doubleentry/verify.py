@@ -28,12 +28,16 @@ if hashlib.sha256(authority_patch.read_bytes()).hexdigest() != manifest["authori
 multi_patch = root / "patches/doubleentry/multi-op.patch"
 if hashlib.sha256(multi_patch.read_bytes()).hexdigest() != manifest["multi_operation_patch_sha256"]:
     raise SystemExit("multi-op patch checksum mismatch")
+qualification_patch = root / "patches/doubleentry/qualification-worker-lifetime.patch"
+if hashlib.sha256(qualification_patch.read_bytes()).hexdigest() != manifest["qualification_worker_patch_sha256"]:
+    raise SystemExit("qualification worker lifetime patch checksum mismatch")
 with tempfile.TemporaryDirectory(prefix="currents-source-") as directory:
     reconstructed = Path(directory)
     for name in manifest["files"]:
         destination = reconstructed / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(root / "vendor/doubleentry" / name, destination)
+    subprocess.run(["git", "apply", "--reverse", str(qualification_patch)], cwd=reconstructed, check=True)
     subprocess.run(["git", "apply", "--reverse", str(multi_patch)], cwd=reconstructed, check=True)
     subprocess.run(["git", "apply", "--reverse", str(authority_patch)], cwd=reconstructed, check=True)
     subprocess.run(["git", "apply", "--reverse", str(key_patch)], cwd=reconstructed, check=True)
