@@ -339,32 +339,39 @@ pub(super) async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixtu
     (f, empty)
 }
 
-pub(super) async fn declare_template(f: &mut Fixture, path: &Path, template: &DomainState) {
+pub(super) fn template_catalog_commands(
+    template: &DomainState,
+) -> impl Iterator<Item = (u128, currents_protocol::OperationV1)> + '_ {
     use currents_protocol::OperationV1;
-    let mut serial = 11000;
-    for record in template.records.values() {
-        if let AuthoritativeRecordV1::AccountCatalogRevision(r) = record {
+    template
+        .records
+        .values()
+        .filter_map(|record| {
+            let AuthoritativeRecordV1::AccountCatalogRevision(r) = record else {
+                return None;
+            };
             let Some(AuthoritativeRecordV1::AccountComponent(root)) =
                 template.records.get(&r.component_id)
             else {
                 panic!()
             };
-            submit(
-                f,
-                serial,
-                OperationV1::SetAccountCatalogComplete(CatalogRequestV1 {
-                    schema_version: r.schema_version,
-                    revision_id: r.id,
-                    prior_revision: r.prior_revision,
-                    catalog: r.catalog.clone(),
-                    ownership: root.ownership.clone(),
-                    origin: r.origin.clone(),
-                }),
-            )
-            .await;
-            serial += 1;
-            refresh_financial(f, path, None).await;
-        }
+            Some(OperationV1::SetAccountCatalogComplete(CatalogRequestV1 {
+                schema_version: r.schema_version,
+                revision_id: r.id,
+                prior_revision: r.prior_revision,
+                catalog: r.catalog.clone(),
+                ownership: root.ownership.clone(),
+                origin: r.origin.clone(),
+            }))
+        })
+        .zip(11000..)
+        .map(|(operation, serial)| (serial, operation))
+}
+
+pub(super) async fn declare_template(f: &mut Fixture, path: &Path, template: &DomainState) {
+    for (serial, operation) in template_catalog_commands(template) {
+        submit(f, serial, operation).await;
+        refresh_financial(f, path, None).await;
     }
 }
 

@@ -64,6 +64,8 @@ fn relationship_import_identity_binds_complete_retained_metadata() {
 mod support;
 #[path = "support/financial_service.rs"]
 mod support_financial;
+#[path = "support/verified_fixture_planner.rs"]
+mod verified_fixture_planner;
 use support_financial::*;
 #[tokio::test]
 async fn relationship_capture_uses_real_service_staging_and_reopens_exactly() {
@@ -186,7 +188,14 @@ async fn real_service_transfer_mode(
     let path = dir.path().join("transfer.db");
     let (mut f, _) = bootstrap(&path).await;
     let (template, mut request) = association_fixtures::transfer_request();
-    declare_template(&mut f, &path, &template).await;
+    let mut arrival_planner = if order.is_some() && !remap && !parser_correction {
+        let mut planner = verified_fixture_planner::FixturePlanner::default();
+        Box::pin(planner.declare_template(&mut f, &path, &template)).await;
+        Some(planner)
+    } else {
+        declare_template(&mut f, &path, &template).await;
+        None
+    };
     let rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(include_bytes!(
         "../../../fixtures/journeys/s2/relationship-source.json"
     ))
@@ -200,6 +209,15 @@ async fn real_service_transfer_mode(
             .collect(),
     };
     let unchanged_native = f.prefix().await.native_head;
+    macro_rules! refresh_arrival_or_restart {
+        ($evidence:expr) => {
+            if let Some(planner) = &mut arrival_planner {
+                Box::pin(planner.refresh(&mut f, &path, $evidence)).await
+            } else {
+                refresh_financial(&mut f, &path, $evidence).await
+            }
+        };
+    }
     for (n, rows) in groups {
         let context = ImportContextV1 {
             receipt_id: fixture::id(n),
@@ -225,7 +243,7 @@ async fn real_service_transfer_mode(
         .unwrap();
         let evidence = ImportEvidence::new_relationship(capture).unwrap();
         let import = evidence.request();
-        refresh_financial(&mut f, &path, Some(evidence)).await;
+        refresh_arrival_or_restart!(Some(evidence));
         submit(
             &mut f,
             12000 + u128::from(n),
@@ -255,14 +273,14 @@ async fn real_service_transfer_mode(
             edge.source.capture = fixture::id(1501 + 10 * u32::try_from(position).unwrap());
         }
     }
-    let before = refresh_financial(&mut f, &path, None).await;
+    let before = refresh_arrival_or_restart!(None);
     let result = submit(
         &mut f,
         12001,
         OperationV1::AssociateLegsComplete(request.clone()),
     )
     .await;
-    let mut after = refresh_financial(&mut f, &path, None).await;
+    let mut after = refresh_arrival_or_restart!(None);
     assert_eq!(after.through, result.commit.unwrap());
     assert_ne!(
         after.accounting.as_ref().unwrap().prefix.native_head,
@@ -818,79 +836,230 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
     f.service.close().await.unwrap();
 }
 
-#[tokio::test]
-async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
-    let mut failures = vec![];
-    use association_fixtures::{association_date, boundary_rows, revised_transfer};
-    use currents_protocol::OperationV1;
-    for remap in [false, true] {
-        for day in ["2026-10-31", "2026-11-01", "2026-11-03"] {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("boundary.db");
-            let (mut f, _) = bootstrap_with_balance(&path, true).await;
-            let (template, mut original) = association_fixtures::transfer_request();
-            declare_template(&mut f, &path, &template).await;
-            let binding = legacy_binding(250);
-            let mut opening = fixture::posted(binding.clone(), 700, 50);
-            opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
-                segment_id: fixture::id(707),
-                component_id: fixture::id(11),
-                amount: binding.amount,
-                cutoff: fixture::date("2026-11-01"),
-                evidence: binding,
-                included_activity: vec![],
-            });
-            submit(&mut f, 21001, OperationV1::AdoptActivity(opening)).await;
-            refresh_financial(&mut f, &path, None).await;
-            let request = if remap {
-                association_date(&mut original, "2026-11-03");
-                publish_relationship_rows(&mut f, &path, 1500, boundary_rows("2026-11-03", false))
-                    .await;
-                submit(
-                    &mut f,
-                    21002,
-                    OperationV1::AssociateLegsComplete(original.clone()),
-                )
-                .await;
-                refresh_financial(&mut f, &path, None).await;
-                publish_relationship_rows(&mut f, &path, 1700, boundary_rows(day, true)).await;
-                let mut next = revised_transfer(&original, fixture::id(1701));
-                association_date(&mut next, day);
-                next
-            } else {
-                publish_relationship_rows(&mut f, &path, 1500, boundary_rows(day, false)).await;
-                association_date(&mut original, day);
-                original
-            };
-            let before = f.prefix().await;
-            let before_records = f.service.verified_projection().unwrap().records.clone();
-            if day == "2026-11-03" {
-                submit(&mut f, 21003, OperationV1::AssociateLegsComplete(request)).await;
-                refresh_financial(&mut f, &path, None).await;
-                assert_ne!(f.prefix().await.native_head, before.native_head);
-            } else {
-                let mut body = f.body(21003);
-                body.expected_head = before.through;
-                body.operation = OperationV1::AssociateLegsComplete(request);
-                if f.service.preview(f.ctx(), body.clone()).is_ok() {
-                    failures.push(format!("accepted remap={remap}, day={day}"));
-                }
-                assert!(f.service.submit(f.ctx(), body, f.auth(None)).await.is_err());
-                assert_eq!(f.prefix().await, before);
-                assert_eq!(
-                    f.service.verified_projection().unwrap().records,
-                    before_records
-                );
-            }
-            let expected = f.service.verified_projection().unwrap().records.clone();
-            f.service.close().await.unwrap();
-            f.service = f.reopen().await;
-            support::recover_service(&f.service).await;
-            assert_eq!(f.service.verified_projection().unwrap().records, expected);
-            f.service.close().await.unwrap();
+// The shared prefix is closed before copying. Every case writes to an
+// independent encrypted database and receives its own host, clock and planner.
+struct ClosedOpeningSeed {
+    path: std::path::PathBuf,
+    digest: Digest,
+    state: DomainState,
+    prefix: AccountingPrefixV1,
+}
+impl ClosedOpeningSeed {
+    fn closed_bytes(path: &Path) -> Vec<u8> {
+        let mut entries = std::fs::read_dir(path.parent().unwrap()).unwrap();
+        let only = entries.next().unwrap().unwrap();
+        assert!(only.path() == path && only.file_type().unwrap().is_file());
+        assert!(entries.next().is_none(), "closed fixture has sidecars");
+        let bytes = std::fs::read(path).unwrap();
+        assert!(!bytes.is_empty());
+        bytes
+    }
+
+    async fn freeze(f: support::Fixture, path: std::path::PathBuf) -> Self {
+        use sha2::{Digest as _, Sha256};
+        let (state, prefix) = verified_opening_state(&f).await;
+        f.service.close().await.unwrap();
+        drop(f);
+        let digest = Digest(Sha256::digest(Self::closed_bytes(&path)).into());
+        Self {
+            path,
+            digest,
+            state,
+            prefix,
         }
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+
+    fn bytes(&self) -> Vec<u8> {
+        use sha2::{Digest as _, Sha256};
+        let bytes = Self::closed_bytes(&self.path);
+        assert!(Digest(Sha256::digest(&bytes).into()) == self.digest);
+        bytes
+    }
+
+    async fn restore(&self, path: &Path) -> support::Fixture {
+        use std::{fs, io};
+        let seed = self.bytes();
+        let mut fork = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .unwrap();
+        assert!(io::copy(&mut seed.as_slice(), &mut fork).unwrap() == seed.len() as u64);
+        fork.sync_all().unwrap();
+        drop(fork);
+        assert!(Self::closed_bytes(path) == seed);
+        let mut f = support::Fixture::unrecovered(path.to_path_buf()).await;
+        refresh_financial(&mut f, path, None).await;
+        let (state, prefix) = verified_opening_state(&f).await;
+        assert_opening_state_eq(&state, &self.state);
+        assert!(prefix == self.prefix);
+        f
+    }
+}
+
+async fn verified_opening_state(f: &support::Fixture) -> (DomainState, AccountingPrefixV1) {
+    let state = f.service.verified_projection().unwrap();
+    let prefix = f.prefix().await;
+    assert!(state.through == prefix.through);
+    assert!(state.domain_digest == prefix.domain_digest);
+    assert!(state.accounting.as_ref().map(|a| &a.prefix) == Some(&prefix));
+    (state, prefix)
+}
+
+fn assert_opening_state_eq(actual: &DomainState, expected: &DomainState) {
+    assert!(actual.through == expected.through);
+    assert!(actual.domain_digest == expected.domain_digest);
+    assert!(actual.records == expected.records);
+    assert!(actual.dataset_policies == expected.dataset_policies);
+    assert!(
+        actual.accounting.as_ref().map(|a| &a.prefix)
+            == expected.accounting.as_ref().map(|a| &a.prefix)
+    );
+}
+
+fn assert_boundary_capture(state: &DomainState, receipt: u32, rows: &[RelationshipSourceRowV1]) {
+    use sha2::{Digest as _, Sha256};
+    let receipt_id = fixture::id(receipt);
+    let capture_id = fixture::id(receipt + 1);
+    let Some(AuthoritativeRecordV1::ImportReceipt(receipt)) = state.records.get(&receipt_id) else {
+        panic!("opening fixture did not retain its receipt");
+    };
+    let Some(AuthoritativeRecordV1::RelationshipCapture(capture)) = state.records.get(&capture_id)
+    else {
+        panic!("opening fixture did not retain its raw capture");
+    };
+    let raw = serde_json::to_vec(rows).unwrap();
+    assert!(
+        receipt.id == receipt_id && capture.id == capture_id && capture.receipt_id == receipt_id
+    );
+    assert!(receipt.complete && !receipt.truncated);
+    assert!(capture.source == receipt.source && receipt.contents == [capture.raw.clone()]);
+    assert!(capture.raw.byte_count == CommitSeq(raw.len() as u64));
+    assert!(capture.raw.digest == Digest(Sha256::digest(&raw).into()));
+    assert!(capture.rows == rows);
+}
+
+#[tokio::test]
+async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
+    use association_fixtures::{association_date, boundary_rows, revised_transfer};
+    use currents_protocol::OperationV1;
+
+    const CUTOFF: &str = "2026-11-01";
+    const AFTER: &str = "2026-11-03";
+    let root = tempfile::tempdir().unwrap();
+    let opening_dir = root.path().join("opening");
+    let prior_dir = root.path().join("prior");
+    for dir in [&opening_dir, &prior_dir] {
+        std::fs::create_dir(dir).unwrap();
+    }
+    let path = opening_dir.join("boundary.db");
+    let (template, mut original) = association_fixtures::transfer_request();
+    let opening = Box::pin(async {
+        let (mut f, _) = bootstrap_with_balance(&path, true).await;
+        {
+            let mut planner = verified_fixture_planner::FixturePlanner::default();
+            Box::pin(planner.declare_template(&mut f, &path, &template)).await;
+        }
+        let binding = legacy_binding(250);
+        let mut adoption = fixture::posted(binding.clone(), 700, 50);
+        let basis = OpeningBasisV1 {
+            segment_id: fixture::id(707),
+            component_id: fixture::id(11),
+            amount: binding.amount,
+            cutoff: fixture::date(CUTOFF),
+            evidence: binding,
+            included_activity: vec![],
+        };
+        adoption.financial.as_mut().unwrap().opening = Some(basis.clone());
+        submit(&mut f, 21001, OperationV1::AdoptActivity(adoption)).await;
+        refresh_financial(&mut f, &path, None).await;
+        let seed = ClosedOpeningSeed::freeze(f, path).await;
+        assert!(matches!(
+            seed.state.records.get(&fixture::id(700)),
+            Some(AuthoritativeRecordV1::ActivityAdoption(a))
+                if a.opening.as_ref() == Some(&basis)
+        ));
+        seed
+    })
+    .await;
+
+    association_date(&mut original, AFTER);
+    let prior = Box::pin(async {
+        let path = prior_dir.join("boundary.db");
+        let mut f = opening.restore(&path).await;
+        let rows = boundary_rows(AFTER, false);
+        publish_relationship_rows(&mut f, &path, 1500, rows.clone()).await;
+        let before = f.prefix().await;
+        submit(
+            &mut f,
+            21002,
+            OperationV1::AssociateLegsComplete(original.clone()),
+        )
+        .await;
+        refresh_financial(&mut f, &path, None).await;
+        let seed = ClosedOpeningSeed::freeze(f, path).await;
+        assert_boundary_capture(&seed.state, 1500, &rows);
+        assert!(seed.prefix.native_head != before.native_head);
+        seed
+    })
+    .await;
+
+    for remap in [false, true] {
+        for day in ["2026-10-31", CUTOFF, AFTER] {
+            Box::pin(async {
+                let dir = tempfile::tempdir_in(root.path()).unwrap();
+                let path = dir.path().join("boundary.db");
+                let seed = if remap { &prior } else { &opening };
+                let mut f = seed.restore(&path).await;
+                let receipt = if remap { 1700 } else { 1500 };
+                let rows = boundary_rows(day, remap);
+                publish_relationship_rows(&mut f, &path, receipt, rows.clone()).await;
+                let (before, before_prefix) = verified_opening_state(&f).await;
+                assert_boundary_capture(&before, receipt, &rows);
+                let mut request = if remap {
+                    revised_transfer(&original, fixture::id(1701))
+                } else {
+                    original.clone()
+                };
+                association_date(&mut request, day);
+
+                let (expected, expected_prefix) = if day == AFTER {
+                    submit(&mut f, 21003, OperationV1::AssociateLegsComplete(request)).await;
+                    refresh_financial(&mut f, &path, None).await;
+                    let (state, prefix) = verified_opening_state(&f).await;
+                    assert!(prefix.native_head != before_prefix.native_head);
+                    (state, prefix)
+                } else {
+                    let mut body = f.body(21003);
+                    body.expected_head = before_prefix.through;
+                    body.operation = OperationV1::AssociateLegsComplete(request);
+                    assert!(
+                        f.service.preview(f.ctx(), body.clone()).is_err(),
+                        "preview accepted remap={remap}, day={day}"
+                    );
+                    assert!(
+                        f.service.submit(f.ctx(), body, f.auth(None)).await.is_err(),
+                        "submit accepted remap={remap}, day={day}"
+                    );
+                    let (after, after_prefix) = verified_opening_state(&f).await;
+                    assert!(after_prefix == before_prefix);
+                    assert_opening_state_eq(&after, &before);
+                    (before, before_prefix)
+                };
+                f.service.close().await.unwrap();
+                f.service = f.reopen().await;
+                support::recover_service(&f.service).await;
+                let (replayed, replayed_prefix) = verified_opening_state(&f).await;
+                assert_opening_state_eq(&replayed, &expected);
+                assert!(replayed_prefix == expected_prefix);
+                f.service.close().await.unwrap();
+            })
+            .await;
+        }
+    }
+    // Neither of the two shared inputs may have changed during the six forks.
+    opening.bytes();
+    prior.bytes();
 }
 
 #[tokio::test]
