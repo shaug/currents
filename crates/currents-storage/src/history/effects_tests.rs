@@ -172,7 +172,97 @@ async fn command_effects_roundtrip_same_and_prior_prefix_families() {
         reopened.history().read_prefix(CommitSeq(3)).await.unwrap(),
         expected
     );
+
+    // A later independent family can use the same typed UUID without changing
+    // any earlier result. Every effect is resolved at its own commit, not at
+    // the end of the requested stream.
+    let fourth = reopened
+        .writer()
+        .append(append_input(3, vec![review(1001)]))
+        .await
+        .unwrap();
+    assert_eq!(fourth.seq, CommitSeq(4));
+    let mut expected = expected;
+    expected.push(fourth);
+    assert_eq!(
+        reopened.history().read_prefix(CommitSeq(4)).await.unwrap(),
+        expected
+    );
+    assert_wide_effect_lookup_plan(&reopened, &expected.first().unwrap().command_result.effects)
+        .await;
     reopened.close().await.unwrap();
+}
+
+async fn assert_wide_effect_lookup_plan(store: &EncryptedStore, effects: &EffectsV1) {
+    let references: Vec<_> = crate::references::command_effects(effects).collect();
+    let widths: Vec<_> = references
+        .iter()
+        .map(|reference| reference.kinds.len())
+        .collect();
+    assert_eq!(
+        widths,
+        [
+            WIDE_COMMAND_EFFECT_KINDS,
+            WIDE_COMMAND_EFFECT_KINDS,
+            WIDE_COMMAND_EFFECT_KINDS,
+            WIDE_COMMAND_EFFECT_KINDS,
+            1,
+            1
+        ],
+        "update the fixed wide lookup when the closed effect families change"
+    );
+    for reference in references.iter().take(4) {
+        let unique: std::collections::BTreeSet<_> = reference.kinds.iter().collect();
+        assert_eq!(unique.len(), WIDE_COMMAND_EFFECT_KINDS);
+    }
+    for (reference, kind) in references.iter().skip(4).zip(["Account", "Unit"]) {
+        assert!(reference.kinds.iter().map(String::as_str).eq([kind]));
+    }
+    assert_eq!(
+        WIDE_COMMAND_EFFECT_MATCHES.matches("(?)").count(),
+        WIDE_COMMAND_EFFECT_KINDS
+    );
+
+    // Follow the schema plan tests: only the fixed query text enters the SQL;
+    // the populated fixture's actual kinds, ID and cutoff are bound normally.
+    let reference = references.first().unwrap();
+    let explain = format!("EXPLAIN QUERY PLAN {WIDE_COMMAND_EFFECT_MATCHES}");
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(explain.as_str()));
+    for kind in &reference.kinds {
+        query = query.bind(kind);
+    }
+    let history = store.history();
+    let rows = query
+        .bind(&reference.id)
+        .bind(1_i64)
+        .fetch_all(&history.pool)
+        .await
+        .unwrap();
+    let details: Vec<String> = rows
+        .into_iter()
+        .map(|row| sqlx::Row::get(&row, "detail"))
+        .collect();
+    assert_eq!(
+        details
+            .iter()
+            .filter(|detail| {
+                detail.starts_with("SEARCH ")
+                    && detail.contains("sqlite_autoindex_currents_definitions_1")
+                    && detail.contains("(kind=? AND id=?)")
+            })
+            .count(),
+        1,
+        "{details:?}"
+    );
+    assert!(
+        details.iter().all(|detail| {
+            detail != "SCAN d"
+                && !detail.starts_with("SCAN d ")
+                && !detail.starts_with("SCAN currents_definitions")
+                && !detail.contains("USE TEMP B-TREE")
+        }),
+        "{details:?}"
+    );
 }
 
 // Removing any effect-role validation lets the corresponding counterexamples

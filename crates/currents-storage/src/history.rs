@@ -19,6 +19,20 @@ pub(crate) const ITEM_CONTENT_COUNT: &str =
     "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
 pub(crate) const ITEM_CONTENTS: &str =
     "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
+// The broad command-effect family has 30 slots. Only values are bound; the
+// SQLite worker handles the same indexed per-kind existence checks together.
+const WIDE_COMMAND_EFFECT_KINDS: usize = 30;
+const WIDE_COMMAND_EFFECT_MATCHES: &str = r#"
+WITH permitted(kind) AS (VALUES
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?)
+)
+SELECT count(*) FROM permitted AS p WHERE EXISTS(
+    SELECT 1 FROM currents_definitions AS d
+    WHERE d.kind=p.kind AND d.id=? AND d.seq<=?
+)
+"#;
 fn canonical<T: serde::Serialize>(v: &T) -> Result<Vec<u8>, EngineError> {
     serde_json_canonicalizer::to_vec(v).map_err(|_| EngineError::invalid())
 }
@@ -770,6 +784,22 @@ impl HistoryStream {
         // Resolve against this commit's prefix, not the requested stream cutoff:
         // a later definition must never legitimize an earlier command result.
         for reference in crate::references::command_effects(&c.command_result.effects) {
+            if reference.kinds.len() == WIDE_COMMAND_EFFECT_KINDS {
+                let mut query = sqlx::query_scalar::<_, i64>(WIDE_COMMAND_EFFECT_MATCHES);
+                for kind in &reference.kinds {
+                    query = query.bind(kind);
+                }
+                let matches = query
+                    .bind(&reference.id)
+                    .bind(self.next)
+                    .fetch_one(&mut *self.tx)
+                    .await
+                    .map_err(|_| schema::failure())?;
+                if matches != 1 {
+                    return Err(schema::failure());
+                }
+                continue;
+            }
             let mut matches = 0usize;
             for kind in &reference.kinds {
                 let found: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM currents_definitions WHERE kind=? AND id=? AND seq<=?)")
