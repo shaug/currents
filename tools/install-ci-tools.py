@@ -6,9 +6,14 @@ import json
 import pathlib
 import platform
 import subprocess
+import sys
 import tarfile
 import urllib.request
 
+# Only the dependency-policy gate runs cargo-deny. Other jobs skip its source build.
+arguments = sys.argv[1:]
+if arguments not in ([], ['--without-cargo-deny']):
+    raise SystemExit('usage: install-ci-tools.py [--without-cargo-deny]')
 root = pathlib.Path(__file__).resolve().parent.parent
 inventory = json.loads((root / 'tools/versions.lock.json').read_text())
 destination = root / 'target/ci-tools/bin'
@@ -30,5 +35,6 @@ for name in ('actionlint', 'gitleaks'):
             raise SystemExit('BLOCKED: tool must be a regular file')
         (destination / name).write_bytes(archive.extractfile(member).read())
         (destination / name).chmod(0o755)
-subprocess.run(['cargo', 'install', 'cargo-deny', '--version', '=0.20.2', '--locked', '--root', str(destination.parent)], check=True)
+if not arguments:
+    subprocess.run(['cargo', 'install', 'cargo-deny', '--version', '=0.20.2', '--locked', '--root', str(destination.parent)], check=True)
 print(destination)

@@ -8,8 +8,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 GATES = ("core", "quality-policy", "msrv", "docs", "privacy")
 SHA_CHECK = 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'
-PR = "${{ github.event_name == 'pull_request' }}"
-NON_PR = "${{ github.event_name != 'pull_request' }}"
 
 
 class WorkflowContract(unittest.TestCase):
@@ -45,22 +43,32 @@ class WorkflowContract(unittest.TestCase):
             else:
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)
             self.assertEqual(self.jobs[gate]["steps"][-1], step)
+        # The core job runs the workspace build and tests on every event, so the
+        # quality job never repeats them, including on push.
         quality_policy = self.jobs["quality-policy"]
-        self.assertEqual(quality_policy["timeout-minutes"],
-                         "${{ github.event_name == 'pull_request' && 40 || 75 }}")
-        tests, pr, other, policy = quality_policy["steps"][-4:]
+        self.assertEqual(quality_policy["timeout-minutes"], 40)
+        tests, quality, policy = quality_policy["steps"][-3:]
         self.assertEqual(tests, {
-            "name": "Test PR quality orchestration",
-            "if": PR,
+            "name": "Test quality orchestration",
             "run": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p test_pr_quality.py",
         })
-        self.assertEqual(pr, {"name": "Run PR quality checks", "if": PR,
-                              "run": "cargo xtask check quality-ci"})
-        self.assertEqual(other, {"name": "Run full quality gate", "if": NON_PR,
-                                 "run": "cargo xtask check quality",
-                                 "env": {"CURRENTS_CI_CORE_PHASES": "1"}})
+        self.assertEqual(quality, {"name": "Run quality checks",
+                                   "run": "cargo xtask check quality-ci"})
         self.assertEqual(policy, {"name": "Qualify policy counterexamples",
                                   "run": "cargo xtask ticket CUR-003"})
+        for step in quality_policy["steps"]:
+            self.assertNotIn("if", step)
+            self.assertNotEqual(step.get("run"), "cargo xtask check quality")
+
+    def test_only_the_dependency_policy_job_builds_cargo_deny(self):
+        install = ('python3 tools/install-ci-tools.py{}\n'
+                   'echo "CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin" >> "$GITHUB_ENV"')
+        for name in GATES:
+            with self.subTest(job=name):
+                step = next(s for s in self.jobs[name]["steps"]
+                            if s.get("name") == "Install checksum-pinned policy tools")
+                flag = "" if name == "quality-policy" else " --without-cargo-deny"
+                self.assertEqual(step["run"], install.format(flag))
 
     def test_reporter_requires_every_result_to_be_explicit_success(self):
         job = self.jobs["quality"]

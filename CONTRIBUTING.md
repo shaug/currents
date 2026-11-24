@@ -33,7 +33,13 @@ migration is verified by exact opened-schema attestation and its registered
 qualification assertion. Public headers and root migrations remain absent; new
 ones stay BLOCKED until their owner registers actual generation/validation.
 This is not a claim of production native qualification.
-Nextest is not used; cargo test --doc remains explicit even if introduced later.
+
+Core and MSRV run the same tests as `cargo test --workspace`, but each test runs
+in its own process on a pool sized to the machine's cores. Set
+`CURRENTS_TEST_JOBS` to change the pool size; `1` runs one test at a time.
+Doctests still run through `cargo test --doc`. Nextest is not used.
+In CI only the quality job builds cargo-deny; other jobs install the tools with
+`--without-cargo-deny`.
 
 ## Required checks and repository settings
 

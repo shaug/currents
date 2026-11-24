@@ -57,7 +57,7 @@
     "quality-policy": {
       "name": "quality-policy",
       "runs-on": "ubuntu-24.04",
-      "timeout-minutes": "${{ github.event_name == 'pull_request' && 40 || 75 }}",
+      "timeout-minutes": 40,
       "steps": [
         {
           "name": "Checkout v7.0.1 (immutable upstream commit)",
@@ -83,22 +83,12 @@
           "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
         },
         {
-          "name": "Test PR quality orchestration",
-          "if": "${{ github.event_name == 'pull_request' }}",
+          "name": "Test quality orchestration",
           "run": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p test_pr_quality.py"
         },
         {
-          "name": "Run PR quality checks",
-          "if": "${{ github.event_name == 'pull_request' }}",
+          "name": "Run quality checks",
           "run": "cargo xtask check quality-ci"
-        },
-        {
-          "name": "Run full quality gate",
-          "if": "${{ github.event_name != 'pull_request' }}",
-          "run": "cargo xtask check quality",
-          "env": {
-            "CURRENTS_CI_CORE_PHASES": "1"
-          }
         },
         {
           "name": "Qualify policy counterexamples",
@@ -128,7 +118,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -173,7 +163,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -210,7 +200,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -244,7 +234,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",

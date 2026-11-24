@@ -35,7 +35,12 @@ pub(crate) fn root() -> PathBuf {
         .unwrap()
         .into()
 }
-fn output(program: &Path, args: &[&str], cwd: &Path, rustc: Option<&Path>) -> Result<Output> {
+pub(crate) fn output(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    rustc: Option<&Path>,
+) -> Result<Output> {
     let mut command = Command::new(program);
     command.args(args).current_dir(cwd);
     if let Some(rustc) = rustc {
@@ -54,7 +59,18 @@ pub(crate) fn checked(
     rustc: Option<&Path>,
 ) -> Result<String> {
     let out = output(program, args, cwd, rustc)?;
-    crate::report::record(program, args, cwd, rustc, &out);
+    recorded(program, args, cwd, rustc, &out)
+}
+/// Records a finished command as evidence. Call it on the thread that builds the
+/// report, because the report's command list is thread-local.
+pub(crate) fn recorded(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    rustc: Option<&Path>,
+    out: &Output,
+) -> Result<String> {
+    crate::report::record(program, args, cwd, rustc, out);
     let evidence_dir = root().join("target/qualification");
     fs::create_dir_all(&evidence_dir).map_err(|e| e.to_string())?;
     let record = json!({"program":program,"args":args,"cwd":cwd,"rustc":rustc,"exit":out.status.code(),"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)});
@@ -363,20 +379,17 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
         .map(|path| path.to_str().ok_or("invalid manifest path"))
         .transpose()?;
     let mut build = vec!["build", "--locked", "--workspace", "--all-targets"];
-    let mut test = vec!["test", "--locked", "--workspace"];
-    for args in [&mut build, &mut test] {
-        if let Some(path) = manifest {
-            args.extend(["--manifest-path", path]);
-        }
+    if let Some(path) = manifest {
+        build.extend(["--manifest-path", path]);
     }
-    test.extend(["--", "--test-threads=1"]);
-    let mut evidence = vec![];
-    for (phase, args) in [(CorePhase::Build, build), (CorePhase::Test, test)] {
-        let text = phase.run(phases, || {
-            checked(&program, &args, &root(), rustc.as_deref())
-        })?;
-        evidence.push(json!({"command":args,"stdout_sha256":sha(text.as_bytes())}));
-    }
+    let text = CorePhase::Build.run(phases, || {
+        checked(&program, &build, &root(), rustc.as_deref())
+    })?;
+    let mut evidence = vec![json!({"command":build,"stdout_sha256":sha(text.as_bytes())})];
+    // Same tests and doctests as `cargo test --workspace`, one test per process.
+    evidence.push(CorePhase::Test.run(phases, || {
+        crate::test_pool::run(&program, rustc.as_deref(), manifest)
+    })?);
     let driver = if manifest.is_none() {
         Some(
             CorePhase::NativeDriver

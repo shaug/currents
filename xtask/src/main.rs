@@ -5,6 +5,7 @@ mod native;
 mod quality;
 mod readiness;
 mod report;
+mod test_pool;
 
 fn main() {
     if let Err(error) = checks::run(std::env::args().skip(1).collect()) {
