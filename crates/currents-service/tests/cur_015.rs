@@ -888,8 +888,10 @@ impl ClosedOpeningSeed {
         fork.sync_all().unwrap();
         drop(fork);
         assert!(Self::closed_bytes(path) == seed);
-        let mut f = support::Fixture::unrecovered(path.to_path_buf()).await;
-        refresh_financial(&mut f, path, None).await;
+        // Both callers install the capture planner before sending a command.
+        // Recover the physical copy once, then preserve the old session rotation.
+        let f = support::Fixture::at_path(path.to_path_buf()).await;
+        f.host.reconnect();
         let (state, prefix) = verified_opening_state(&f).await;
         assert_opening_state_eq(&state, &self.state);
         assert!(prefix == self.prefix);
