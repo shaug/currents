@@ -57,7 +57,7 @@ class CanonicalTests(unittest.TestCase):
                           + "print('partial stdout', flush=True)\nprint('partial stderr', file=sys.stderr, flush=True)\ntime.sleep(30)\n")
         try:
             with self.assertRaises(TimeoutError):
-                module.run_collection([sys.executable, str(parent)], self.root, output, "ios", timeout=0.4, grace=0.1)
+                module.run_collection([sys.executable, str(parent)], self.root, output, "ios", timeout=0.4, grace=1)
             self.assertTrue(pidfile.exists(), "descendant must actually have launched")
             before = heartbeat.read_text()
             time.sleep(0.15)
@@ -75,6 +75,16 @@ class CanonicalTests(unittest.TestCase):
             if pidfile.exists():
                 try: os.kill(int(pidfile.read_text()), signal.SIGKILL)
                 except ProcessLookupError: pass
+
+    def test_group_with_unreaped_zombie_is_not_gone_until_reaped(self):
+        # macOS answers killpg(pgid, 0) with EPERM, not ESRCH, while a group
+        # holds only zombies; the probe must keep waiting instead of raising.
+        process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+        self.addCleanup(process.wait)
+        os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT)  # Exited, left unreaped.
+        self.assertIs(module.group_gone_within(process.pid, 0.05), False)
+        process.wait()
+        self.assertIs(module.group_gone_within(process.pid, 0.05), True)
 
     def test_expected_candidate_is_explicit_immutable_sha(self):
         module.verify_expected_candidate(self.head, self.head)

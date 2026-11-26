@@ -69,6 +69,23 @@ def verify_expected_candidate(value, head):
             "missing, malformed or mismatched expected candidate SHA")
 
 
+def group_gone_within(pgid, grace):
+    """Poll for up to grace seconds until process group pgid no longer exists."""
+    deadline = time.monotonic() + grace
+    while True:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            # macOS reports EPERM, not ESRCH, while the group holds only zombies
+            # awaiting reaping (or members we may not signal): it still exists.
+            pass
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.01)
+
+
 def run_collection(command, root, output, role, timeout=600, grace=2):
     stdout_path, stderr_path = output / f"{role}.stdout.json", output / f"{role}.stderr.log"
     timed_out = False
@@ -81,9 +98,11 @@ def run_collection(command, root, output, role, timeout=600, grace=2):
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
+            # EPERM here means no member can take the signal (see group_gone_within);
+            # the final probe decides whether the group is gone.
             try:
                 os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 pass
             try:
                 process.wait(timeout=grace)
@@ -94,19 +113,10 @@ def run_collection(command, root, output, role, timeout=600, grace=2):
                 # exited: an owned descendant may ignore TERM and close its pipes.
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
                 process.wait()  # Reap our child; orphaned descendants are reaped by the OS.
-                deadline = time.monotonic() + grace
-                while True:
-                    try:
-                        os.killpg(process.pid, 0)
-                    except ProcessLookupError:
-                        group_gone = True
-                        break
-                    if time.monotonic() >= deadline:
-                        break
-                    time.sleep(0.01)
+                group_gone = group_gone_within(process.pid, grace)
     (output / f"{role}.exit").write_text(("timeout" if timed_out else str(process.returncode)) + "\n")
     if timed_out:
         (output / f"{role}.timeout.json").write_text(json.dumps({
