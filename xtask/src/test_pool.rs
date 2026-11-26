@@ -42,8 +42,8 @@ enum Job {
 
 /// Test binaries that exercise only vendored code. Their result changes only
 /// when the vendored sources, their patches, the toolchain or the test itself
-/// change, so the `doubleentry` workflow runs them (`cargo xtask ticket
-/// CUR-005`) when those files change, instead of every core run.
+/// change, so the CI `doubleentry` job runs them (`cargo xtask ticket CUR-005`)
+/// only for inputs that have no recorded pass, instead of every core run.
 const SEPARATE: &[&str] = &["currents-storage/cur_005"];
 
 /// The tests that take longest in CI, longest first. They start first so that

@@ -6,7 +6,7 @@ import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-GATES = ("core", "quality-policy", "msrv", "docs", "privacy")
+GATES = ("core", "quality-policy", "msrv", "docs", "privacy", "doubleentry")
 SHA_CHECK = 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'
 SHARDS = [1, 2]
 
@@ -72,6 +72,8 @@ class WorkflowContract(unittest.TestCase):
         install = ('python3 tools/install-ci-tools.py{}\n'
                    'echo "CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin" >> "$GITHUB_ENV"')
         for name in GATES:
+            if name == "doubleentry":
+                continue  # Needs no policy tools.
             with self.subTest(job=name):
                 step = next(s for s in self.jobs[name]["steps"]
                             if s.get("name") == "Install checksum-pinned policy tools")
@@ -110,27 +112,36 @@ class WorkflowContract(unittest.TestCase):
                     self.assertFalse(gate_passed(results))
 
 
-class DoubleentryWorkflow(unittest.TestCase):
-    """The vendored suite runs only when its inputs change."""
+class DoubleentryJob(unittest.TestCase):
+    """The vendored suite runs once for each new set of inputs."""
 
-    def test_runs_the_vendored_suite_when_its_inputs_change(self):
-        workflow = json.loads((ROOT / ".github/workflows/doubleentry.yml").read_text())
-        self.assertEqual(workflow["permissions"], {"contents": "read"})
-        paths = ["vendor/**", "patches/**", "crates/currents-storage/tests/cur_005.rs",
-                 "rust-toolchain.toml", ".cargo/**", ".github/workflows/doubleentry.yml"]
-        self.assertEqual(workflow["on"], {
-            "pull_request": {"paths": paths},
-            "push": {"branches": ["main"], "paths": paths},
-            "workflow_dispatch": {},
-        })
+    def test_runs_the_vendored_suite_only_without_an_earlier_pass(self):
+        workflow = json.loads((ROOT / ".github/workflows/ci.yml").read_text())
         job = workflow["jobs"]["doubleentry"]
-        self.assertEqual(job["strategy"]["matrix"], {"os": ["ubuntu-24.04", "macos-15"]})
-        checkout, exact, *_ = job["steps"]
-        self.assertRegex(checkout["uses"], r"^actions/checkout@[a-f0-9]{40}$")
-        self.assertEqual(checkout["with"], {"persist-credentials": False})
-        self.assertEqual(exact, {"name": "Verify exact checkout", "run": SHA_CHECK})
-        self.assertEqual(job["steps"][-1]["run"], "cargo xtask ticket CUR-005")
-        # The core pool leaves exactly this test binary to this workflow.
+        self.assertEqual(job["strategy"]["matrix"], {"include": [
+            {"os": "ubuntu-24.04", "toolchain": "1.99.0"},
+            {"os": "macos-15", "toolchain": "1.99.0"},
+            {"os": "ubuntu-24.04", "toolchain": "1.94.0"},
+        ]})
+        _, _, inputs, earlier, install, suite, record = job["steps"]
+        # The key names every input of the suite's result, plus OS and compiler.
+        self.assertIn("git rev-parse HEAD:vendor HEAD:patches HEAD:rust-toolchain.toml "
+                      "HEAD:.cargo HEAD:crates/currents-storage/tests/cur_005.rs", inputs["run"])
+        self.assertIn("$RUNNER_OS-$RUNNER_ARCH-$TOOLCHAIN-$fingerprint", inputs["run"])
+        key = "${{ steps.inputs.outputs.key }}"
+        self.assertRegex(earlier["uses"], r"^actions/cache/restore@[a-f0-9]{40}$")
+        self.assertEqual(earlier["with"], {"key": key, "path": "target/doubleentry-passed",
+                                           "lookup-only": True})
+        self.assertRegex(record["uses"], r"^actions/cache/save@[a-f0-9]{40}$")
+        self.assertEqual(record["with"], {"key": key, "path": "target/doubleentry-passed"})
+        miss = "steps.earlier.outputs.cache-hit != 'true'"
+        for step in (install, suite, record):
+            self.assertEqual(step["if"], miss)
+        # The pass is recorded only after the whole suite passed.
+        self.assertTrue(suite["run"].startswith(
+            'rustup run "$TOOLCHAIN" cargo xtask ticket CUR-005\n'))
+        self.assertNotIn("continue-on-error", suite)
+        # The core pool leaves exactly this test binary to this job.
         pool = (ROOT / "xtask/src/test_pool.rs").read_text()
         self.assertIn('const SEPARATE: &[&str] = &["currents-storage/cur_005"];', pool)
 

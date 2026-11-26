@@ -1051,9 +1051,23 @@
       "commit": "3d3c42e5aac5ba805825da76410c181273ba90b1",
       "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
       "source": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    },
+    {
+      "repository": "actions/cache",
+      "tag": "v6.1.0",
+      "commit": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "uses": "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "source": "https://github.com/actions/cache/releases/tag/v6.1.0"
+    },
+    {
+      "repository": "actions/cache",
+      "tag": "v6.1.0",
+      "commit": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "uses": "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "source": "https://github.com/actions/cache/releases/tag/v6.1.0"
     }
   ],
-  "actions_scope": "CUR-003: checkout only; immutable upstream release commit verified on 2026-11-09.",
+  "actions_scope": "CUR-003: checkout, plus actions/cache restore and save for the CUR-005 result cache only; immutable upstream release commits verified on 2026-11-09 (checkout) and 2026-11-26 (cache).",
   "test_oracles": [
     {
       "name": "ledger",
