@@ -249,21 +249,40 @@ async fn snapshot(store: &EncryptedStore, empty: NativeHead) -> DomainState {
     }
     state
 }
+/// Installs a planner for the service's verified state. The service keeps that
+/// state current after its own commits, so only a reopened service replays.
 async fn refresh(f: &mut Fixture, path: &Path, empty: NativeHead) -> DomainState {
+    match f.service.verified_projection() {
+        Ok(state) => {
+            f.host.reconnect();
+            f.planner.set(Arc::new(Planner {
+                state: state.clone(),
+                capture: None,
+            }));
+            state
+        }
+        Err(error) if error.class == ErrorClass::ResultUnknown => reopen(f, path, empty).await,
+        Err(error) => panic!("verified projection did not follow the last commit: {error:?}"),
+    }
+}
+/// Reopens the service with the query-scoped host and checks its full replay
+/// against an independent fold of the retained history.
+async fn reopen(f: &mut Fixture, path: &Path, empty: NativeHead) -> DomainState {
     f.service.close().await.unwrap();
     let store = open(path).await;
     let state = snapshot(&store, empty).await;
     f.host.reconnect();
+    f.planner.set(Arc::new(Planner {
+        state: state.clone(),
+        capture: None,
+    }));
     f.service = Service::new(
         store,
         DatasetId(support::id(1000).0),
         InstanceId(support::id(999).0),
         ServiceProfile::Synthetic,
         Arc::new(ScopedHost(f.host.clone())),
-        Arc::new(Planner {
-            state: state.clone(),
-            capture: None,
-        }),
+        f.planner.clone(),
         f.clock.clone(),
     )
     .await
@@ -429,26 +448,9 @@ async fn cur_014_1_import_retains_real_parsed_evidence() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("slice.db");
     let (mut f, empty) = bootstrap(&path).await;
-    let state = refresh(&mut f, &path, empty).await;
-    f.service.close().await.unwrap();
-    f.host.reconnect();
     let capture = capture(200);
     let request = ImportEvidence::new(capture.clone()).unwrap().request();
-    f.service = Service::new(
-        open(&path).await,
-        DatasetId(support::id(1000).0),
-        InstanceId(support::id(999).0),
-        ServiceProfile::Synthetic,
-        Arc::new(ScopedHost(f.host.clone())),
-        Arc::new(Planner {
-            state,
-            capture: Some(capture),
-        }),
-        f.clock.clone(),
-    )
-    .await
-    .unwrap();
-    support::recover_service(&f.service).await;
+    install_capture(&mut f, &path, empty, capture).await;
     let result = submit(&mut f, 120, OperationV1::PublishImport(request)).await;
     assert_eq!(result.state, CommandState::Committed);
     f.service.close().await.unwrap();
@@ -456,23 +458,10 @@ async fn cur_014_1_import_retains_real_parsed_evidence() {
 
 async fn install_capture(f: &mut Fixture, path: &Path, empty: NativeHead, capture: CaptureBatchV1) {
     let state = refresh(f, path, empty).await;
-    f.service.close().await.unwrap();
-    f.host.reconnect();
-    f.service = Service::new(
-        open(path).await,
-        DatasetId(support::id(1000).0),
-        InstanceId(support::id(999).0),
-        ServiceProfile::Synthetic,
-        Arc::new(ScopedHost(f.host.clone())),
-        Arc::new(Planner {
-            state,
-            capture: Some(capture),
-        }),
-        f.clock.clone(),
-    )
-    .await
-    .unwrap();
-    support::recover_service(&f.service).await;
+    f.planner.set(Arc::new(Planner {
+        state,
+        capture: Some(capture),
+    }));
 }
 async fn import_stage(f: &mut Fixture, path: &Path, empty: &NativeHead, n: u32) {
     let capture = capture(n);
@@ -499,7 +488,7 @@ async fn import_stage(f: &mut Fixture, path: &Path, empty: &NativeHead, n: u32) 
         before,
         "import must not recognize money"
     );
-    let state = refresh(f, path, empty.clone()).await;
+    let state = reopen(f, path, empty.clone()).await;
     assert!(state.records.contains_key(&data::id(n + 2)));
     // Retry old expected_head after reopen without another approval.
     assert_eq!(
@@ -682,7 +671,7 @@ async fn cur_014_2_slice_fault() {
         let body: CommandBodyV1 =
             serde_json::from_slice(&std::fs::read(path.with_extension("body")).unwrap()).unwrap();
         let mut f = Fixture::at_path(path.clone()).await;
-        refresh(&mut f, &path, empty).await;
+        reopen(&mut f, &path, empty).await;
         if std::env::var("CUR014_CRASH_PHASE").unwrap() == "before" {
             let control = Arc::new(test_fixtures::fault_control(
                 ClosureFault::PauseBeforeCommit,
@@ -744,7 +733,8 @@ async fn cur_014_2_slice_fault() {
         }
         child.kill().unwrap();
         assert!(!child.wait().unwrap().success());
-        let state = refresh(&mut f, &path, empty.clone()).await;
+        // The child committed to the file, so only a reopen sees its result.
+        let state = reopen(&mut f, &path, empty.clone()).await;
         let status = f
             .service
             .command_result(f.ctx(), body.command_id, command_digest(&body).unwrap())
@@ -800,7 +790,7 @@ async fn cur_014_2_slice_fault() {
     caller.abort();
     test_fixtures::release_control(&control);
     f.service.drain().await.unwrap();
-    refresh(&mut f, &path, empty).await;
+    reopen(&mut f, &path, empty).await;
     let result = f
         .service
         .submit(f.ctx(), body.clone(), f.auth(None))
@@ -894,7 +884,8 @@ async fn cur_014_2_import_rejection_and_cancel() {
     test_fixtures::release_control(&control);
     assert_eq!(task.await.unwrap().unwrap_err().class, ErrorClass::Canceled);
     assert_eq!(f.prefix().await, before);
-    let state = refresh(&mut f, &path, empty.clone()).await;
+    // This service keeps the canceled outcome; a reopened one may run it again.
+    let state = reopen(&mut f, &path, empty.clone()).await;
     assert!(!state.records.contains_key(&first.receipt.id));
     install_capture(&mut f, &path, empty.clone(), first).await;
     let approval = f.approve(&body);

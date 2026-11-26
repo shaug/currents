@@ -330,12 +330,43 @@ impl CommandPlanner for Planner {
         })
     }
 }
+/// The planner of every service a fixture opens. Tests swap planners here
+/// instead of restarting the service to install a new one.
+pub struct PlannerSlot(Mutex<Arc<dyn CommandPlanner>>);
+impl PlannerSlot {
+    fn new() -> Arc<Self> {
+        Arc::new(Self(Mutex::new(Arc::new(Planner))))
+    }
+    pub fn set(&self, planner: Arc<dyn CommandPlanner>) {
+        *self.0.lock().unwrap() = planner;
+    }
+    fn current(&self) -> Arc<dyn CommandPlanner> {
+        self.0.lock().unwrap().clone()
+    }
+}
+impl CommandPlanner for PlannerSlot {
+    fn prepare(
+        &self,
+        body: &CommandBodyV1,
+        prefix: &AccountingPrefixV1,
+    ) -> Result<CommandPlan, EngineError> {
+        self.current().prepare(body, prefix)
+    }
+    fn query(
+        &self,
+        query: &QueryV1,
+        prefix: &AccountingPrefixV1,
+    ) -> Result<QueryResponseV1, EngineError> {
+        self.current().query(query, prefix)
+    }
+}
 pub struct Fixture {
     _dir: tempfile::TempDir,
     path: std::path::PathBuf,
     pub service: Service,
     pub host: Arc<Host>,
     pub clock: Arc<Clock>,
+    pub planner: Arc<PlannerSlot>,
 }
 impl Fixture {
     pub async fn new() -> Self {
@@ -356,10 +387,12 @@ impl Fixture {
     ) -> Self {
         let host = Arc::new(Host::new());
         let clock = Arc::new(Clock(AtomicI64::new(1_800_000_000)));
+        let planner = PlannerSlot::new();
         let service = Self::open(
             &path,
             host.clone(),
             clock.clone(),
+            planner.clone(),
             ServiceProfile::Synthetic,
         )
         .await
@@ -373,12 +406,14 @@ impl Fixture {
             service,
             host,
             clock,
+            planner,
         }
     }
     async fn open(
         path: &std::path::Path,
         host: Arc<Host>,
         clock: Arc<Clock>,
+        planner: Arc<PlannerSlot>,
         profile: ServiceProfile,
     ) -> Result<Service, EngineError> {
         let store = EncryptedStore::open(path, DatasetKey::new([0x10; 32]), CipherProfileV1)
@@ -390,17 +425,21 @@ impl Fixture {
             InstanceId(id(999).0),
             profile,
             host,
-            Arc::new(Planner),
+            planner,
             clock,
         )
         .await
     }
+    /// Opens a new service on the same file. Like a fresh process, it starts
+    /// with the default planner and needs a full replay before commands.
     pub async fn reopen(&self) -> Service {
         self.host.reconnect();
+        self.planner.set(Arc::new(Planner));
         Self::open(
             &self.path,
             self.host.clone(),
             self.clock.clone(),
+            self.planner.clone(),
             ServiceProfile::Synthetic,
         )
         .await
@@ -412,6 +451,7 @@ impl Fixture {
             &d.path().join("production-refused.db"),
             self.host.clone(),
             self.clock.clone(),
+            PlannerSlot::new(),
             ServiceProfile::Production,
         )
         .await

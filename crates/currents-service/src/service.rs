@@ -589,15 +589,41 @@ impl Service {
             .await;
         match outcome {
             Ok(receipt) => {
-                self.inner
-                    .meta
-                    .lock()
-                    .map_err(|_| error(ErrorClass::IntegrityFailure))?
-                    .prefix = Some(AccountingPrefixV1 {
+                let next = AccountingPrefixV1 {
                     through: receipt.commit,
                     domain_digest: receipt.domain_digest,
                     native_head: receipt.native_head,
-                });
+                };
+                // Move the verified projection past this commit so the next
+                // command or query needs no full replay. If that fails, the
+                // projection stays stale and the host recovers, as before.
+                let basis = self
+                    .inner
+                    .meta
+                    .lock()
+                    .map_err(|_| error(ErrorClass::IntegrityFailure))?
+                    .projection
+                    .clone()
+                    .filter(|p| {
+                        p.through == prefix.through && p.domain_digest == prefix.domain_digest
+                    });
+                let advanced = match (basis, store.as_ref()) {
+                    (Some(basis), Some(store)) => {
+                        crate::verified_prefix::advance(store.writer(), basis, &next)
+                            .await
+                            .ok()
+                    }
+                    _ => None,
+                };
+                let mut meta = self
+                    .inner
+                    .meta
+                    .lock()
+                    .map_err(|_| error(ErrorClass::IntegrityFailure))?;
+                meta.prefix = Some(next);
+                if advanced.is_some() {
+                    meta.projection = advanced;
+                }
                 Ok(receipt.result)
             }
             Err(CommitFailure::DefinitelyRolledBack(e)) => Err(e),

@@ -71,10 +71,15 @@ source damage is reported as a source trust failure, never a successful source
 activation.
 
 Recovery retains the verified latest-record domain projection with its exact
-prefix. Appending another commit makes this snapshot stale: current queries
-return `IncompleteBasis` until a new complete replay installs the next verified
-projection. The trusted planner cannot bypass that check by returning only a
-matching head label. No new query/economic policy is introduced here.
+prefix. After each of its own commits, the service moves that projection forward
+over the new commit with the same per-commit checks as replay: retained content,
+domain records and the accounting index, which must match the committed prefix.
+It does not rebuild a second native ledger for that commit. If the step fails,
+the projection stays stale and current queries return `IncompleteBasis` until a
+complete replay installs the next verified projection. A newly opened service
+still needs a complete replay first. The trusted planner cannot bypass that check
+by returning only a matching head label. No new query/economic policy is
+introduced here.
 
 Association, segment, allocation and occurrence-match records, or recognitions
 requiring allocation/leg ownership semantics, currently return
