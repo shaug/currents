@@ -46,21 +46,32 @@ enum Job {
 /// only for inputs that have no recorded pass, instead of every core run.
 const SEPARATE: &[&str] = &["currents-storage/cur_005"];
 
-/// The tests that take longest in CI, longest first. They start first so that
-/// none of them is left running alone at the end, and the shard split spreads
-/// them evenly. The list only changes the order; a name that no longer exists
-/// changes nothing.
+/// The 20 tests with the largest average share of test time over six CI runs
+/// (Linux, macOS and MSRV, November 2026), longest first. They start first so
+/// that none of them is left running alone at the end, and the shard split
+/// spreads them evenly. The list only changes the order; a name that no longer
+/// exists changes nothing.
 const START_FIRST: &[&str] = &[
     "prefix_visibility",
-    "cur_025_service_durable_revisions_and_no_recognition",
-    "cur_015_opening_boundary_encrypted_initial_and_remap",
-    "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
-    "history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",
     "cur_007_1",
-    "cur_010_1",
-    "cur_014_2_slice_fault",
+    "history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",
+    "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
+    "cur_015_opening_boundary_encrypted_initial_and_remap",
+    "cur_025_service_durable_revisions_and_no_recognition",
     "cur_007_3",
+    "cur_007_2",
+    "cur_014_2_slice_fault",
+    "cur_007_4",
+    "cur_010_1",
+    "cur_015_initial_multidate_batch_is_atomic_and_replayable",
+    "history::audit_parity_tests::records_count_boundary_and_rehashed_overflow",
+    "history::audit_parity_tests::observation_count_boundary_and_rehashed_overflow",
+    "cur_015_multiple_corrections_never_publish_a_partial_native_prefix",
+    "cur_006_3",
     "cur_015_3_real_parser_remap_preserves_raw_cancellation_retry_and_reopen",
+    "cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice",
+    "cur_003_1",
+    "cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect",
 ];
 
 /// The part of the run that one CI runner takes: `index` of `count`, set by
@@ -99,19 +110,25 @@ impl Shard {
         self.index == 1
     }
 
-    /// This shard's items, dealt back and forth (1, 2, 2, 1, 1, 2, ...) so that
-    /// every shard gets a fair share of the long tests at the front.
-    fn take<T>(self, items: Vec<T>) -> Vec<T> {
+    /// This shard's items. The first `head` items, the longest, are dealt back
+    /// and forth (1, 2, 2, 1, ...) so that every shard gets a fair share of
+    /// them. The rest are dealt in turn (1, 2, 1, 2, ...), so neighboring tests,
+    /// which often take about as long as each other, go to different shards.
+    fn take<T>(self, items: Vec<T>, head: usize) -> Vec<T> {
         let lanes = 2 * self.count;
         items
             .into_iter()
             .enumerate()
             .filter(|(position, _)| {
-                let turn = position % lanes;
-                let lane = if turn < self.count {
-                    turn
+                let lane = if *position < head {
+                    let turn = position % lanes;
+                    if turn < self.count {
+                        turn
+                    } else {
+                        lanes - 1 - turn
+                    }
                 } else {
-                    lanes - 1 - turn
+                    (position - head) % self.count
                 };
                 lane + 1 == self.index
             })
@@ -313,7 +330,13 @@ pub(crate) fn run(
             &b.binary.executable,
         ))
     });
-    let work = shard.take(schedule(&cases));
+    let schedule = schedule(&cases);
+    // The long tests and the doctests come first.
+    let head = schedule
+        .iter()
+        .position(|job| *job == Job::Doctests)
+        .map_or(0, |doctests| doctests + 1);
+    let work = shard.take(schedule, head);
 
     let stop = AtomicBool::new(false);
     let mut outputs = vec![String::new(); cases.len()];
@@ -484,22 +507,21 @@ mod tests {
     fn shards_split_every_job_exactly_once() {
         let items: Vec<usize> = (0..11).collect();
         for count in 1..=3 {
-            let mut seen: Vec<usize> = (1..=count)
-                .flat_map(|index| Shard { index, count }.take(items.clone()))
-                .collect();
-            seen.sort_unstable();
-            assert_eq!(seen, items, "{count} shards");
+            for head in [0, 4, 11] {
+                let mut seen: Vec<usize> = (1..=count)
+                    .flat_map(|index| Shard { index, count }.take(items.clone(), head))
+                    .collect();
+                seen.sort_unstable();
+                assert_eq!(seen, items, "{count} shards, head {head}");
+            }
         }
-        // Dealt back and forth, so the two longest tests go to different shards.
-        assert_eq!(
-            Shard { index: 1, count: 2 }.take(items.clone()),
-            [0, 3, 4, 7, 8]
-        );
-        assert_eq!(
-            Shard { index: 2, count: 2 }.take(items.clone()),
-            [1, 2, 5, 6, 9, 10]
-        );
-        assert_eq!(Shard::ALL.take(items.clone()), items);
+        // The head goes back and forth, so the two longest go to different
+        // shards; the rest alternate, so neighbors never share a shard.
+        let first = Shard { index: 1, count: 2 };
+        let second = Shard { index: 2, count: 2 };
+        assert_eq!(first.take(items.clone(), 4), [0, 3, 4, 6, 8, 10]);
+        assert_eq!(second.take(items.clone(), 4), [1, 2, 5, 7, 9]);
+        assert_eq!(Shard::ALL.take(items.clone(), 4), items);
     }
 
     #[test]
