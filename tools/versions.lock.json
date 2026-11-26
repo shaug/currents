@@ -114,9 +114,9 @@
     },
     {
       "name": "clap",
-      "version": "4.6.7",
-      "source": "https://static.crates.io/crates/clap/clap-4.6.7.crate",
-      "sha256": "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946",
+      "version": "4.6.9",
+      "source": "https://static.crates.io/crates/clap/clap-4.6.9.crate",
+      "sha256": "844c5c0b65be192cb68d570cca1b21a6444431d24e39c084dc0336177015337c",
       "license": "MIT OR Apache-2.0",
       "rust_version": "1.85",
       "features": [
@@ -638,10 +638,10 @@
     },
     {
       "name": "clap",
-      "version": "4.6.7",
-      "source": "https://static.crates.io/crates/clap/clap-4.6.7.crate",
-      "sha256": "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946",
-      "path": "clap-4.6.7.crate"
+      "version": "4.6.9",
+      "source": "https://static.crates.io/crates/clap/clap-4.6.9.crate",
+      "sha256": "844c5c0b65be192cb68d570cca1b21a6444431d24e39c084dc0336177015337c",
+      "path": "clap-4.6.9.crate"
     },
     {
       "name": "tracing",
