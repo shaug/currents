@@ -500,6 +500,25 @@ impl HistoryReader {
             previous: Digest::default(),
         })
     }
+    /// Like `stream_prefix`, but starts after a commit the caller already
+    /// verified. `previous` is that commit's digest, so the chain check still
+    /// links every yielded commit to it.
+    pub async fn stream_after(
+        &self,
+        after: CommitSeq,
+        previous: Digest,
+        through: CommitSeq,
+    ) -> Result<HistoryStream, EngineError> {
+        if after.0 > through.0 {
+            return Err(EngineError::invalid());
+        }
+        let mut stream = self.stream_prefix(through).await?;
+        stream.next = seq(after)?
+            .checked_add(1)
+            .ok_or_else(EngineError::invalid)?;
+        stream.previous = previous;
+        Ok(stream)
+    }
     /// Convenience reader bounded to 64 MiB total; archives use stream_prefix.
     pub async fn read_prefix(
         &self,

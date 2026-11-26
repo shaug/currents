@@ -143,30 +143,27 @@ pub(super) async fn open(path: &Path) -> EncryptedStore {
         .await
         .unwrap()
 }
+/// Installs a planner for the current verified state. The service keeps that
+/// state current after its own commits, so this replays only after a reopen.
 pub(super) async fn refresh_financial(
     f: &mut Fixture,
-    path: &Path,
     evidence: Option<ImportEvidence>,
 ) -> DomainState {
-    support::recover_service(&f.service).await;
-    let state = f.service.verified_projection().unwrap();
-    f.service.close().await.unwrap();
+    let state = match f.service.verified_projection() {
+        Ok(state) => state,
+        // A newly opened service has no verified prefix until a full replay.
+        Err(error) if error.class == ErrorClass::ResultUnknown => {
+            support::recover_service(&f.service).await;
+            f.service.verified_projection().unwrap()
+        }
+        Err(error) => panic!("verified projection did not follow the last commit: {error:?}"),
+    };
+    // Keep the session rotation that the old per-refresh restart performed.
     f.host.reconnect();
-    f.service = currents_service::Service::new(
-        open(path).await,
-        DatasetId(support::id(1000).0),
-        InstanceId(support::id(999).0),
-        currents_service::ServiceProfile::Synthetic,
-        f.host.clone(),
-        std::sync::Arc::new(RelationshipPlanner {
-            state: state.clone(),
-            evidence,
-        }),
-        f.clock.clone(),
-    )
-    .await
-    .unwrap();
-    support::recover_service(&f.service).await;
+    f.planner.set(std::sync::Arc::new(RelationshipPlanner {
+        state: state.clone(),
+        evidence,
+    }));
     state
 }
 pub(super) async fn submit(
@@ -335,7 +332,7 @@ pub(super) async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixtu
     store.close().await.unwrap();
     let mut f = f;
     f.service = f.reopen().await; // Host/clock only; production domain planner installed by refresh.
-    refresh_financial(&mut f, path, None).await;
+    refresh_financial(&mut f, None).await;
     (f, empty)
 }
 
@@ -368,10 +365,10 @@ pub(super) fn template_catalog_commands(
         .map(|(operation, serial)| (serial, operation))
 }
 
-pub(super) async fn declare_template(f: &mut Fixture, path: &Path, template: &DomainState) {
+pub(super) async fn declare_template(f: &mut Fixture, template: &DomainState) {
     for (serial, operation) in template_catalog_commands(template) {
         submit(f, serial, operation).await;
-        refresh_financial(f, path, None).await;
+        refresh_financial(f, None).await;
     }
 }
 
@@ -410,23 +407,17 @@ fn legacy_capture(n: u32, version: &str, effective: &str) -> CaptureBatchV1 {
     )
     .unwrap()
 }
-pub(super) async fn publish_legacy(
-    f: &mut Fixture,
-    path: &Path,
-    n: u32,
-    version: &str,
-    effective: &str,
-) {
+pub(super) async fn publish_legacy(f: &mut Fixture, n: u32, version: &str, effective: &str) {
     let evidence = ImportEvidence::new(legacy_capture(n, version, effective)).unwrap();
     let import = evidence.request();
-    refresh_financial(f, path, Some(evidence)).await;
+    refresh_financial(f, Some(evidence)).await;
     submit(
         f,
         20000 + u128::from(n) + if version == "1" { 0 } else { 50000 },
         currents_protocol::OperationV1::PublishImport(import),
     )
     .await;
-    refresh_financial(f, path, None).await;
+    refresh_financial(f, None).await;
 }
 pub(super) fn legacy_binding(n: u32) -> SourceFacetBindingV1 {
     SourceFacetBindingV1 {

@@ -77,13 +77,13 @@ async fn cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle(
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("correction-chain.db");
     let (mut f, _) = bootstrap(&path).await;
-    declare_template(&mut f, &path, &fixture::monetary_state()).await;
-    publish_legacy(&mut f, &path, 200, "1", "2026-11-01").await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
     let purchase = fixture::posted(legacy_binding(200), 300, 30);
     let root = purchase.financial.as_ref().unwrap().recognition_id;
     let adoption = purchase.adoption_id;
     submit(&mut f, 53_001, OperationV1::AdoptActivity(purchase)).await;
-    let initial = refresh_financial(&mut f, &path, None).await;
+    let initial = refresh_financial(&mut f, None).await;
 
     let first = fresh_correction(&initial, root, 9400);
     let middle = first.replacement[0].id;
@@ -97,7 +97,7 @@ async fn cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle(
     .unwrap();
     store.close().await.unwrap();
     f.service = f.reopen().await;
-    let once = refresh_financial(&mut f, &path, None).await;
+    let once = refresh_financial(&mut f, None).await;
     assert!(once.accounting.as_ref().unwrap().reversed.contains(&root));
     assert!(!once.accounting.as_ref().unwrap().reversed.contains(&middle));
 
@@ -134,7 +134,7 @@ async fn cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle(
     store.close().await.unwrap();
 
     f.service = f.reopen().await;
-    let current = refresh_financial(&mut f, &path, None).await;
+    let current = refresh_financial(&mut f, None).await;
     assert_eq!(
         current.records.get(&adoption),
         initial.records.get(&adoption)
@@ -236,13 +236,13 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("refund.db");
     let (mut f, _) = bootstrap(&path).await;
-    declare_template(&mut f, &path, &fixture::monetary_state()).await;
-    publish_legacy(&mut f, &path, 200, "1", "2026-11-01").await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
     let purchase = fixture::posted(legacy_binding(200), 300, 30);
     let purchase_id = purchase.financial.as_ref().unwrap().recognition_id;
     let purchase_event = purchase.event.id;
     submit(&mut f, 54_001, OperationV1::AdoptActivity(purchase)).await;
-    let before = refresh_financial(&mut f, &path, None).await;
+    let before = refresh_financial(&mut f, None).await;
 
     let serial = 220;
     let capture = FileParser::parse(
@@ -280,9 +280,9 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
     ).unwrap();
     let evidence = ImportEvidence::new(capture).unwrap();
     let import = evidence.request();
-    refresh_financial(&mut f, &path, Some(evidence)).await;
+    refresh_financial(&mut f, Some(evidence)).await;
     submit(&mut f, 54_002, OperationV1::PublishImport(import)).await;
-    refresh_financial(&mut f, &path, None).await;
+    refresh_financial(&mut f, None).await;
     let mut refund = fixture::posted(
         SourceFacetBindingV1 {
             amount: fixture::amount(96),
@@ -304,7 +304,7 @@ async fn cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal() {
     let refund_event = refund.event.id;
     assert_ne!(refund_event, purchase_event);
     submit(&mut f, 54_003, OperationV1::AdoptActivity(refund)).await;
-    let after = refresh_financial(&mut f, &path, None).await;
+    let after = refresh_financial(&mut f, None).await;
     assert_eq!(
         after.records.get(&purchase_event),
         before.records.get(&purchase_event)

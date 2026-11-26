@@ -215,7 +215,7 @@ mod independence {
         service.close().await.unwrap();
     }
     #[tokio::test]
-    async fn current_queries_require_content_verified_shadow() {
+    async fn commits_keep_the_verified_projection_current() {
         let fixture = Fixture::new().await;
         assert!(
             fixture
@@ -228,38 +228,26 @@ mod independence {
         let body = fixture.body(91);
         fixture
             .service
-            .preview(fixture.ctx(), body.clone())
-            .unwrap();
-        fixture
-            .service
             .submit(fixture.ctx(), body.clone(), fixture.approve(&body))
             .await
             .unwrap();
-        assert_eq!(
-            fixture.service.verified_projection().unwrap_err().class,
-            ErrorClass::IncompleteBasis
-        );
-        let mut query = fixture.query();
-        query.basis.through_commit = CommitSeq(1);
-        assert_eq!(
-            fixture
-                .service
-                .query(fixture.ctx(), query.clone())
-                .await
-                .unwrap_err()
-                .class,
-            ErrorClass::IncompleteBasis
-        );
-        recover_service(&fixture.service).await;
-        let projection = fixture.service.verified_projection().unwrap();
-        let Some(AuthoritativeRecordV1::DatasetPolicy(policy)) = projection.records.get(&id(700))
+        // The service moves its verified projection past its own commit, so
+        // current queries work without another full replay.
+        let advanced = fixture.service.verified_projection().unwrap();
+        assert_eq!(advanced.through, CommitSeq(1));
+        let Some(AuthoritativeRecordV1::DatasetPolicy(policy)) = advanced.records.get(&id(700))
         else {
-            panic!("rebuilt projection must contain accepted policy content");
+            panic!("advanced projection must contain accepted policy content");
         };
         assert_eq!(policy.freshness_seconds, CommitSeq(300));
         assert_eq!(policy.policies.timezone_data, "synthetic");
-        assert!(!projection.records.is_empty());
+        let mut query = fixture.query();
+        query.basis.through_commit = CommitSeq(1);
         fixture.service.query(fixture.ctx(), query).await.unwrap();
+        // A full replay into a fresh destination produces the same state.
+        recover_service(&fixture.service).await;
+        let replayed = fixture.service.verified_projection().unwrap();
+        assert_eq!(format!("{replayed:?}"), format!("{advanced:?}"));
         fixture.service.close().await.unwrap();
     }
     #[tokio::test]
