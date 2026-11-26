@@ -756,11 +756,18 @@
       "path": "tracing-subscriber-0.3.23.crate"
     },
     {
-      "name": "cargo-deny",
+      "name": "cargo-deny-0.20.2-aarch64-apple-darwin.tar.gz",
       "version": "0.20.2",
-      "source": "https://static.crates.io/crates/cargo-deny/cargo-deny-0.20.2.crate",
-      "sha256": "e528dfcbe739af7ce37a77d3d6df1b29dd6887b1c701d888820c0f16b864f737",
-      "path": "cargo-deny-0.20.2.crate"
+      "source": "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-aarch64-apple-darwin.tar.gz",
+      "sha256": "fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a72090c3",
+      "path": "cargo-deny-0.20.2-aarch64-apple-darwin.tar.gz"
+    },
+    {
+      "name": "cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz",
+      "version": "0.20.2",
+      "source": "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f",
+      "path": "cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz"
     },
     {
       "name": "cargo-nextest",

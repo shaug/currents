@@ -78,7 +78,9 @@ fn rust(gate: &str, manifest: Option<&Path>) -> Result<Value> {
     )?;
     Ok(json!({"gate":gate,"manifest":manifest}))
 }
-fn command_with_flags(args: &[&str], cwd: &Path, docs: bool) -> Result<()> {
+/// Runs cargo with warnings denied. Every quality step uses the same
+/// `RUSTFLAGS`, so they share one dependency build.
+pub(crate) fn command_with_flags(args: &[&str], cwd: &Path, docs: bool) -> Result<()> {
     let mut c = Command::new("cargo");
     c.args(args)
         .current_dir(cwd)
@@ -495,17 +497,20 @@ fn dependencies() -> Result<Value> {
     checked(&bin, &["--locked", "check"], &root(), None)?;
     Ok(json!({"cargo_deny":"0.20.2","policy":"deny.toml"}))
 }
-pub fn all() -> Result<Value> {
+/// Every quality gate; `with_docs` false leaves the docs gate to its own job.
+pub fn all(with_docs: bool) -> Result<Value> {
     rust("compile", None)?;
     rust("lints", None)?;
     allowlist(None)?;
     schema(None)?;
     generated()?;
     workflow(None)?;
-    docs(None)?;
+    if with_docs {
+        docs(None)?;
+    }
     dependencies()?;
     Ok(
-        json!({"quality":"format/compiler/Clippy/allowlist/schema/header/migration/workflow/docs/dependencies"}),
+        json!({"quality":"format/compiler/Clippy/allowlist/schema/header/migration/workflow/dependencies","docs":with_docs}),
     )
 }
 pub fn qualify(gate: &str, args: &[String]) -> Result<Value> {

@@ -5,8 +5,8 @@ engineering-guide.md. No household or institutional credentials are needed.
 
 Install Rust 1.99.0 with clippy/rustfmt and the separate candidate MSRV 1.94.0.
 Run `python3 tools/install-ci-tools.py`, then set CURRENTS_TOOLS_BIN to the printed
-absolute bin directory. CLI archives are checked against tools/versions.lock.json;
-cargo-deny 0.20.2 is installed locked from the official crates.io registry.
+absolute bin directory. CLI archives, including cargo-deny 0.20.2's official
+release archives, are checked against tools/versions.lock.json.
 Set CURRENTS_MSRV_BIN to the 1.94.0 bin directory. Gate commands are:
 
 - `cargo xtask check quality`
@@ -52,8 +52,10 @@ run `cargo xtask ticket CUR-005` and record a pass. It covers Linux and macOS
 with 1.99.0 and Linux with 1.94.0. To force a rerun, change `doubleentry-v1` in
 the key or delete the cache entry. Run the command locally before changing
 those files.
-In CI only the quality job builds cargo-deny; other jobs install the tools with
-`--without-cargo-deny`.
+In CI only the quality-policy job installs cargo-deny; other jobs install the
+tools with `--without-cargo-deny`. That job leaves out the docs gate and the
+CUR-001 ticket (`check quality-ci`), because the docs and core jobs run them on
+every push; `check quality` still runs both.
 
 ## Required checks and repository settings
 

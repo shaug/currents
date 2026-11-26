@@ -1006,30 +1006,41 @@ pub(crate) fn native_source() -> Result<Value> {
         json!({"sys_manifest":expected,"source":native,"scope":"fixed upstream source bytes and one native stack; runtime behavior separately tested"}),
     )
 }
-fn quality_checks() -> Result<Value> {
+/// The policy checks. In CI, the docs job runs the docs gate and the core gate
+/// runs every CUR-001 test, so `ci` leaves those two out.
+fn quality_checks(ci: bool) -> Result<Value> {
     native_source()?;
     workspace()?;
     direction(&root().join("Cargo.toml"))?;
     cargo(&["fmt", "--all", "--", "--check"])?;
-    cargo(&[
-        "clippy",
-        "--locked",
-        "--workspace",
-        "--all-targets",
-        "--",
-        "-D",
-        "warnings",
-    ])?;
-    crate::quality::all()?;
+    crate::quality::command_with_flags(
+        &[
+            "clippy",
+            "--locked",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        &root(),
+        false,
+    )?;
+    crate::quality::all(!ci)?;
+    if ci {
+        return Ok(json!({"docs":"docs job","cur_001":"core gate"}));
+    }
     ticket("CUR-001")
 }
 fn quality() -> Result<Value> {
-    let tests = quality_checks()?;
+    let tests = quality_checks(false)?;
     Ok(json!({"tests":tests,"core":core(false, None)?}))
 }
 fn quality_ci() -> Result<Value> {
-    let tests = quality_checks()?;
-    Ok(json!({"tests":tests,"scope":"PR policy checks only; core required separately"}))
+    let tests = quality_checks(true)?;
+    Ok(
+        json!({"tests":tests,"scope":"PR policy checks only; core, docs and CUR-001 run in their own jobs"}),
+    )
 }
 fn option(args: &[String], name: &str) -> Result<Option<PathBuf>> {
     let Some(i) = args.iter().position(|a| a == name) else {
