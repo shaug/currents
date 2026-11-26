@@ -20,7 +20,7 @@ fn fixtures() -> Vec<AuthoritativeRecordV1> {
 }
 fn calendar() -> CalendarEngine {
     let (zone, bytes) = jiff_tzdb::get("America/New_York").unwrap();
-    CalendarEngine::new(zone, jiff_tzdb::VERSION.unwrap(), bytes).unwrap()
+    CalendarEngine::new(zone, jiff_tzdb::VERSION, bytes).unwrap()
 }
 fn commitment() -> CommitmentV1 {
     let mut c = fixtures()
@@ -32,7 +32,7 @@ fn commitment() -> CommitmentV1 {
         .unwrap();
     c.id = CommitmentId(id(25).0);
     c.timezone = "America/New_York".into();
-    c.timezone_data_version = jiff_tzdb::VERSION.unwrap().into();
+    c.timezone_data_version = jiff_tzdb::VERSION.into();
     *c.calendar_data = calendar().calendar_data();
     c.provenance.kind = DecisionKind::Planning;
     c.amounts.nominal = SourceValue::Known(Amount {

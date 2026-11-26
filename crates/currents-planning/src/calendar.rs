@@ -21,7 +21,7 @@ pub struct CalendarEngine {
 impl CalendarEngine {
     /// New snapshots must match the reviewed bundled IANA release exactly.
     pub fn new(zone: &str, version: &str, bytes: &[u8]) -> Result<Self, EngineError> {
-        if Some(version) != jiff_tzdb::VERSION
+        if version != jiff_tzdb::VERSION
             || jiff_tzdb::get(zone).is_none_or(|(_, pinned)| pinned != bytes)
         {
             return Err(EngineError::version());

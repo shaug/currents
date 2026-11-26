@@ -67,7 +67,7 @@ and its target-prefixed forms, are rejected before core/MSRV builds.
 
 `tools/versions.lock.json` records official registry archive checksums, source
 URLs, licenses, Rust requirements and enabled features; Cargo.lock locks the
-complete resolved graph. Jiff 0.2.41/jiff-tzdb 0.1.9 contains timezone data 2026e.
+complete resolved graph. Jiff 1.0.2/jiff-tzdb 1.0.0 contains timezone data 2026f.
 Two manifest corrections were verified directly against published packages:
 sha2 0.11.1 has no `std` feature, and secrecy 0.10.3 has no `std`/`alloc` feature.
 Both therefore use their supported default-free configuration. Reqwest 0.13.5
