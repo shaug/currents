@@ -230,9 +230,9 @@
     },
     {
       "name": "uuid",
-      "version": "1.29.2",
-      "source": "https://static.crates.io/crates/uuid/uuid-1.29.2.crate",
-      "sha256": "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c",
+      "version": "1.29.3",
+      "source": "https://static.crates.io/crates/uuid/uuid-1.29.3.crate",
+      "sha256": "3c14b15dffa2f4bd712103e857140aa04a4f2ff6e955c77d7eb8e53ee02a3b64",
       "license": "Apache-2.0 OR MIT",
       "rust_version": "1.89.0",
       "features": [
@@ -715,10 +715,10 @@
     },
     {
       "name": "uuid",
-      "version": "1.29.2",
-      "source": "https://static.crates.io/crates/uuid/uuid-1.29.2.crate",
-      "sha256": "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c",
-      "path": "uuid-1.29.2.crate"
+      "version": "1.29.3",
+      "source": "https://static.crates.io/crates/uuid/uuid-1.29.3.crate",
+      "sha256": "3c14b15dffa2f4bd712103e857140aa04a4f2ff6e955c77d7eb8e53ee02a3b64",
+      "path": "uuid-1.29.3.crate"
     },
     {
       "name": "zeroize",
