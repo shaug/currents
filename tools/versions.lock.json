@@ -243,9 +243,9 @@
     },
     {
       "name": "zeroize",
-      "version": "1.9.1",
-      "source": "https://static.crates.io/crates/zeroize/zeroize-1.9.1.crate",
-      "sha256": "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879",
+      "version": "1.9.2",
+      "source": "https://static.crates.io/crates/zeroize/zeroize-1.9.2.crate",
+      "sha256": "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa",
       "license": "Apache-2.0 OR MIT",
       "rust_version": "1.85",
       "features": [
@@ -722,10 +722,10 @@
     },
     {
       "name": "zeroize",
-      "version": "1.9.1",
-      "source": "https://static.crates.io/crates/zeroize/zeroize-1.9.1.crate",
-      "sha256": "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879",
-      "path": "zeroize-1.9.1.crate"
+      "version": "1.9.2",
+      "source": "https://static.crates.io/crates/zeroize/zeroize-1.9.2.crate",
+      "sha256": "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa",
+      "path": "zeroize-1.9.2.crate"
     },
     {
       "name": "secrecy",
