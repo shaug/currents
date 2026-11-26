@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 GATES = ("core", "quality-policy", "msrv", "docs", "privacy")
 SHA_CHECK = 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'
+SHARDS = [1, 2]
 
 
 class WorkflowContract(unittest.TestCase):
@@ -33,12 +34,19 @@ class WorkflowContract(unittest.TestCase):
 
     def test_platforms_and_gate_commands(self):
         core = self.jobs["core"]
-        self.assertEqual(core["strategy"]["matrix"], {"os": ["ubuntu-24.04", "macos-15"]})
+        self.assertEqual(core["strategy"]["matrix"],
+                         {"os": ["ubuntu-24.04", "macos-15"], "shard": SHARDS})
         self.assertEqual(core["runs-on"], "${{ matrix.os }}")
+        self.assertEqual(core["name"], f"core (${{{{ matrix.os }}}}, ${{{{ matrix.shard }}}}/{len(SHARDS)})")
+        msrv = self.jobs["msrv"]
+        self.assertEqual(msrv["strategy"]["matrix"], {"shard": SHARDS})
+        self.assertEqual(msrv["name"], f"msrv (${{{{ matrix.shard }}}}/{len(SHARDS)})")
         for gate in ("core", "msrv", "docs", "privacy"):
             step = {"name": f"Run {gate} gate", "run": f"cargo xtask check {gate}"}
             if gate in ("core", "msrv"):
-                step["env"] = {"CURRENTS_CI_CORE_PHASES": "1"}
+                # Each runner takes one shard; together they run every test once.
+                step["env"] = {"CURRENTS_CI_CORE_PHASES": "1",
+                               "CURRENTS_TEST_SHARD": f"${{{{ matrix.shard }}}}/{len(SHARDS)}"}
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 65)
             else:
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)
@@ -100,6 +108,31 @@ class WorkflowContract(unittest.TestCase):
                     else:
                         results[key] = bad
                     self.assertFalse(gate_passed(results))
+
+
+class DoubleentryWorkflow(unittest.TestCase):
+    """The vendored suite runs only when its inputs change."""
+
+    def test_runs_the_vendored_suite_when_its_inputs_change(self):
+        workflow = json.loads((ROOT / ".github/workflows/doubleentry.yml").read_text())
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        paths = ["vendor/**", "patches/**", "crates/currents-storage/tests/cur_005.rs",
+                 "rust-toolchain.toml", ".cargo/**", ".github/workflows/doubleentry.yml"]
+        self.assertEqual(workflow["on"], {
+            "pull_request": {"paths": paths},
+            "push": {"branches": ["main"], "paths": paths},
+            "workflow_dispatch": {},
+        })
+        job = workflow["jobs"]["doubleentry"]
+        self.assertEqual(job["strategy"]["matrix"], {"os": ["ubuntu-24.04", "macos-15"]})
+        checkout, exact, *_ = job["steps"]
+        self.assertRegex(checkout["uses"], r"^actions/checkout@[a-f0-9]{40}$")
+        self.assertEqual(checkout["with"], {"persist-credentials": False})
+        self.assertEqual(exact, {"name": "Verify exact checkout", "run": SHA_CHECK})
+        self.assertEqual(job["steps"][-1]["run"], "cargo xtask ticket CUR-005")
+        # The core pool leaves exactly this test binary to this workflow.
+        pool = (ROOT / "xtask/src/test_pool.rs").read_text()
+        self.assertIn('const SEPARATE: &[&str] = &["currents-storage/cur_005"];', pool)
 
 
 if __name__ == "__main__":

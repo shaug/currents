@@ -97,7 +97,7 @@
       ]
     },
     "core": {
-      "name": "core (${{ matrix.os }})",
+      "name": "core (${{ matrix.os }}, ${{ matrix.shard }}/2)",
       "runs-on": "${{ matrix.os }}",
       "timeout-minutes": 65,
       "steps": [
@@ -128,7 +128,8 @@
           "name": "Run core gate",
           "run": "cargo xtask check core",
           "env": {
-            "CURRENTS_CI_CORE_PHASES": "1"
+            "CURRENTS_CI_CORE_PHASES": "1",
+            "CURRENTS_TEST_SHARD": "${{ matrix.shard }}/2"
           }
         }
       ],
@@ -137,12 +138,16 @@
           "os": [
             "ubuntu-24.04",
             "macos-15"
+          ],
+          "shard": [
+            1,
+            2
           ]
         }
       }
     },
     "msrv": {
-      "name": "msrv",
+      "name": "msrv (${{ matrix.shard }}/2)",
       "runs-on": "ubuntu-24.04",
       "timeout-minutes": 65,
       "steps": [
@@ -173,10 +178,19 @@
           "name": "Run msrv gate",
           "run": "cargo xtask check msrv",
           "env": {
-            "CURRENTS_CI_CORE_PHASES": "1"
+            "CURRENTS_CI_CORE_PHASES": "1",
+            "CURRENTS_TEST_SHARD": "${{ matrix.shard }}/2"
           }
         }
-      ]
+      ],
+      "strategy": {
+        "matrix": {
+          "shard": [
+            1,
+            2
+          ]
+        }
+      }
     },
     "docs": {
       "name": "docs",

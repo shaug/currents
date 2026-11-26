@@ -362,6 +362,11 @@ fn ci_core_phases(has_manifest: bool) -> bool {
 fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     let phases = ci_core_phases(manifest.is_some());
     check_native_environment()?;
+    // A fixture run is nested inside a test, so it must not take the CI runner's shard.
+    let shard = match manifest {
+        Some(_) => crate::test_pool::Shard::ALL,
+        None => crate::test_pool::Shard::from_env()?,
+    };
     let (program, rustc, version) = if msrv {
         let (c, r, v) = msrv_tools()?;
         (c, Some(r), v)
@@ -388,9 +393,9 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     let mut evidence = vec![json!({"command":build,"stdout_sha256":sha(text.as_bytes())})];
     // Same tests and doctests as `cargo test --workspace`, one test per process.
     evidence.push(CorePhase::Test.run(phases, || {
-        crate::test_pool::run(&program, rustc.as_deref(), manifest, phases)
+        crate::test_pool::run(&program, rustc.as_deref(), manifest, phases, shard)
     })?);
-    let driver = if manifest.is_none() {
+    let driver = if manifest.is_none() && shard.is_first() {
         Some(
             CorePhase::NativeDriver
                 .run(phases, || crate::cipher::driver(&program, rustc.as_deref()))?,

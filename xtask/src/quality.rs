@@ -338,11 +338,21 @@ fn tool(name: &str, version: &str, arg: &str) -> Result<PathBuf> {
     }
     Ok(path)
 }
+const CI_JOBS: &[&str] = &["quality", "core", "msrv", "docs", "privacy"];
+/// Checks `--workflow PATH` against the CI rules, or by default both Rust
+/// workflows: CI and the path-filtered vendored doubleentry suite.
 fn workflow(path: Option<&Path>) -> Result<Value> {
-    let p = path
-        .map(Path::to_path_buf)
-        .unwrap_or(root().join(".github/workflows/ci.yml"));
-    let text = read(&p)?;
+    if let Some(path) = path {
+        return workflow_file(path, CI_JOBS);
+    }
+    let workflows = root().join(".github/workflows");
+    Ok(json!({"workflows":[
+        workflow_file(&workflows.join("ci.yml"), CI_JOBS)?,
+        workflow_file(&workflows.join("doubleentry.yml"), &["doubleentry"])?,
+    ]}))
+}
+fn workflow_file(p: &Path, required: &[&str]) -> Result<Value> {
+    let text = read(p)?;
     let v:Value=serde_json::from_str(&text).map_err(|_|"workflow security: workflows use the JSON subset of YAML for unambiguous policy parsing")?;
     let bad = || {
         "workflow security: untrusted trigger, permission, secret, action or artifact upload"
@@ -364,8 +374,8 @@ fn workflow(path: Option<&Path>) -> Result<Value> {
         return Err(bad());
     }
     let jobs = v["jobs"].as_object().ok_or_else(bad)?;
-    for name in ["quality", "core", "msrv", "docs", "privacy"] {
-        if !jobs.contains_key(name) {
+    for name in required {
+        if !jobs.contains_key(*name) {
             return Err(bad());
         }
     }

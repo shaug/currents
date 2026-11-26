@@ -3,7 +3,8 @@
 //! `cargo test` runs test binaries one after another. Running one test per
 //! process instead lets independent tests use every core. It also keeps
 //! process-global state apart: SQLCipher memory security, tracing subscribers
-//! and exit-time native cleanup never cross from one test to another.
+//! and exit-time native cleanup never cross from one test to another. In CI,
+//! `CURRENTS_TEST_SHARD` splits the tests between several runners.
 use crate::checks::{checked, output, recorded, root, sha};
 use serde_json::{Value, json};
 use std::{
@@ -39,19 +40,85 @@ enum Job {
     Test(usize),
 }
 
-/// Tests that run longest, started first so that none of them is left running
-/// alone at the end. The list only changes the order; a name that no longer
-/// exists changes nothing.
+/// Test binaries that exercise only vendored code. Their result changes only
+/// when the vendored sources, their patches, the toolchain or the test itself
+/// change, so the `doubleentry` workflow runs them (`cargo xtask ticket
+/// CUR-005`) when those files change, instead of every core run.
+const SEPARATE: &[&str] = &["currents-storage/cur_005"];
+
+/// The tests that take longest in CI, longest first. They start first so that
+/// none of them is left running alone at the end, and the shard split spreads
+/// them evenly. The list only changes the order; a name that no longer exists
+/// changes nothing.
 const START_FIRST: &[&str] = &[
-    // Builds and runs the vendored doubleentry suite in a nested cargo.
-    "cur_005_3",
-    "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
-    "cur_015_opening_boundary_encrypted_initial_and_remap",
-    "cur_014_2_slice_fault",
-    "cur_007_1",
+    "prefix_visibility",
     "cur_025_service_durable_revisions_and_no_recognition",
+    "cur_015_opening_boundary_encrypted_initial_and_remap",
+    "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
     "history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",
+    "cur_007_1",
+    "cur_010_1",
+    "cur_014_2_slice_fault",
+    "cur_007_3",
+    "cur_015_3_real_parser_remap_preserves_raw_cancellation_retry_and_reopen",
 ];
+
+/// The part of the run that one CI runner takes: `index` of `count`, set by
+/// `CURRENTS_TEST_SHARD=index/count`. Without it, one runner takes everything.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Shard {
+    index: usize,
+    count: usize,
+}
+
+impl Shard {
+    pub(crate) const ALL: Self = Self { index: 1, count: 1 };
+
+    pub(crate) fn from_env() -> Result<Self> {
+        match env::var("CURRENTS_TEST_SHARD") {
+            Ok(value) => Self::parse(&value),
+            Err(_) => Ok(Self::ALL),
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self> {
+        value
+            .split_once('/')
+            .and_then(|(index, count)| {
+                Some((index.parse::<usize>().ok()?, count.parse::<usize>().ok()?))
+            })
+            .filter(|(index, count)| (1..=*count).contains(index))
+            .map(|(index, count)| Self { index, count })
+            .ok_or_else(|| {
+                format!("CURRENTS_TEST_SHARD must be INDEX/COUNT, 1 <= INDEX <= COUNT: {value}")
+            })
+    }
+
+    /// The first shard also runs the checks that are not split.
+    pub(crate) fn is_first(self) -> bool {
+        self.index == 1
+    }
+
+    /// This shard's items, dealt back and forth (1, 2, 2, 1, 1, 2, ...) so that
+    /// every shard gets a fair share of the long tests at the front.
+    fn take<T>(self, items: Vec<T>) -> Vec<T> {
+        let lanes = 2 * self.count;
+        items
+            .into_iter()
+            .enumerate()
+            .filter(|(position, _)| {
+                let turn = position % lanes;
+                let lane = if turn < self.count {
+                    turn
+                } else {
+                    lanes - 1 - turn
+                };
+                lane + 1 == self.index
+            })
+            .map(|(_, item)| item)
+            .collect()
+    }
+}
 
 /// The run order: the longest tests, then the doctests, then every other test
 /// in listing order.
@@ -169,15 +236,17 @@ fn pool<T: Sync, R: Send>(
     });
 }
 
-/// Builds (or reuses) the workspace test binaries, runs each test as its own
-/// process, then runs the doctests that `cargo test --workspace` also runs.
-/// With `timings`, it prints when each test started and how long it took to
-/// stderr, which stays out of the evidence.
+/// Builds (or reuses) the workspace test binaries and runs this shard's part of
+/// the tests and doctests that `cargo test --workspace` runs, each test in its
+/// own process. `SEPARATE` binaries are left out. With `timings`, it prints
+/// when each test started and how long it took to stderr, which stays out of
+/// the evidence.
 pub(crate) fn run(
     program: &Path,
     rustc: Option<&Path>,
     manifest: Option<&str>,
     timings: bool,
+    shard: Shard,
 ) -> Result<Value> {
     let mut plan = vec![
         "test",
@@ -191,8 +260,11 @@ pub(crate) fn run(
         plan.extend(["--manifest-path", path]);
         doc.extend(["--manifest-path", path]);
     }
-    let binaries = binaries(&checked(program, &plan, &root(), rustc)?)?;
-    let jobs = jobs()?;
+    let (separate, binaries): (Vec<_>, Vec<_>) =
+        binaries(&checked(program, &plan, &root(), rustc)?)?
+            .into_iter()
+            .partition(|binary| SEPARATE.contains(&binary.label.as_str()));
+    let workers = jobs()?;
     let never = AtomicBool::new(false);
 
     // Listing is cheap, but a first launch can be slow on macOS, so list in parallel.
@@ -201,7 +273,7 @@ pub(crate) fn run(
     listings.resize_with(binaries.len(), || None);
     pool(
         &binaries,
-        jobs,
+        workers,
         &never,
         |binary| output(&binary.executable, &list, &binary.package_dir, rustc),
         |index, listing| {
@@ -233,6 +305,15 @@ pub(crate) fn run(
     if cases.is_empty() {
         return Err("BLOCKED: workspace test binaries listed zero tests".into());
     }
+    // Every runner sorts the same way, so the shards split one schedule.
+    cases.sort_by(|a, b| {
+        (&a.binary.label, &a.name, &a.binary.executable).cmp(&(
+            &b.binary.label,
+            &b.name,
+            &b.binary.executable,
+        ))
+    });
+    let work = shard.take(schedule(&cases));
 
     let stop = AtomicBool::new(false);
     let mut outputs = vec![String::new(); cases.len()];
@@ -247,8 +328,8 @@ pub(crate) fn run(
     };
     let began = Instant::now();
     pool(
-        &schedule(&cases),
-        jobs,
+        &work,
+        workers,
         &stop,
         |job| {
             let started = Instant::now();
@@ -335,28 +416,37 @@ pub(crate) fn run(
     if !failures.is_empty() {
         return Err(failures.join("\n"));
     }
-    let doctests = doctests.ok_or("doctests did not run")?;
+    let doctests = match doctests {
+        Some(stdout) => Some(json!({"command": doc, "stdout_sha256": sha(stdout.as_bytes())})),
+        None if work.contains(&Job::Doctests) => return Err("doctests did not run".into()),
+        // Another shard runs them.
+        None => None,
+    };
 
     let mut names: Vec<_> = cases
         .iter()
         .map(|case| format!("{} {}", case.binary.label, case.name))
         .collect();
     names.sort();
+    let separate: Vec<_> = separate.iter().map(|binary| &binary.label).collect();
     Ok(json!({
         "command": plan,
         "binaries": binaries.len(),
+        "separate": separate,
         "tests": cases.len(),
-        "jobs": jobs,
+        "shard": format!("{}/{}", shard.index, shard.count),
+        "shard_jobs": work.len(),
+        "jobs": workers,
         "per_test_process": true,
         "test_inventory_sha256": sha(names.join("\n").as_bytes()),
         "stdout_sha256": sha(outputs.concat().as_bytes()),
-        "doctests": {"command": doc, "stdout_sha256": sha(doctests.as_bytes())},
+        "doctests": doctests,
     }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Binary, Case, Job, START_FIRST, binaries, pool, schedule};
+    use super::{Binary, Case, Job, START_FIRST, Shard, binaries, pool, schedule};
     use std::{
         path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
@@ -388,6 +478,37 @@ mod tests {
             ]
         );
         assert_eq!(schedule(&cases[..1]), [Job::Doctests, Job::Test(0)]);
+    }
+
+    #[test]
+    fn shards_split_every_job_exactly_once() {
+        let items: Vec<usize> = (0..11).collect();
+        for count in 1..=3 {
+            let mut seen: Vec<usize> = (1..=count)
+                .flat_map(|index| Shard { index, count }.take(items.clone()))
+                .collect();
+            seen.sort_unstable();
+            assert_eq!(seen, items, "{count} shards");
+        }
+        // Dealt back and forth, so the two longest tests go to different shards.
+        assert_eq!(
+            Shard { index: 1, count: 2 }.take(items.clone()),
+            [0, 3, 4, 7, 8]
+        );
+        assert_eq!(
+            Shard { index: 2, count: 2 }.take(items.clone()),
+            [1, 2, 5, 6, 9, 10]
+        );
+        assert_eq!(Shard::ALL.take(items.clone()), items);
+    }
+
+    #[test]
+    fn shard_must_name_an_index_within_its_count() {
+        assert_eq!(Shard::parse("2/2"), Ok(Shard { index: 2, count: 2 }));
+        assert_eq!(Shard::parse("1/1"), Ok(Shard::ALL));
+        for bad in ["0/2", "3/2", "1/0", "2", "a/2", "1/2/3", ""] {
+            assert!(Shard::parse(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

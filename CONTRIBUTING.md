@@ -34,20 +34,31 @@ qualification assertion. Public headers and root migrations remain absent; new
 ones stay BLOCKED until their owner registers actual generation/validation.
 This is not a claim of production native qualification.
 
-Core and MSRV run the same tests as `cargo test --workspace`, but each test runs
-in its own process on a pool sized to the machine's cores. Set
+Core and MSRV run the same tests as `cargo test --workspace`, except the
+vendored doubleentry suite in `crates/currents-storage/tests/cur_005.rs`. Each
+test runs in its own process on a pool sized to the machine's cores. Set
 `CURRENTS_TEST_JOBS` to change the pool size; `1` runs one test at a time.
 The pool starts the longest tests first (`START_FIRST` in
 `xtask/src/test_pool.rs`), and runs `cargo test --doc` as one of its jobs.
-In CI the core gate prints each test's start time and duration. Nextest is not
-used.
+`CURRENTS_TEST_SHARD=K/N` runs part K of N of that schedule; CI runs core and
+MSRV as two parts on separate runners. In CI the core gate prints each test's
+start time and duration. Nextest is not used.
+
+The vendored suite's result changes only with `vendor/`, `patches/`,
+`rust-toolchain.toml`, `.cargo/` or its test file. When one of those changes, the
+`doubleentry` workflow runs `cargo xtask ticket CUR-005` on Linux and macOS.
+Run that command locally before changing them. The workflow policy gate checks
+both `ci.yml` and `doubleentry.yml`.
 In CI only the quality job builds cargo-deny; other jobs install the tools with
 `--without-cargo-deny`.
 
 ## Required checks and repository settings
 
-Desired required status names: `quality`, `core (ubuntu-24.04)`,
-`core (macos-15)`, `msrv`, `docs`, `privacy`.
+Desired required status names: `quality`, `core (ubuntu-24.04, 1/2)`,
+`core (ubuntu-24.04, 2/2)`, `core (macos-15, 1/2)`, `core (macos-15, 2/2)`,
+`msrv (1/2)`, `msrv (2/2)`, `docs`, `privacy`. Do not require the
+`doubleentry` checks: GitHub leaves a required check pending forever when a path
+filter skips its workflow.
 A separately authorized administrator should add these exact names to the main
 branch ruleset, require pull requests and up-to-date passing checks, and require
 maintainer review for CODEOWNERS paths. Verify names on a real PR before applying.
