@@ -145,6 +145,14 @@ fn cur_003_2() {
     let mut v = value.clone();
     v["jobs"]["quality"]["env"] = serde_json::json!({"KEY":"${{ secrets.SIGNING_KEY }}"});
     variants.push(v);
+    // The vendored-suite cache must use the approved commit, and the job must exist.
+    let mut v = value.clone();
+    v["jobs"]["doubleentry"]["steps"][3]["uses"] =
+        "actions/cache/restore@0000000000000000000000000000000000000000".into();
+    variants.push(v);
+    let mut v = value.clone();
+    v["jobs"].as_object_mut().unwrap().remove("doubleentry");
+    variants.push(v);
     let mut v = value;
     v["jobs"]["quality"]["steps"].as_array_mut().unwrap().push(serde_json::json!({"uses":"actions/upload-artifact@0000000000000000000000000000000000000000"}));
     variants.push(v);

@@ -19,6 +19,20 @@ pub(crate) const ITEM_CONTENT_COUNT: &str =
     "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
 pub(crate) const ITEM_CONTENTS: &str =
     "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
+// The broad command-effect family has 30 slots. Only values are bound; the
+// SQLite worker handles the same indexed per-kind existence checks together.
+const WIDE_COMMAND_EFFECT_KINDS: usize = 30;
+const WIDE_COMMAND_EFFECT_MATCHES: &str = r#"
+WITH permitted(kind) AS (VALUES
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?)
+)
+SELECT count(*) FROM permitted AS p WHERE EXISTS(
+    SELECT 1 FROM currents_definitions AS d
+    WHERE d.kind=p.kind AND d.id=? AND d.seq<=?
+)
+"#;
 fn canonical<T: serde::Serialize>(v: &T) -> Result<Vec<u8>, EngineError> {
     serde_json_canonicalizer::to_vec(v).map_err(|_| EngineError::invalid())
 }
@@ -486,6 +500,25 @@ impl HistoryReader {
             previous: Digest::default(),
         })
     }
+    /// Like `stream_prefix`, but starts after a commit the caller already
+    /// verified. `previous` is that commit's digest, so the chain check still
+    /// links every yielded commit to it.
+    pub async fn stream_after(
+        &self,
+        after: CommitSeq,
+        previous: Digest,
+        through: CommitSeq,
+    ) -> Result<HistoryStream, EngineError> {
+        if after.0 > through.0 {
+            return Err(EngineError::invalid());
+        }
+        let mut stream = self.stream_prefix(through).await?;
+        stream.next = seq(after)?
+            .checked_add(1)
+            .ok_or_else(EngineError::invalid)?;
+        stream.previous = previous;
+        Ok(stream)
+    }
     /// Convenience reader bounded to 64 MiB total; archives use stream_prefix.
     pub async fn read_prefix(
         &self,
@@ -770,6 +803,22 @@ impl HistoryStream {
         // Resolve against this commit's prefix, not the requested stream cutoff:
         // a later definition must never legitimize an earlier command result.
         for reference in crate::references::command_effects(&c.command_result.effects) {
+            if reference.kinds.len() == WIDE_COMMAND_EFFECT_KINDS {
+                let mut query = sqlx::query_scalar::<_, i64>(WIDE_COMMAND_EFFECT_MATCHES);
+                for kind in &reference.kinds {
+                    query = query.bind(kind);
+                }
+                let matches = query
+                    .bind(&reference.id)
+                    .bind(self.next)
+                    .fetch_one(&mut *self.tx)
+                    .await
+                    .map_err(|_| schema::failure())?;
+                if matches != 1 {
+                    return Err(schema::failure());
+                }
+                continue;
+            }
             let mut matches = 0usize;
             for kind in &reference.kinds {
                 let found: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM currents_definitions WHERE kind=? AND id=? AND seq<=?)")

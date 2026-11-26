@@ -78,7 +78,9 @@ fn rust(gate: &str, manifest: Option<&Path>) -> Result<Value> {
     )?;
     Ok(json!({"gate":gate,"manifest":manifest}))
 }
-fn command_with_flags(args: &[&str], cwd: &Path, docs: bool) -> Result<()> {
+/// Runs cargo with warnings denied. Every quality step uses the same
+/// `RUSTFLAGS`, so they share one dependency build.
+pub(crate) fn command_with_flags(args: &[&str], cwd: &Path, docs: bool) -> Result<()> {
     let mut c = Command::new("cargo");
     c.args(args)
         .current_dir(cwd)
@@ -364,7 +366,7 @@ fn workflow(path: Option<&Path>) -> Result<Value> {
         return Err(bad());
     }
     let jobs = v["jobs"].as_object().ok_or_else(bad)?;
-    for name in ["quality", "core", "msrv", "docs", "privacy"] {
+    for name in ["quality", "core", "msrv", "docs", "privacy", "doubleentry"] {
         if !jobs.contains_key(name) {
             return Err(bad());
         }
@@ -388,13 +390,19 @@ fn workflow(path: Option<&Path>) -> Result<Value> {
                     .ok_or_else(bad)?
                     .iter()
                     .any(|p| p["uses"].as_str() == Some(action));
-                if !approved
-                    || !action.starts_with("actions/checkout@")
-                    || step["with"]["persist-credentials"] != false
-                {
+                // Besides checkout, only the cache that stores the CUR-005 job's
+                // pass marker, keyed by that suite's inputs.
+                let cache = action.starts_with("actions/cache/restore@")
+                    || action.starts_with("actions/cache/save@");
+                if !approved || !(cache || action.starts_with("actions/checkout@")) {
                     return Err(bad());
                 }
-                checkout = true;
+                if action.starts_with("actions/checkout@") {
+                    if step["with"]["persist-credentials"] != false {
+                        return Err(bad());
+                    }
+                    checkout = true;
+                }
             }
         }
         if !checkout {
@@ -489,17 +497,20 @@ fn dependencies() -> Result<Value> {
     checked(&bin, &["--locked", "check"], &root(), None)?;
     Ok(json!({"cargo_deny":"0.20.2","policy":"deny.toml"}))
 }
-pub fn all() -> Result<Value> {
+/// Every quality gate; `with_docs` false leaves the docs gate to its own job.
+pub fn all(with_docs: bool) -> Result<Value> {
     rust("compile", None)?;
     rust("lints", None)?;
     allowlist(None)?;
     schema(None)?;
     generated()?;
     workflow(None)?;
-    docs(None)?;
+    if with_docs {
+        docs(None)?;
+    }
     dependencies()?;
     Ok(
-        json!({"quality":"format/compiler/Clippy/allowlist/schema/header/migration/workflow/docs/dependencies"}),
+        json!({"quality":"format/compiler/Clippy/allowlist/schema/header/migration/workflow/dependencies","docs":with_docs}),
     )
 }
 pub fn qualify(gate: &str, args: &[String]) -> Result<Value> {

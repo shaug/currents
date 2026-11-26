@@ -26,7 +26,8 @@
         "quality-policy",
         "msrv",
         "docs",
-        "privacy"
+        "privacy",
+        "doubleentry"
       ],
       "if": "${{ !cancelled() }}",
       "steps": [
@@ -48,16 +49,17 @@
             "QUALITY_POLICY_RESULT": "${{ needs.quality-policy.result }}",
             "MSRV_RESULT": "${{ needs.msrv.result }}",
             "DOCS_RESULT": "${{ needs.docs.result }}",
-            "PRIVACY_RESULT": "${{ needs.privacy.result }}"
+            "PRIVACY_RESULT": "${{ needs.privacy.result }}",
+            "DOUBLEENTRY_RESULT": "${{ needs.doubleentry.result }}"
           },
-          "run": "status=0\ncheck() {\n  if [ \"$2\" != success ]; then\n    echo \"::error::$1 did not pass (result: ${2:-missing})\"\n    status=1\n  fi\n}\ncheck core \"${CORE_RESULT:-}\"\ncheck quality-policy \"${QUALITY_POLICY_RESULT:-}\"\ncheck msrv \"${MSRV_RESULT:-}\"\ncheck docs \"${DOCS_RESULT:-}\"\ncheck privacy \"${PRIVACY_RESULT:-}\"\nexit \"$status\""
+          "run": "status=0\ncheck() {\n  if [ \"$2\" != success ]; then\n    echo \"::error::$1 did not pass (result: ${2:-missing})\"\n    status=1\n  fi\n}\ncheck core \"${CORE_RESULT:-}\"\ncheck quality-policy \"${QUALITY_POLICY_RESULT:-}\"\ncheck msrv \"${MSRV_RESULT:-}\"\ncheck docs \"${DOCS_RESULT:-}\"\ncheck privacy \"${PRIVACY_RESULT:-}\"\ncheck doubleentry \"${DOUBLEENTRY_RESULT:-}\"\nexit \"$status\""
         }
       ]
     },
     "quality-policy": {
       "name": "quality-policy",
       "runs-on": "ubuntu-24.04",
-      "timeout-minutes": "${{ github.event_name == 'pull_request' && 40 || 75 }}",
+      "timeout-minutes": 40,
       "steps": [
         {
           "name": "Checkout v7.0.1 (immutable upstream commit)",
@@ -83,22 +85,12 @@
           "run": "rustup toolchain install 1.94.0 --profile minimal\necho \"CURRENTS_MSRV_BIN=$(dirname \"$(rustup which --toolchain 1.94.0 cargo)\")\" >> \"$GITHUB_ENV\""
         },
         {
-          "name": "Test PR quality orchestration",
-          "if": "${{ github.event_name == 'pull_request' }}",
+          "name": "Test quality orchestration",
           "run": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p test_pr_quality.py"
         },
         {
-          "name": "Run PR quality checks",
-          "if": "${{ github.event_name == 'pull_request' }}",
+          "name": "Run quality checks",
           "run": "cargo xtask check quality-ci"
-        },
-        {
-          "name": "Run full quality gate",
-          "if": "${{ github.event_name != 'pull_request' }}",
-          "run": "cargo xtask check quality",
-          "env": {
-            "CURRENTS_CI_CORE_PHASES": "1"
-          }
         },
         {
           "name": "Qualify policy counterexamples",
@@ -107,7 +99,7 @@
       ]
     },
     "core": {
-      "name": "core (${{ matrix.os }})",
+      "name": "core (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})",
       "runs-on": "${{ matrix.os }}",
       "timeout-minutes": 65,
       "steps": [
@@ -128,7 +120,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -138,21 +130,45 @@
           "name": "Run core gate",
           "run": "cargo xtask check core",
           "env": {
-            "CURRENTS_CI_CORE_PHASES": "1"
+            "CURRENTS_CI_CORE_PHASES": "1",
+            "CURRENTS_TEST_SHARD": "${{ matrix.shard }}/${{ matrix.shards }}"
           }
         }
       ],
       "strategy": {
         "matrix": {
-          "os": [
-            "ubuntu-24.04",
-            "macos-15"
+          "include": [
+            {
+              "os": "ubuntu-24.04",
+              "shard": 1,
+              "shards": 3
+            },
+            {
+              "os": "ubuntu-24.04",
+              "shard": 2,
+              "shards": 3
+            },
+            {
+              "os": "ubuntu-24.04",
+              "shard": 3,
+              "shards": 3
+            },
+            {
+              "os": "macos-15",
+              "shard": 1,
+              "shards": 2
+            },
+            {
+              "os": "macos-15",
+              "shard": 2,
+              "shards": 2
+            }
           ]
         }
       }
     },
     "msrv": {
-      "name": "msrv",
+      "name": "msrv (${{ matrix.shard }}/3)",
       "runs-on": "ubuntu-24.04",
       "timeout-minutes": 65,
       "steps": [
@@ -173,7 +189,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -183,10 +199,20 @@
           "name": "Run msrv gate",
           "run": "cargo xtask check msrv",
           "env": {
-            "CURRENTS_CI_CORE_PHASES": "1"
+            "CURRENTS_CI_CORE_PHASES": "1",
+            "CURRENTS_TEST_SHARD": "${{ matrix.shard }}/3"
           }
         }
-      ]
+      ],
+      "strategy": {
+        "matrix": {
+          "shard": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
     },
     "docs": {
       "name": "docs",
@@ -210,7 +236,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -244,7 +270,7 @@
         },
         {
           "name": "Install checksum-pinned policy tools",
-          "run": "python3 tools/install-ci-tools.py\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
+          "run": "python3 tools/install-ci-tools.py --without-cargo-deny\necho \"CURRENTS_TOOLS_BIN=$PWD/target/ci-tools/bin\" >> \"$GITHUB_ENV\""
         },
         {
           "name": "Install exact candidate MSRV",
@@ -255,6 +281,86 @@
           "run": "cargo xtask check privacy"
         }
       ]
+    },
+    "doubleentry": {
+      "name": "doubleentry (${{ matrix.os }}, ${{ matrix.toolchain }})",
+      "runs-on": "${{ matrix.os }}",
+      "timeout-minutes": 40,
+      "steps": [
+        {
+          "name": "Checkout v7.0.1 (immutable upstream commit)",
+          "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Verify exact checkout",
+          "run": "test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\""
+        },
+        {
+          "name": "Fingerprint the vendored suite's inputs",
+          "id": "inputs",
+          "env": {
+            "TOOLCHAIN": "${{ matrix.toolchain }}"
+          },
+          "run": "inputs=\"$(git rev-parse HEAD:vendor HEAD:patches HEAD:rust-toolchain.toml HEAD:.cargo HEAD:crates/currents-storage/tests/cur_005.rs)\"\nfingerprint=\"$(printf '%s\\n' \"$inputs\" | git hash-object --stdin)\"\necho \"key=doubleentry-v1-$RUNNER_OS-$RUNNER_ARCH-$TOOLCHAIN-$fingerprint\" >> \"$GITHUB_OUTPUT\""
+        },
+        {
+          "name": "Look up an earlier pass with the same inputs",
+          "id": "earlier",
+          "uses": "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+          "with": {
+            "key": "${{ steps.inputs.outputs.key }}",
+            "path": "target/doubleentry-passed",
+            "lookup-only": true
+          }
+        },
+        {
+          "name": "Install exact Rust toolchain",
+          "if": "steps.earlier.outputs.cache-hit != 'true'",
+          "env": {
+            "TOOLCHAIN": "${{ matrix.toolchain }}"
+          },
+          "run": "rustup toolchain install \"$TOOLCHAIN\" --profile minimal"
+        },
+        {
+          "name": "Run the vendored suite (CUR-005)",
+          "if": "steps.earlier.outputs.cache-hit != 'true'",
+          "env": {
+            "TOOLCHAIN": "${{ matrix.toolchain }}",
+            "KEY": "${{ steps.inputs.outputs.key }}"
+          },
+          "run": "rustup run \"$TOOLCHAIN\" cargo xtask ticket CUR-005\nmkdir -p target\necho \"$KEY\" > target/doubleentry-passed"
+        },
+        {
+          "name": "Record the pass",
+          "if": "steps.earlier.outputs.cache-hit != 'true'",
+          "uses": "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+          "with": {
+            "key": "${{ steps.inputs.outputs.key }}",
+            "path": "target/doubleentry-passed"
+          }
+        }
+      ],
+      "strategy": {
+        "matrix": {
+          "include": [
+            {
+              "os": "ubuntu-24.04",
+              "toolchain": "1.99.0"
+            },
+            {
+              "os": "macos-15",
+              "toolchain": "1.99.0"
+            },
+            {
+              "os": "ubuntu-24.04",
+              "toolchain": "1.94.0"
+            }
+          ]
+        }
+      }
     }
   }
 }

@@ -64,8 +64,6 @@ fn relationship_import_identity_binds_complete_retained_metadata() {
 mod support;
 #[path = "support/financial_service.rs"]
 mod support_financial;
-#[path = "support/verified_fixture_planner.rs"]
-mod verified_fixture_planner;
 use support_financial::*;
 #[tokio::test]
 async fn relationship_capture_uses_real_service_staging_and_reopens_exactly() {
@@ -188,14 +186,7 @@ async fn real_service_transfer_mode(
     let path = dir.path().join("transfer.db");
     let (mut f, _) = bootstrap(&path).await;
     let (template, mut request) = association_fixtures::transfer_request();
-    let mut arrival_planner = if order.is_some() && !remap && !parser_correction {
-        let mut planner = verified_fixture_planner::FixturePlanner::default();
-        Box::pin(planner.declare_template(&mut f, &path, &template)).await;
-        Some(planner)
-    } else {
-        declare_template(&mut f, &path, &template).await;
-        None
-    };
+    declare_template(&mut f, &template).await;
     let rows: Vec<RelationshipSourceRowV1> = serde_json::from_slice(include_bytes!(
         "../../../fixtures/journeys/s2/relationship-source.json"
     ))
@@ -209,15 +200,6 @@ async fn real_service_transfer_mode(
             .collect(),
     };
     let unchanged_native = f.prefix().await.native_head;
-    macro_rules! refresh_arrival_or_restart {
-        ($evidence:expr) => {
-            if let Some(planner) = &mut arrival_planner {
-                Box::pin(planner.refresh(&mut f, &path, $evidence)).await
-            } else {
-                refresh_financial(&mut f, &path, $evidence).await
-            }
-        };
-    }
     for (n, rows) in groups {
         let context = ImportContextV1 {
             receipt_id: fixture::id(n),
@@ -243,7 +225,7 @@ async fn real_service_transfer_mode(
         .unwrap();
         let evidence = ImportEvidence::new_relationship(capture).unwrap();
         let import = evidence.request();
-        refresh_arrival_or_restart!(Some(evidence));
+        refresh_financial(&mut f, Some(evidence)).await;
         submit(
             &mut f,
             12000 + u128::from(n),
@@ -273,14 +255,14 @@ async fn real_service_transfer_mode(
             edge.source.capture = fixture::id(1501 + 10 * u32::try_from(position).unwrap());
         }
     }
-    let before = refresh_arrival_or_restart!(None);
+    let before = refresh_financial(&mut f, None).await;
     let result = submit(
         &mut f,
         12001,
         OperationV1::AssociateLegsComplete(request.clone()),
     )
     .await;
-    let mut after = refresh_arrival_or_restart!(None);
+    let mut after = refresh_financial(&mut f, None).await;
     assert_eq!(after.through, result.commit.unwrap());
     assert_ne!(
         after.accounting.as_ref().unwrap().prefix.native_head,
@@ -360,7 +342,7 @@ async fn real_service_transfer_mode(
                 assert_eq!(batch.revision.row.source_revision, "original");
                 let evidence = ImportEvidence::new_relationship_parse(batch).unwrap();
                 let import = evidence.request();
-                refresh_financial(&mut f, &path, Some(evidence)).await;
+                refresh_financial(&mut f, Some(evidence)).await;
                 submit(
                     &mut f,
                     16000 + u128::from(n),
@@ -383,7 +365,7 @@ async fn real_service_transfer_mode(
             for leg in &mut next.legs {
                 leg.interpretation = SourceValue::Known(next.revision.interpretation.clone());
             }
-            let current = refresh_financial(&mut f, &path, None).await;
+            let current = refresh_financial(&mut f, None).await;
             assert_eq!(
                 current.records.get(&capture.id),
                 Some(&AuthoritativeRecordV1::RelationshipCapture(capture.clone()))
@@ -399,7 +381,7 @@ async fn real_service_transfer_mode(
                 .is_err()
             );
         } else {
-            publish_relationship_rows(&mut f, &path, 1700, revised.clone()).await;
+            publish_relationship_rows(&mut f, 1700, revised.clone()).await;
         }
         assert_eq!(f.prefix().await.native_head, native_before);
         let mut body = f.body(14000);
@@ -425,13 +407,13 @@ async fn real_service_transfer_mode(
         // same session. Exercise the documented close/reopen recovery boundary.
         f.service.close().await.unwrap();
         f.service = f.reopen().await;
-        refresh_financial(&mut f, &path, None).await;
+        refresh_financial(&mut f, None).await;
         let result = f
             .service
             .submit(f.ctx(), body.clone(), f.approve(&body))
             .await
             .unwrap();
-        after = refresh_financial(&mut f, &path, None).await;
+        after = refresh_financial(&mut f, None).await;
         for (id, record) in original.records {
             assert_eq!(after.records.get(&id), Some(&record));
         }
@@ -475,7 +457,7 @@ async fn real_service_transfer_mode(
             row.status = RelationshipSourceStatusV1::Tombstone;
             row.facets.clear();
         }
-        publish_relationship_rows(&mut f, &path, 1800, revised).await;
+        publish_relationship_rows(&mut f, 1800, revised).await;
         after = f.service.verified_projection().unwrap();
         assert_eq!(f.prefix().await.native_head, before_tombstone);
     }
@@ -528,12 +510,7 @@ async fn cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings(
     }
 }
 
-async fn publish_relationship_rows(
-    f: &mut Fixture,
-    path: &Path,
-    n: u32,
-    rows: Vec<RelationshipSourceRowV1>,
-) {
+async fn publish_relationship_rows(f: &mut Fixture, n: u32, rows: Vec<RelationshipSourceRowV1>) {
     let context = ImportContextV1 {
         receipt_id: fixture::id(n),
         source: SourceIdentityV1 {
@@ -558,14 +535,14 @@ async fn publish_relationship_rows(
     .unwrap();
     let evidence = ImportEvidence::new_relationship(capture).unwrap();
     let import = evidence.request();
-    refresh_financial(f, path, Some(evidence)).await;
+    refresh_financial(f, Some(evidence)).await;
     submit(
         f,
         12000 + u128::from(n),
         currents_protocol::OperationV1::PublishImport(import),
     )
     .await;
-    refresh_financial(f, path, None).await;
+    refresh_financial(f, None).await;
 }
 #[tokio::test]
 async fn cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice() {
@@ -575,12 +552,12 @@ async fn cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice
         let path = dir.path().join("payroll.db");
         let (mut f, _) = bootstrap(&path).await;
         let (template, mut request) = association_fixtures::payroll_request();
-        declare_template(&mut f, &path, &template).await;
+        declare_template(&mut f, &template).await;
         let rows = serde_json::from_slice(include_bytes!(
             "../../../fixtures/journeys/s3/relationship-source.json"
         ))
         .unwrap();
-        publish_relationship_rows(&mut f, &path, 1600, rows).await;
+        publish_relationship_rows(&mut f, 1600, rows).await;
         let before = f.prefix().await;
         let mut net = request.clone();
         net.legs = vec![request.legs[4].clone()];
@@ -624,7 +601,7 @@ async fn cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice
             OperationV1::AssociateLegsComplete(request.clone()),
         )
         .await;
-        let state = refresh_financial(&mut f, &path, None).await;
+        let state = refresh_financial(&mut f, None).await;
         let index = state.accounting.as_ref().unwrap();
         assert_eq!(
             request
@@ -665,14 +642,14 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("lifecycle.db");
     let (mut f, _) = bootstrap(&path).await;
-    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
     let mut requests = Vec::new();
     for (n, day) in [
         (200, "2026-11-01"),
         (220, "2026-11-02"),
         (240, "2026-11-03"),
     ] {
-        publish_legacy(&mut f, &path, n, "1", day).await;
+        publish_legacy(&mut f, n, "1", day).await;
         let mut request = fixture::posted(legacy_binding(n), n + 100, 30);
         request.legs[0].leg.effective = fixture::date(day);
         request.legs[0].leg.posting = fixture::date(day);
@@ -688,11 +665,11 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
             OperationV1::AdoptActivity(request.clone()),
         )
         .await;
-        refresh_financial(&mut f, &path, None).await;
+        refresh_financial(&mut f, None).await;
         requests.push(request);
     }
     let before_reparse = f.prefix().await.native_head;
-    publish_legacy(&mut f, &path, 200, "2", "2026-11-01").await;
+    publish_legacy(&mut f, 200, "2", "2026-11-01").await;
     assert_eq!(f.prefix().await.native_head, before_reparse);
     let mut repeated = fixture::posted(
         SourceFacetBindingV1 {
@@ -751,7 +728,7 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
         }),
     )
     .await;
-    let deduped = refresh_financial(&mut f, &path, None).await;
+    let deduped = refresh_financial(&mut f, None).await;
     let index = deduped.accounting.as_ref().unwrap();
     assert_eq!(
         index
@@ -769,15 +746,15 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
     for (key, value) in old.records {
         assert_eq!(deduped.records.get(&key), Some(&value));
     }
-    publish_legacy(&mut f, &path, 260, "1", "2026-11-01").await;
+    publish_legacy(&mut f, 260, "1", "2026-11-01").await;
     let pending = fixture::pending(legacy_binding(260), 360);
     submit(&mut f, 41000, OperationV1::AdoptActivity(pending.clone())).await;
-    let state = refresh_financial(&mut f, &path, None).await;
+    let state = refresh_financial(&mut f, None).await;
     assert_eq!(RecognitionEngine::pending(&state).unwrap().len(), 1);
     let unchanged = f.prefix().await.native_head;
     f.service.close().await.unwrap();
     f.service = f.reopen().await;
-    let state = refresh_financial(&mut f, &path, None).await;
+    let state = refresh_financial(&mut f, None).await;
     assert_eq!(RecognitionEngine::pending(&state).unwrap().len(), 1);
     let expiry = PendingExpiryV1 {
         id: fixture::id(9100),
@@ -787,7 +764,7 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
         governing_policy: pending.governing_policy,
     };
     submit(&mut f, 41001, OperationV1::ExpirePending(expiry)).await;
-    let state = refresh_financial(&mut f, &path, None).await;
+    let state = refresh_financial(&mut f, None).await;
     assert!(RecognitionEngine::pending(&state).unwrap().is_empty());
     assert_eq!(f.prefix().await.native_head, unchanged);
     let mut reconnect = fixture::catalog();
@@ -817,7 +794,7 @@ async fn cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect() {
         OperationV1::SetAccountCatalogComplete(reconnect.clone()),
     )
     .await;
-    let state = refresh_financial(&mut f, &path, None).await;
+    let state = refresh_financial(&mut f, None).await;
     assert_eq!(
         currents_domain::catalog::CatalogEngine::current(&state, fixture::id(11))
             .unwrap()
@@ -958,10 +935,7 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
     let (template, mut original) = association_fixtures::transfer_request();
     let opening = Box::pin(async {
         let (mut f, _) = bootstrap_with_balance(&path, true).await;
-        {
-            let mut planner = verified_fixture_planner::FixturePlanner::default();
-            Box::pin(planner.declare_template(&mut f, &path, &template)).await;
-        }
+        declare_template(&mut f, &template).await;
         let binding = legacy_binding(250);
         let mut adoption = fixture::posted(binding.clone(), 700, 50);
         let basis = OpeningBasisV1 {
@@ -974,7 +948,7 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
         };
         adoption.financial.as_mut().unwrap().opening = Some(basis.clone());
         submit(&mut f, 21001, OperationV1::AdoptActivity(adoption)).await;
-        refresh_financial(&mut f, &path, None).await;
+        refresh_financial(&mut f, None).await;
         let seed = ClosedOpeningSeed::freeze(f, path).await;
         assert!(matches!(
             seed.state.records.get(&fixture::id(700)),
@@ -990,7 +964,7 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
         let path = prior_dir.join("boundary.db");
         let mut f = opening.restore(&path).await;
         let rows = boundary_rows(AFTER, false);
-        publish_relationship_rows(&mut f, &path, 1500, rows.clone()).await;
+        publish_relationship_rows(&mut f, 1500, rows.clone()).await;
         let before = f.prefix().await;
         submit(
             &mut f,
@@ -998,7 +972,7 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
             OperationV1::AssociateLegsComplete(original.clone()),
         )
         .await;
-        refresh_financial(&mut f, &path, None).await;
+        refresh_financial(&mut f, None).await;
         let seed = ClosedOpeningSeed::freeze(f, path).await;
         assert_boundary_capture(&seed.state, 1500, &rows);
         assert!(seed.prefix.native_head != before.native_head);
@@ -1015,7 +989,7 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
                 let mut f = seed.restore(&path).await;
                 let receipt = if remap { 1700 } else { 1500 };
                 let rows = boundary_rows(day, remap);
-                publish_relationship_rows(&mut f, &path, receipt, rows.clone()).await;
+                publish_relationship_rows(&mut f, receipt, rows.clone()).await;
                 let (before, before_prefix) = verified_opening_state(&f).await;
                 assert_boundary_capture(&before, receipt, &rows);
                 let mut request = if remap {
@@ -1027,7 +1001,7 @@ async fn cur_015_opening_boundary_encrypted_initial_and_remap() {
 
                 let (expected, expected_prefix) = if day == AFTER {
                     submit(&mut f, 21003, OperationV1::AssociateLegsComplete(request)).await;
-                    refresh_financial(&mut f, &path, None).await;
+                    refresh_financial(&mut f, None).await;
                     let (state, prefix) = verified_opening_state(&f).await;
                     assert!(prefix.native_head != before_prefix.native_head);
                     (state, prefix)
@@ -1072,7 +1046,7 @@ async fn cur_015_remap_lineage_rejection_preserves_encrypted_replay() {
     let path = dir.path().join("lineage.db");
     let (mut f, _) = bootstrap_with_balance(&path, true).await;
     let (template, mut original) = association_fixtures::transfer_request();
-    declare_template(&mut f, &path, &template).await;
+    declare_template(&mut f, &template).await;
     let binding = legacy_binding(250);
     let mut opening = fixture::posted(binding.clone(), 700, 50);
     opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
@@ -1084,7 +1058,7 @@ async fn cur_015_remap_lineage_rejection_preserves_encrypted_replay() {
         included_activity: vec![],
     });
     submit(&mut f, 21001, OperationV1::AdoptActivity(opening)).await;
-    refresh_financial(&mut f, &path, None).await;
+    refresh_financial(&mut f, None).await;
     let opening_lineage = f
         .service
         .verified_projection()
@@ -1097,15 +1071,15 @@ async fn cur_015_remap_lineage_rejection_preserves_encrypted_replay() {
         })
         .unwrap();
     association_date(&mut original, "2026-11-03");
-    publish_relationship_rows(&mut f, &path, 1500, boundary_rows("2026-11-03", false)).await;
+    publish_relationship_rows(&mut f, 1500, boundary_rows("2026-11-03", false)).await;
     submit(
         &mut f,
         21002,
         OperationV1::AssociateLegsComplete(original.clone()),
     )
     .await;
-    refresh_financial(&mut f, &path, None).await;
-    publish_relationship_rows(&mut f, &path, 1700, boundary_rows("2026-11-03", true)).await;
+    refresh_financial(&mut f, None).await;
+    publish_relationship_rows(&mut f, 1700, boundary_rows("2026-11-03", true)).await;
     let mut next = revised_transfer(&original, fixture::id(1701));
     association_date(&mut next, "2026-11-03");
     for (offset, lineage) in [opening_lineage, original.recognitions[0].lineage]
@@ -1125,7 +1099,7 @@ async fn cur_015_remap_lineage_rejection_preserves_encrypted_replay() {
         assert_eq!(f.service.verified_projection().unwrap().records, records);
     }
     submit(&mut f, 21003, OperationV1::AssociateLegsComplete(next)).await;
-    refresh_financial(&mut f, &path, None).await;
+    refresh_financial(&mut f, None).await;
     let expected = f.service.verified_projection().unwrap().records.clone();
     f.service.close().await.unwrap();
     f.service = f.reopen().await;

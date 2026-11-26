@@ -27,7 +27,8 @@ cargo tree --locked -i libsqlite3-sys
 ```
 
 The checked-in alias always runs xtask with `--locked`. `check core` builds all
-workspace targets and runs the workspace tests; `check msrv` does the same with
+workspace targets and runs the workspace tests, except the vendored doubleentry
+suite that `cargo xtask ticket CUR-005` runs; `check msrv` does the same with
 the explicitly verified 1.94.0 compiler. The probe used by `cur_001_3` verifies
 compiler identity only; the separate MSRV lane is mandatory acceptance evidence.
 The same `qualify msrv --manifest-path <fixture/Cargo.toml>` build/report path

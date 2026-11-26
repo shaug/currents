@@ -18,14 +18,14 @@ async fn cur_016_2_replayed_retirement_blocks_correction() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("correction-guard.db");
     let (mut f, _) = bootstrap(&path).await;
-    declare_template(&mut f, &path, &fixture::monetary_state()).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
     let mut requests = Vec::new();
     for (n, day) in [
         (200, "2026-11-01"),
         (220, "2026-11-02"),
         (240, "2026-11-03"),
     ] {
-        publish_legacy(&mut f, &path, n, "1", day).await;
+        publish_legacy(&mut f, n, "1", day).await;
         let mut request = fixture::posted(legacy_binding(n), n + 100, 30);
         request.legs[0].leg.effective = fixture::date(day);
         request.legs[0].leg.posting = fixture::date(day);
@@ -41,7 +41,7 @@ async fn cur_016_2_replayed_retirement_blocks_correction() {
             OperationV1::AdoptActivity(request.clone()),
         )
         .await;
-        refresh_financial(&mut f, &path, None).await;
+        refresh_financial(&mut f, None).await;
         requests.push(request);
     }
     let survivor = requests[1].event.legs[0];
@@ -85,7 +85,7 @@ async fn cur_016_2_replayed_retirement_blocks_correction() {
         }),
     )
     .await;
-    let deduped = refresh_financial(&mut f, &path, None).await;
+    let deduped = refresh_financial(&mut f, None).await;
     let index = deduped.accounting.as_ref().unwrap();
     assert_eq!(
         index
@@ -230,17 +230,17 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("authority.db");
     let (mut f, _) = bootstrap(&path).await;
-    declare_template(&mut f, &path, &fixture::monetary_state()).await;
-    publish_legacy(&mut f, &path, 200, "1", "2026-11-01").await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
     let activity = fixture::posted(legacy_binding(200), 300, 30);
     let original_id = activity.financial.as_ref().unwrap().recognition_id;
     submit(&mut f, 30200, OperationV1::AdoptActivity(activity.clone())).await;
-    refresh_financial(&mut f, &path, None).await;
-    publish_legacy(&mut f, &path, 220, "1", "2026-11-01").await;
+    refresh_financial(&mut f, None).await;
+    publish_legacy(&mut f, 220, "1", "2026-11-01").await;
     let unrelated = fixture::posted(legacy_binding(220), 320, 30);
     let unrelated_id = unrelated.financial.as_ref().unwrap().recognition_id;
     submit(&mut f, 30220, OperationV1::AdoptActivity(unrelated)).await;
-    let old_basis = refresh_financial(&mut f, &path, None).await;
+    let old_basis = refresh_financial(&mut f, None).await;
     let original_key = RecordId(original_id.0);
     let Some(AuthoritativeRecordV1::Recognition(original)) = old_basis.records.get(&original_key)
     else {
@@ -502,7 +502,7 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
     source.close().await.unwrap();
 
     f.service = f.reopen().await;
-    let current = refresh_financial(&mut f, &path, None).await;
+    let current = refresh_financial(&mut f, None).await;
     for key in [activity.adoption_id, original_key] {
         assert_eq!(current.records.get(&key), old_basis.records.get(&key));
     }
