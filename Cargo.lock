@@ -465,7 +465,7 @@ version = "0.0.0"
 dependencies = [
  "currents-types",
  "jiff",
- "jiff-tzdb 0.1.9",
+ "jiff-tzdb",
  "serde_json",
  "sha2 0.11.1",
 ]
@@ -494,7 +494,7 @@ dependencies = [
  "currents-service",
  "currents-storage",
  "currents-types",
- "jiff-tzdb 0.1.9",
+ "jiff-tzdb",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -1163,7 +1163,7 @@ checksum = "c5e77cbfb9fff4798e283c2d69dff39fc2c45e7da017e5ce95b654e46ea41236"
 dependencies = [
  "jiff-core",
  "jiff-static",
- "jiff-tzdb 1.0.0",
+ "jiff-tzdb",
  "log",
  "portable-atomic",
  "portable-atomic-util",
@@ -1190,12 +1190,6 @@ dependencies = [
  "quote",
  "syn 3.0.10",
 ]
-
-[[package]]
-name = "jiff-tzdb"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7"
 
 [[package]]
 name = "jiff-tzdb"

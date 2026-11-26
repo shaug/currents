@@ -170,7 +170,7 @@ async fn cur_025_service_durable_revisions_and_no_recognition() {
     // Synthetic trusted-host acquisition, before opening commitment Service.
     // The receipt makes TZif content part of accepted authority, not staging-only.
     let (zone, tzif) = jiff_tzdb::get("America/New_York").unwrap();
-    let version = jiff_tzdb::VERSION.unwrap();
+    let version = jiff_tzdb::VERSION;
     let calendar = CalendarEngine::new(zone, version, tzif).unwrap();
     let calendar_data = calendar.calendar_data();
     let store = open(&path).await;
