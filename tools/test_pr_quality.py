@@ -8,7 +8,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 GATES = ("core", "quality-policy", "msrv", "docs", "privacy", "doubleentry")
 SHA_CHECK = 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"'
-SHARDS = [1, 2]
 
 
 class WorkflowContract(unittest.TestCase):
@@ -34,19 +33,26 @@ class WorkflowContract(unittest.TestCase):
 
     def test_platforms_and_gate_commands(self):
         core = self.jobs["core"]
-        self.assertEqual(core["strategy"]["matrix"],
-                         {"os": ["ubuntu-24.04", "macos-15"], "shard": SHARDS})
+        # Linux runners are slower, so Linux core takes three shards and macOS two.
+        self.assertEqual(core["strategy"]["matrix"], {"include": [
+            {"os": os, "shard": shard, "shards": shards}
+            for os, shards in (("ubuntu-24.04", 3), ("macos-15", 2))
+            for shard in range(1, shards + 1)
+        ]})
         self.assertEqual(core["runs-on"], "${{ matrix.os }}")
-        self.assertEqual(core["name"], f"core (${{{{ matrix.os }}}}, ${{{{ matrix.shard }}}}/{len(SHARDS)})")
+        self.assertEqual(core["name"],
+                         "core (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})")
         msrv = self.jobs["msrv"]
-        self.assertEqual(msrv["strategy"]["matrix"], {"shard": SHARDS})
-        self.assertEqual(msrv["name"], f"msrv (${{{{ matrix.shard }}}}/{len(SHARDS)})")
+        self.assertEqual(msrv["strategy"]["matrix"], {"shard": [1, 2, 3]})
+        self.assertEqual(msrv["name"], "msrv (${{ matrix.shard }}/3)")
+        shard = {"core": "${{ matrix.shard }}/${{ matrix.shards }}",
+                 "msrv": "${{ matrix.shard }}/3"}
         for gate in ("core", "msrv", "docs", "privacy"):
             step = {"name": f"Run {gate} gate", "run": f"cargo xtask check {gate}"}
             if gate in ("core", "msrv"):
                 # Each runner takes one shard; together they run every test once.
                 step["env"] = {"CURRENTS_CI_CORE_PHASES": "1",
-                               "CURRENTS_TEST_SHARD": f"${{{{ matrix.shard }}}}/{len(SHARDS)}"}
+                               "CURRENTS_TEST_SHARD": shard[gate]}
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 65)
             else:
                 self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)

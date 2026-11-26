@@ -40,8 +40,8 @@ test runs in its own process on a pool sized to the machine's cores. Set
 `CURRENTS_TEST_JOBS` to change the pool size; `1` runs one test at a time.
 The pool starts the longest tests first (`START_FIRST` in
 `xtask/src/test_pool.rs`), and runs `cargo test --doc` as one of its jobs.
-`CURRENTS_TEST_SHARD=K/N` runs part K of N of that schedule; CI runs core and
-MSRV as two parts on separate runners. In CI the core gate prints each test's
+`CURRENTS_TEST_SHARD=K/N` runs part K of N of that schedule; CI splits Linux
+core and MSRV into three parts and macOS core into two, each on its own runner. In CI the core gate prints each test's
 start time and duration. Nextest is not used.
 
 The vendored suite's result changes only with `vendor/`, `patches/`,
@@ -59,9 +59,9 @@ every push; `check quality` still runs both.
 
 ## Required checks and repository settings
 
-Desired required status names: `quality`, `core (ubuntu-24.04, 1/2)`,
-`core (ubuntu-24.04, 2/2)`, `core (macos-15, 1/2)`, `core (macos-15, 2/2)`,
-`msrv (1/2)`, `msrv (2/2)`, `docs`, `privacy`, `doubleentry (ubuntu-24.04, 1.99.0)`,
+Desired required status names: `quality`, `core (ubuntu-24.04, 1/3)`,
+`core (ubuntu-24.04, 2/3)`, `core (ubuntu-24.04, 3/3)`, `core (macos-15, 1/2)`,
+`core (macos-15, 2/2)`, `msrv (1/3)`, `msrv (2/3)`, `msrv (3/3)`, `docs`, `privacy`, `doubleentry (ubuntu-24.04, 1.99.0)`,
 `doubleentry (macos-15, 1.99.0)`, `doubleentry (ubuntu-24.04, 1.94.0)`.
 A separately authorized administrator should add these exact names to the main
 branch ruleset, require pull requests and up-to-date passing checks, and require
