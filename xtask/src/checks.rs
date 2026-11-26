@@ -388,7 +388,7 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
     let mut evidence = vec![json!({"command":build,"stdout_sha256":sha(text.as_bytes())})];
     // Same tests and doctests as `cargo test --workspace`, one test per process.
     evidence.push(CorePhase::Test.run(phases, || {
-        crate::test_pool::run(&program, rustc.as_deref(), manifest)
+        crate::test_pool::run(&program, rustc.as_deref(), manifest, phases)
     })?);
     let driver = if manifest.is_none() {
         Some(

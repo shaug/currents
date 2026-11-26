@@ -122,20 +122,38 @@ async fn snapshot(store: &EncryptedStore, empty: NativeHead) -> DomainState {
     }
     state
 }
+/// Installs a planner for the service's verified state. The service keeps that
+/// state current after its own commits, so only a reopened service replays.
 async fn refresh(f: &mut Fixture, path: &Path, empty: NativeHead) -> DomainState {
+    match f.service.verified_projection() {
+        Ok(state) => {
+            f.host.reconnect();
+            f.planner.set(Arc::new(Planner {
+                state: state.clone(),
+            }));
+            state
+        }
+        Err(error) if error.class == ErrorClass::ResultUnknown => reopen(f, path, empty).await,
+        Err(error) => panic!("verified projection did not follow the last commit: {error:?}"),
+    }
+}
+/// Reopens the service and checks its full replay against an independent fold
+/// of the retained history.
+async fn reopen(f: &mut Fixture, path: &Path, empty: NativeHead) -> DomainState {
     f.service.close().await.unwrap();
     let store = open(path).await;
     let state = snapshot(&store, empty).await;
     f.host.reconnect();
+    f.planner.set(Arc::new(Planner {
+        state: state.clone(),
+    }));
     f.service = Service::new(
         store,
         DatasetId(support::id(1000).0),
         InstanceId(support::id(999).0),
         ServiceProfile::Synthetic,
         f.host.clone(),
-        Arc::new(Planner {
-            state: state.clone(),
-        }),
+        f.planner.clone(),
         f.clock.clone(),
     )
     .await
@@ -524,7 +542,7 @@ async fn cur_013_1_service_pending_posted_reopen_and_no_double_money() {
         assert_eq!(f.prefix().await, accepted);
     }
     // All authority and original source content survive a second encrypted reopen.
-    let reopened = refresh(&mut f, &path, empty).await;
+    let reopened = reopen(&mut f, &path, empty).await;
     assert!(RecognitionEngine::pending(&reopened).unwrap().is_empty());
     assert_eq!(reopened.accounting.as_ref().unwrap().recognitions.len(), 1);
     for (id, receipt) in original_receipts {

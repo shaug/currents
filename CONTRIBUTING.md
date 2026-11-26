@@ -37,7 +37,10 @@ This is not a claim of production native qualification.
 Core and MSRV run the same tests as `cargo test --workspace`, but each test runs
 in its own process on a pool sized to the machine's cores. Set
 `CURRENTS_TEST_JOBS` to change the pool size; `1` runs one test at a time.
-Doctests still run through `cargo test --doc`. Nextest is not used.
+The pool starts the longest tests first (`START_FIRST` in
+`xtask/src/test_pool.rs`), and runs `cargo test --doc` as one of its jobs.
+In CI the core gate prints each test's start time and duration. Nextest is not
+used.
 In CI only the quality job builds cargo-deny; other jobs install the tools with
 `--without-cargo-deny`.
 

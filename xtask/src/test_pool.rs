@@ -8,12 +8,14 @@ use crate::checks::{checked, output, recorded, root, sha};
 use serde_json::{Value, json};
 use std::{
     env,
+    io::Write,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },
     thread,
+    time::{Duration, Instant},
 };
 
 type Result<T> = std::result::Result<T, String>;
@@ -28,6 +30,47 @@ struct Binary {
 struct Case<'a> {
     binary: &'a Binary,
     name: String,
+}
+
+/// One unit of pool work: the workspace doctests, or the test at an index.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Job {
+    Doctests,
+    Test(usize),
+}
+
+/// Tests that run longest, started first so that none of them is left running
+/// alone at the end. The list only changes the order; a name that no longer
+/// exists changes nothing.
+const START_FIRST: &[&str] = &[
+    // Builds and runs the vendored doubleentry suite in a nested cargo.
+    "cur_005_3",
+    "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
+    "cur_015_opening_boundary_encrypted_initial_and_remap",
+    "cur_014_2_slice_fault",
+    "cur_007_1",
+    "cur_025_service_durable_revisions_and_no_recognition",
+    "history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",
+];
+
+/// The run order: the longest tests, then the doctests, then every other test
+/// in listing order.
+fn schedule(cases: &[Case]) -> Vec<Job> {
+    let rank = |index: &usize| {
+        cases
+            .get(*index)
+            .and_then(|case| START_FIRST.iter().position(|name| *name == case.name))
+            .unwrap_or(START_FIRST.len())
+    };
+    let mut tests: Vec<usize> = (0..cases.len()).collect();
+    tests.sort_by_key(rank);
+    let first = tests
+        .iter()
+        .take_while(|index| rank(index) < START_FIRST.len())
+        .count();
+    let mut jobs: Vec<Job> = tests.iter().copied().map(Job::Test).collect();
+    jobs.insert(first, Job::Doctests);
+    jobs
 }
 
 /// Worker count: `CURRENTS_TEST_JOBS` if set, else every available core.
@@ -80,6 +123,16 @@ fn binaries(messages: &str) -> Result<Vec<Binary>> {
     Ok(found)
 }
 
+/// Best-effort diagnostics: a failed write must not change the result.
+fn timing(label: &str, start: Duration, took: Duration) {
+    let _ = writeln!(
+        std::io::stderr().lock(),
+        "core test start_ms={} duration_ms={} {label}",
+        start.as_millis(),
+        took.as_millis()
+    );
+}
+
 /// Runs `work` on each item with `jobs` threads until `stop` is set, and hands
 /// each result to `each` on the calling thread as soon as it finishes.
 fn pool<T: Sync, R: Send>(
@@ -118,7 +171,14 @@ fn pool<T: Sync, R: Send>(
 
 /// Builds (or reuses) the workspace test binaries, runs each test as its own
 /// process, then runs the doctests that `cargo test --workspace` also runs.
-pub(crate) fn run(program: &Path, rustc: Option<&Path>, manifest: Option<&str>) -> Result<Value> {
+/// With `timings`, it prints when each test started and how long it took to
+/// stderr, which stays out of the evidence.
+pub(crate) fn run(
+    program: &Path,
+    rustc: Option<&Path>,
+    manifest: Option<&str>,
+    timings: bool,
+) -> Result<Value> {
     let mut plan = vec![
         "test",
         "--locked",
@@ -176,6 +236,7 @@ pub(crate) fn run(program: &Path, rustc: Option<&Path>, manifest: Option<&str>) 
 
     let stop = AtomicBool::new(false);
     let mut outputs = vec![String::new(); cases.len()];
+    let mut doctests = None;
     let mut failures = Vec::new();
     let args = |case: &Case| {
         [
@@ -184,25 +245,59 @@ pub(crate) fn run(program: &Path, rustc: Option<&Path>, manifest: Option<&str>) 
             "--test-threads=1".to_owned(),
         ]
     };
+    let began = Instant::now();
     pool(
-        &cases,
+        &schedule(&cases),
         jobs,
         &stop,
-        |case| {
-            let args = args(case);
-            let args: Vec<_> = args.iter().map(String::as_str).collect();
-            output(
-                &case.binary.executable,
-                &args,
-                &case.binary.package_dir,
-                rustc,
-            )
+        |job| {
+            let started = Instant::now();
+            let result = match *job {
+                Job::Doctests => output(program, &doc, &root(), rustc),
+                Job::Test(index) => cases
+                    .get(index)
+                    .ok_or_else(|| "unknown test".to_owned())
+                    .and_then(|case| {
+                        let args = args(case);
+                        let args: Vec<_> = args.iter().map(String::as_str).collect();
+                        output(
+                            &case.binary.executable,
+                            &args,
+                            &case.binary.package_dir,
+                            rustc,
+                        )
+                    }),
+            };
+            (*job, started, started.elapsed(), result)
         },
         // Evidence is recorded here, on the reporting thread, as results arrive.
-        |index, result| {
+        |_, (job, started, took, result)| {
+            let index = match job {
+                Job::Doctests => {
+                    if timings {
+                        timing("doctests", started.duration_since(began), took);
+                    }
+                    match result.and_then(|out| recorded(program, &doc, &root(), rustc, &out)) {
+                        Ok(stdout) => doctests = Some(stdout),
+                        Err(error) => {
+                            stop.store(true, Ordering::SeqCst);
+                            failures.push(error);
+                        }
+                    }
+                    return;
+                }
+                Job::Test(index) => index,
+            };
             let Some(case) = cases.get(index) else {
                 return;
             };
+            if timings {
+                timing(
+                    &format!("{} {}", case.binary.label, case.name),
+                    started.duration_since(began),
+                    took,
+                );
+            }
             let args = args(case);
             let args: Vec<_> = args.iter().map(String::as_str).collect();
             let recorded = result.and_then(|out| {
@@ -240,7 +335,7 @@ pub(crate) fn run(program: &Path, rustc: Option<&Path>, manifest: Option<&str>) 
     if !failures.is_empty() {
         return Err(failures.join("\n"));
     }
-    let doctests = checked(program, &doc, &root(), rustc)?;
+    let doctests = doctests.ok_or("doctests did not run")?;
 
     let mut names: Vec<_> = cases
         .iter()
@@ -261,11 +356,39 @@ pub(crate) fn run(program: &Path, rustc: Option<&Path>, manifest: Option<&str>) 
 
 #[cfg(test)]
 mod tests {
-    use super::{binaries, pool};
+    use super::{Binary, Case, Job, START_FIRST, binaries, pool, schedule};
     use std::{
-        path::Path,
+        path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
     };
+
+    #[test]
+    fn schedule_starts_long_tests_then_doctests() {
+        let binary = Binary {
+            executable: PathBuf::new(),
+            package_dir: PathBuf::new(),
+            label: "pkg/target".into(),
+        };
+        let case = |name: &str| Case {
+            binary: &binary,
+            name: name.into(),
+        };
+        let (Some(first), Some(second)) = (START_FIRST.first(), START_FIRST.get(1)) else {
+            panic!("START_FIRST lists at least two tests");
+        };
+        let cases = [case("a"), case(second), case("b"), case(first)];
+        assert_eq!(
+            schedule(&cases),
+            [
+                Job::Test(3),
+                Job::Test(1),
+                Job::Doctests,
+                Job::Test(0),
+                Job::Test(2)
+            ]
+        );
+        assert_eq!(schedule(&cases[..1]), [Job::Doctests, Job::Test(0)]);
+    }
 
     #[test]
     fn build_plan_keeps_only_test_executables() {
