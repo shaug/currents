@@ -638,7 +638,8 @@ impl SegmentEngine {
                 .iter()
                 .flat_map(|d| d.legs.iter().flat_map(|l| &l.sources)),
         ) {
-            *moved.entry(fact_in(&lookup, source)?).or_default() += 1;
+            let count = moved.entry(fact_in(&lookup, source)?).or_default();
+            *count = count.saturating_add(1);
         }
         for source in &old_basis.included_activity {
             let key = fact_in(&lookup, source)?;
