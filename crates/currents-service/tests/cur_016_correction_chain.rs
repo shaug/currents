@@ -45,8 +45,21 @@ fn prepare(
     request: &CorrectionRequestV1,
     serial: u32,
 ) -> Result<PreparedCommit, EngineError> {
+    let plan = CorrectionEngine::correct_durable(state, fixture::id(serial), request)?;
+    prepared(state, plan, serial)
+}
+
+/// The commit input for a correction `plan` whose revision is `serial`.
+fn prepared(
+    state: &DomainState,
+    plan: DecisionPlan,
+    serial: u32,
+) -> Result<PreparedCommit, EngineError> {
     let revision = fixture::id(serial);
-    let plan = CorrectionEngine::correct_durable(state, revision, request)?;
+    let AccountingIntent::Correction(request) = &plan.accounting else {
+        return Err(EngineError::invalid());
+    };
+    let request = request.clone();
     let frozen_batch = AccountingAdapter::freeze(&plan.accounting, state)?;
     Ok(PreparedCommit {
         evidence: vec![],
@@ -70,6 +83,132 @@ fn prepare(
         manifest_id: fixture::id(serial + 2),
         control: Arc::new(CommitControl::default()),
     })
+}
+
+/// `original` again from `serial` with its counter posting on `counter`.
+fn reinterpretation(
+    state: &DomainState,
+    original: RecognitionId,
+    serial: u32,
+    counter: u32,
+) -> CorrectionRequestV1 {
+    let mut request = fresh_correction(state, original, serial);
+    request.replacement[0].postings[1].account_id = AccountId(fixture::id(counter).0);
+    request.reason = "Reinterpret the purchase; its leg stays".into();
+    request
+}
+
+/// Commit `prepared` through the encrypted writer while the service is closed.
+async fn commit(f: &mut support::Fixture, path: &std::path::Path, prepared: PreparedCommit) {
+    f.service.close().await.unwrap();
+    let store = open(path).await;
+    synthetic_commit_verified_correction(store.writer(), prepared)
+        .await
+        .unwrap();
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+}
+
+#[tokio::test]
+async fn cur_016_2_reinterpreted_tip_chain() {
+    const UNRESOLVED: u32 = 40;
+    const EXPENSE: u32 = 30;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reinterpreted-chain.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
+    let purchase = fixture::posted(legacy_binding(200), 300, EXPENSE);
+    let root = purchase.financial.as_ref().unwrap().recognition_id;
+    let adoption = purchase.adoption_id;
+    let policy = purchase.governing_policy.clone();
+    submit(&mut f, 55_001, OperationV1::AdoptActivity(purchase)).await;
+    let initial = refresh_financial(&mut f, None).await;
+    let reinterpret = |state: &DomainState,
+                       request: &CorrectionRequestV1,
+                       serial: u32,
+                       unresolved: Option<u32>| {
+        let unresolved = unresolved.map(|n| AccountId(fixture::id(n).0));
+        let revision = fixture::id(serial);
+        CorrectionEngine::reinterpret(state, revision, request, &policy, unresolved)
+    };
+
+    // The expense becomes unresolved equity.
+    let first = reinterpretation(&initial, root, 9400, UNRESOLVED);
+    let middle = first.replacement[0].id;
+    let plan = reinterpret(&initial, &first, 55_010, Some(UNRESOLVED)).unwrap();
+    commit(&mut f, &path, prepared(&initial, plan, 55_010).unwrap()).await;
+    let once = refresh_financial(&mut f, None).await;
+    let index = once.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&root));
+    assert!(!index.reversed.contains(&middle));
+
+    // The retired original cannot be corrected again, and a replacement that
+    // reuses its ID would close a cycle.
+    let retired = reinterpretation(&once, root, 9450, EXPENSE);
+    assert!(reinterpret(&once, &retired, 55_020, None).is_err());
+    assert!(prepare(&once, &fresh_correction(&once, root, 9450), 55_020).is_err());
+    let mut cycle = reinterpretation(&once, middle, 9500, EXPENSE);
+    cycle.replacement[0].id = root;
+    assert!(reinterpret(&once, &cycle, 55_020, None).is_err());
+
+    // The live tip is reinterpreted again, back to the expense account.
+    let second = reinterpretation(&once, middle, 9500, EXPENSE);
+    let tip = second.replacement[0].id;
+    let plan = reinterpret(&once, &second, 55_030, None).unwrap();
+    commit(&mut f, &path, prepared(&once, plan, 55_030).unwrap()).await;
+    let current = refresh_financial(&mut f, None).await;
+    let index = current.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&root));
+    assert!(index.reversed.contains(&middle));
+    assert!(!index.reversed.contains(&tip));
+    assert_eq!(
+        current.records.get(&adoption),
+        initial.records.get(&adoption)
+    );
+    for (old, next, owner) in [(root, middle, 55_010), (middle, tip, 55_030)] {
+        assert!(matches!(current.records.get(&fixture::id(owner)),
+            Some(AuthoritativeRecordV1::RecognitionCorrectionRevision(r))
+                if r.prior_recognition == old
+                    && r.replacement_recognition == next
+                    && r.schema_version == 2));
+    }
+    for retired in [root, middle] {
+        let again = reinterpretation(&current, retired, 9600, EXPENSE);
+        assert!(reinterpret(&current, &again, 55_040, None).is_err());
+    }
+    use currents_domain::recognition::RecognitionEngine;
+    RecognitionEngine::audit(&current).unwrap();
+
+    // A fresh rebuild re-admits both reinterpretations.
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let head = store.writer().audited_prefix().await.unwrap().native_head;
+    let fresh = open(&dir.path().join("reinterpreted-rebuild.db")).await;
+    let report = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(report.native_head, head);
+    store.close().await.unwrap();
+
+    // A forged edge back to the root fails the chain audit.
+    let Some(AuthoritativeRecordV1::RecognitionCorrectionRevision(last)) =
+        current.records.get(&fixture::id(55_030))
+    else {
+        panic!("the second revision is retained");
+    };
+    let mut forged = current.clone();
+    let key = fixture::id(55_050);
+    forged.records.insert(
+        key,
+        AuthoritativeRecordV1::RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1 {
+            id: key,
+            prior_recognition: tip,
+            replacement_recognition: root,
+            ..last.clone()
+        }),
+    );
+    assert!(RecognitionEngine::audit(&forged).is_err());
 }
 
 #[tokio::test]

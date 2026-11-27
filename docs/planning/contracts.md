@@ -170,6 +170,34 @@ unsupported. A real refund is new economic activity at its own date, not
 compensation of an archived posting. General corrections and segment
 replacement remain outside this checkpoint.
 
+### CUR-016 reinterpretation checkpoint
+
+`CorrectionEngine::reinterpret(state, revision_id, request, governing_policy,
+unresolved_account)` corrects how a live standalone activity recognition is
+interpreted while its legs stay. The replacement's external postings must be
+the legs exactly: one posting per leg with its account, amount, effective date
+and posting date. Its other postings may use income, expense or named
+unresolved-equity control accounts. Adoption's recognition rules for those
+legs, under the exact retained `governing_policy` version and the named
+`unresolved_account`, must derive the replacement with the original lineage,
+bookkeeping date and date policy. The planner refuses anything else, including
+opening equity, clearing, an unbalanced entry and a missing or unretained
+policy version.
+
+The plan holds a version-2 `RecognitionCorrectionRevisionV1` whose
+`ReinterpretedStableLegs` disposition records the governing policy, the
+unresolved account and `changed_accounts`: every account whose net change is
+nonzero on some date, in ID order. Its accounting intent is one `Correction`,
+so C05 reverses the original once at its own dates and adds the replacement.
+The old adoption, legs and recognition stay byte-identical. Replay derives the
+plan again from the revision, and the chain audit checks each reinterpreted
+link with the rules for retained history. A later identity correction or
+reinterpretation starts from the live tip. Claims and organization follow the
+dependent invalidation checkpoint. Corrections that change amounts, dates or
+leg splits are a separate ticket (#115). Transfer, payroll and duplicate
+families stay with CUR-015 association remaps, and openings with segment
+replacement. There is no command route.
+
 ### CUR-016 segment replacement checkpoint
 
 `SegmentEngine::replace` previews the replacement of one account component's
@@ -256,7 +284,7 @@ changed transfer economics and other association revisions remain refused.
 
 ### CUR-016 dependent invalidation checkpoint
 
-A segment replacement and a durable identity correction each assess the
+A segment replacement and a durable correction each assess the
 records that depend on them. The change is the plan's corrections: each
 reverses its active recognition and adds its replacements. Its net posting
 change is kept by account, unit, effective date and posting date. A

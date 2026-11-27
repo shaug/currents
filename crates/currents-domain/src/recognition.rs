@@ -475,6 +475,55 @@ fn monetary(
         date_policy: terms.date_policy.clone(),
     }))
 }
+/// The recognition that `request` adopts again, by the rules of a new
+/// adoption when `admission` holds, otherwise by the rules for retained
+/// history. A correction uses it to check a new interpretation of legs that
+/// are already adopted, so their evidence ownership is not checked again.
+pub(crate) fn readopt(
+    state: &DomainState,
+    request: &ActivityRequestV1,
+    admission: bool,
+) -> Result<Option<RecognitionV1>, EngineError> {
+    validate(state, request, admission)?;
+    let mode = if admission {
+        Admission::Ordinary
+    } else {
+        Admission::Audit
+    };
+    monetary(state, request, mode)
+}
+/// The external postings are the legs exactly: one posting per leg, with its
+/// account, amount, effective date and posting date.
+pub(crate) fn postings_are_legs(
+    state: &DomainState,
+    legs: &[AdoptedLegV1],
+    postings: &[PostingV1],
+) -> Result<bool, EngineError> {
+    let mut unmatched = Vec::new();
+    for item in legs {
+        let leg = &item.leg;
+        let movement = leg.movement.normalized()?;
+        unmatched.push((leg.account_id, movement, &leg.effective, &leg.posting));
+    }
+    for posting in postings {
+        let c = component(state, posting.account_id)?;
+        if CatalogEngine::current(state, c.id)?.origin != AccountOriginV1::External {
+            continue;
+        }
+        let amount = posting.amount.normalized()?;
+        let key = (
+            posting.account_id,
+            amount,
+            &posting.effective,
+            &posting.posting,
+        );
+        let Some(at) = unmatched.iter().position(|leg| *leg == key) else {
+            return Ok(false);
+        };
+        unmatched.swap_remove(at);
+    }
+    Ok(unmatched.is_empty())
+}
 /// A backfilled transfer leg posts to clearing. Only a segment replacement,
 /// which joins that leg to a transfer family, may add one. Retained history
 /// keeps it only while an association revision names its recognition.

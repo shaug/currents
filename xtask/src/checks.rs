@@ -431,6 +431,11 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_organization_on_stable_leg_survives",
             "cur_016_organization_on_retired_leg_asks_owner",
             "cur_016_unsupported_dependents_still_refuse",
+            "cur_016_reinterpret_deposit_as_income",
+            "cur_016_reinterpret_split_purchase",
+            "cur_016_reinterpret_refuses_leg_changes",
+            "cur_016_reinterpretation_invalidates_claims_in_scope",
+            "cur_016_reinterpretation_keeps_organization",
         ],
     ),
     (
@@ -446,6 +451,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_1_encrypted_cross_account_commit",
             "cur_016_backfill_invalidates_claim_in_scope",
             "cur_016_replay_checks_invalidations",
+            "cur_016_reinterpretation_encrypted_commit",
         ],
     ),
     (
@@ -454,6 +460,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
         &[
             "cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle",
             "cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal",
+            "cur_016_2_reinterpreted_tip_chain",
         ],
     ),
 ];
@@ -491,6 +498,7 @@ fn ticket_cur_016() -> Result<Value> {
         "ticket":"CUR-016",
         "suites":evidence,
         "fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s4/date-floor.json")).map_err(|e| e.to_string())?),
+        "reinterpretation_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s5/reinterpretation.json")).map_err(|e| e.to_string())?),
         "scope":"synthetic correction and segment replacement through encrypted C04/C05/C06 and the feature-gated trusted-host path; no command route or production activation"
     }))
 }

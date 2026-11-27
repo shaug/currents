@@ -1596,3 +1596,171 @@ async fn cur_016_replay_checks_invalidations() {
         assert_eq!(prior.invalidated, history.claimed.invalidated);
     }
 }
+
+const UNRESOLVED: u32 = 40;
+const WAGES: u32 = 45;
+
+#[tokio::test]
+async fn cur_016_reinterpretation_encrypted_commit() {
+    use currents_domain::correction::{CorrectionEngine, CorrectionRequestV1};
+    use currents_protocol::OperationV1;
+    use currents_service::{ReplayCoordinator, synthetic_commit_verified_correction};
+    let journey: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/journeys/s5/reinterpretation.json"
+    ))
+    .unwrap();
+    assert_eq!(journey["account"], "A");
+    let day = journey["deposit"]["date"].as_str().unwrap();
+    let deposited = i128::from(journey["deposit"]["amount"].as_i64().unwrap());
+    let (a, unresolved, wages) = (account(ACCOUNT_A), account(UNRESOLVED), account(WAGES));
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reinterpretation.db");
+    let evidence = [RetainedEvidence {
+        n: 3100,
+        value: deposited,
+        day,
+        kind: ObservationKind::Movement,
+        text: "Synthetic unexplained deposit to account A",
+    }];
+    let (mut f, _) = bootstrap_with_evidence(&path, &evidence).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    let mut income = fixture::catalog();
+    income.revision_id = fixture::id(WAGES + 2);
+    income.catalog.component_id = fixture::id(WAGES + 1);
+    income.catalog.account_id = wages;
+    income.catalog.account_class = AccountClass::Income;
+    income.catalog.normal_sign = NormalSign::Credit;
+    income.catalog.display_name = "Synthetic wages".into();
+    income.ownership.account_id = wages;
+    income.origin = AccountOriginV1::Internal(InternalAccountV1 {
+        role: ControlRoleV1::IncomeFlow,
+        created_at: fixture::date("2026-01-01"),
+    });
+    submit(
+        &mut f,
+        11_200,
+        OperationV1::SetAccountCatalogComplete(income),
+    )
+    .await;
+    refresh_financial(&mut f, None).await;
+    let mut deposit = dated_draft(
+        retained(3100, deposited),
+        3110,
+        ACCOUNT_A,
+        UNRESOLVED,
+        day,
+        day,
+    );
+    deposit.financial.as_mut().unwrap().unresolved_account = Some(unresolved);
+    let original = deposit.financial.as_ref().unwrap().recognition_id;
+    let adoption = deposit.adoption_id;
+    let governing = deposit.governing_policy.clone();
+    submit(&mut f, 53_200, OperationV1::AdoptActivity(deposit)).await;
+    let old = refresh_financial(&mut f, None).await;
+
+    let Some(AuthoritativeRecordV1::Recognition(prior)) = old.records.get(&RecordId(original.0))
+    else {
+        panic!("the deposit's recognition is retained");
+    };
+    let mut replacement = prior.clone();
+    replacement.id = RecognitionId(fixture::id(9300).0);
+    for (posting, n) in replacement.postings.iter_mut().zip(9301..) {
+        posting.id = fixture::id(n);
+    }
+    replacement.postings[1].account_id = wages;
+    let request = CorrectionRequestV1 {
+        active_recognition: original,
+        replacement: vec![replacement.clone()],
+        remapping: vec![],
+        reason: "The unexplained deposit is wages".into(),
+    };
+    let revision = fixture::id(9310);
+    let plan = CorrectionEngine::reinterpret(&old, revision, &request, &governing, None).unwrap();
+    let frozen = currents_accounting::AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let receipt = synthetic_commit_verified_correction(
+        store.writer(),
+        segment_commit(&plan, &frozen, 53_210, Default::default()),
+    )
+    .await
+    .expect("the encrypted writer commits the reinterpretation");
+    assert_eq!(receipt.commit, CommitSeq(old.through.0 + 1));
+    let source = store.history();
+
+    // History through the commit before the correction keeps the old belief.
+    let earlier = open(&dir.path().join("before-reinterpretation.db")).await;
+    let before = replay_through(&source, old.through, &earlier).await;
+    earlier.close().await.unwrap();
+    assert!(
+        !before
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&original)
+    );
+    assert_eq!(
+        total(recognized_postings(&before, unresolved)),
+        fixture::amount(-deposited)
+    );
+    assert_eq!(
+        total(recognized_postings(&before, wages)),
+        fixture::amount(0)
+    );
+
+    // History through the correction shows the new interpretation; A's
+    // postings keep their amounts and dates.
+    let later = open(&dir.path().join("through-reinterpretation.db")).await;
+    let after = replay_through(&source, receipt.commit, &later).await;
+    later.close().await.unwrap();
+    assert!(
+        after
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&original)
+    );
+    let sorted = |state: &DomainState| {
+        let mut postings = recognized_postings(state, a);
+        postings.sort_by(|x, y| x.0.cmp(&y.0));
+        postings
+    };
+    assert_eq!(sorted(&after), sorted(&before));
+    assert_eq!(
+        total(recognized_postings(&after, unresolved)),
+        fixture::amount(0)
+    );
+    assert_eq!(
+        total(recognized_postings(&after, wages)),
+        fixture::amount(-deposited)
+    );
+
+    // A fresh rebuild and a reopened store reach the same native head.
+    let rebuilt = open(&dir.path().join("rebuild.db")).await;
+    let report = ReplayCoordinator::rebuild(source, rebuilt).await.unwrap();
+    assert_eq!(report.through, receipt.commit);
+    assert_eq!(report.native_head, receipt.native_head);
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let current = refresh_financial(&mut f, None).await;
+    let index = current.accounting.as_ref().unwrap();
+    assert_eq!(index.prefix.native_head, receipt.native_head);
+    for key in [adoption, RecordId(original.0)] {
+        assert_eq!(current.records.get(&key), old.records.get(&key));
+    }
+    assert!(matches!(
+        current.records.get(&revision),
+        Some(AuthoritativeRecordV1::RecognitionCorrectionRevision(r))
+            if r.schema_version == 2
+                && r.remap_disposition == RecognitionCorrectionRemapV1::ReinterpretedStableLegs(
+                    StableLegsReinterpretationV1 {
+                        governing_policy: governing.clone(),
+                        unresolved_account: None,
+                        changed_accounts: vec![unresolved, wages],
+                    }
+                )
+    ));
+}

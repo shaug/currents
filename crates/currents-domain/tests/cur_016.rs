@@ -725,10 +725,22 @@ const FAMILY: u32 = 1650;
 const RECEIPT: u32 = 1610;
 
 fn declare(state: &mut DomainState, n: u32, role: Option<ControlRoleV1>) {
+    declare_as(state, n, AccountClass::Asset, NormalSign::Debit, role);
+}
+/// Declare account `n` of `class`, internal with `role` when there is one.
+fn declare_as(
+    state: &mut DomainState,
+    n: u32,
+    class: AccountClass,
+    sign: NormalSign,
+    role: Option<ControlRoleV1>,
+) {
     let mut request = catalog();
     request.revision_id = id(n + 2);
     request.catalog.component_id = id(n + 1);
     request.catalog.account_id = account(n);
+    request.catalog.account_class = class;
+    request.catalog.normal_sign = sign;
     request.ownership.account_id = account(n);
     if let Some(role) = role {
         request.origin = AccountOriginV1::Internal(InternalAccountV1 {
@@ -743,7 +755,7 @@ fn declare(state: &mut DomainState, n: u32, role: Option<ControlRoleV1>) {
         NativeAccountMappingV1 {
             account_id: account(n),
             unit_id: UnitId(id(1).0),
-            account_class: AccountClass::Asset,
+            account_class: class,
             path: format!("Currents:A{}", id(n).0.simple()),
         },
     );
@@ -1386,5 +1398,419 @@ fn cur_016_unsupported_dependents_still_refuse() {
         assert!(SegmentEngine::replace(&state, &request).is_err());
         assert!(CorrectionEngine::correct_durable(&state, id(4300), &correction).is_err());
         assert_eq!(snapshot(&state), before);
+    }
+}
+
+// Reinterpretation: the legs stay and only the internal postings change.
+const UNRESOLVED: u32 = 40;
+const WAGES: u32 = 45;
+const EXPENSE_B: u32 = 35;
+const CARD: u32 = 90;
+const DEPOSIT: u32 = 8000;
+const CARD_PURCHASE: u32 = 8050;
+
+fn governing() -> PolicyReferenceV1 {
+    PolicyReferenceV1 {
+        id: id(104),
+        version: 1,
+    }
+}
+/// Unanchored checking (A) with wages income, a second expense account (B),
+/// an external card account and a clearing account.
+fn reinterpretable() -> DomainState {
+    let mut state = unanchored();
+    let income = Some(ControlRoleV1::IncomeFlow);
+    declare_as(
+        &mut state,
+        WAGES,
+        AccountClass::Income,
+        NormalSign::Credit,
+        income,
+    );
+    let expense = Some(ControlRoleV1::ExpenseFlow);
+    declare_as(
+        &mut state,
+        EXPENSE_B,
+        AccountClass::Expense,
+        NormalSign::Debit,
+        expense,
+    );
+    declare_as(
+        &mut state,
+        CARD,
+        AccountClass::Liability,
+        NormalSign::Credit,
+        None,
+    );
+    declare(&mut state, CLEARING, Some(ControlRoleV1::Clearing));
+    state
+}
+/// A 3,300 USD deposit to checking on 2026-11-02, adopted as debit checking,
+/// credit unresolved equity. Its leg is `DEPOSIT + 11` and its recognition
+/// `DEPOSIT + 13`.
+fn deposited() -> DomainState {
+    let mut state = reinterpretable();
+    let source = dated(
+        &mut state,
+        DEPOSIT,
+        3300,
+        "2026-11-02",
+        ObservationKind::Movement,
+    );
+    let mut request = posted(source, DEPOSIT + 10, UNRESOLVED);
+    at(&mut request, "2026-11-02");
+    request.financial.as_mut().unwrap().unresolved_account = Some(account(UNRESOLVED));
+    let plan = RecognitionEngine::adopt(&state, &request).unwrap();
+    admit(&state, &planned(&state, &plan)).unwrap()
+}
+/// A 96 USD card purchase on 2026-11-03, adopted to expense account A.
+/// Its recognition is `CARD_PURCHASE + 13`.
+fn card_purchase() -> DomainState {
+    let mut state = reinterpretable();
+    let source = dated(
+        &mut state,
+        CARD_PURCHASE,
+        -96,
+        "2026-11-03",
+        ObservationKind::Movement,
+    );
+    let mut request = posted(source, CARD_PURCHASE + 10, EXPENSE);
+    at(&mut request, "2026-11-03");
+    request.legs[0].leg.account_id = account(CARD);
+    request.financial.as_mut().unwrap().postings[0].account_id = account(CARD);
+    let plan = RecognitionEngine::adopt(&state, &request).unwrap();
+    admit(&state, &planned(&state, &plan)).unwrap()
+}
+/// Recognition `original` again with fresh identities from `base`: its first
+/// (external) posting as it was, then one posting per `(account, amount)`.
+fn reinterpretation(
+    state: &DomainState,
+    original: u32,
+    base: u32,
+    counters: &[(u32, i128)],
+) -> currents_domain::correction::CorrectionRequestV1 {
+    let AuthoritativeRecordV1::Recognition(prior) = &state.records[&id(original)] else {
+        panic!("recognition {original} missing")
+    };
+    let mut replacement = prior.clone();
+    replacement.id = recognition(base);
+    let template = replacement.postings[1].clone();
+    replacement.postings.truncate(1);
+    replacement
+        .postings
+        .extend(counters.iter().map(|&(on, value)| PostingV1 {
+            account_id: account(on),
+            amount: amount(value),
+            ..template.clone()
+        }));
+    for (posting, n) in replacement.postings.iter_mut().zip(base + 1..) {
+        posting.id = id(n);
+    }
+    currents_domain::correction::CorrectionRequestV1 {
+        active_recognition: prior.id,
+        replacement: vec![replacement],
+        remapping: vec![],
+        reason: "Reinterpret the activity; its legs stay".into(),
+    }
+}
+fn reinterpret(
+    state: &DomainState,
+    revision: u32,
+    request: &currents_domain::correction::CorrectionRequestV1,
+    unresolved: Option<u32>,
+) -> Result<DecisionPlan, EngineError> {
+    currents_domain::correction::CorrectionEngine::reinterpret(
+        state,
+        id(revision),
+        request,
+        &governing(),
+        unresolved.map(account),
+    )
+}
+fn correction_revision(plan: &DecisionPlan) -> &RecognitionCorrectionRevisionV1 {
+    let Some(AuthoritativeRecordV1::RecognitionCorrectionRevision(revision)) = plan.records.first()
+    else {
+        panic!("the plan starts with its revision")
+    };
+    revision
+}
+/// The native balance of account `n`, zero when nothing posts to it.
+fn balance(state: &DomainState, n: u32) -> Amount {
+    balances(state)
+        .get(&account(n))
+        .copied()
+        .unwrap_or(amount(0))
+        .normalized()
+        .unwrap()
+}
+
+#[test]
+fn cur_016_reinterpret_deposit_as_income() {
+    let state = deposited();
+    let original = recognition(DEPOSIT + 13);
+    let request = reinterpretation(&state, DEPOSIT + 13, 8100, &[(WAGES, -3300)]);
+    let plan = reinterpret(&state, 8200, &request, None).unwrap();
+    assert_eq!(
+        correction_revision(&plan),
+        &RecognitionCorrectionRevisionV1 {
+            id: id(8200),
+            schema_version: 2,
+            prior_recognition: original,
+            replacement_recognition: recognition(8100),
+            reason: request.reason.clone(),
+            remap_disposition: RecognitionCorrectionRemapV1::ReinterpretedStableLegs(
+                StableLegsReinterpretationV1 {
+                    governing_policy: governing(),
+                    unresolved_account: None,
+                    changed_accounts: vec![account(UNRESOLVED), account(WAGES)],
+                }
+            ),
+        }
+    );
+    let good = planned(&state, &plan);
+    let [
+        FrozenNativeOperationV1::Entry(reversal),
+        FrozenNativeOperationV1::Entry(added),
+    ] = good.batch.operations.as_slice()
+    else {
+        panic!("one reversal, then one replacement")
+    };
+    let [frozen] = state.accounting.as_ref().unwrap().recognitions[&original].as_slice() else {
+        panic!("one native entry")
+    };
+    assert_eq!(reversal.recognition_id, original);
+    assert_eq!(reversal.reverses.as_ref(), Some(&frozen.key));
+    for entry in [reversal, added] {
+        assert_eq!(entry.value_date, "2026-11-02");
+        assert_eq!(entry.booking_date, "2026-11-02");
+    }
+    let ids = |entry: &FrozenEntryV1| -> Vec<RecordId> {
+        entry.postings.iter().map(|p| p.original.id).collect()
+    };
+    assert_eq!(ids(reversal), ids(frozen));
+    let moves = |entry: &FrozenEntryV1| -> Vec<(AccountId, Amount)> {
+        entry
+            .postings
+            .iter()
+            .map(|p| (p.original.account_id, p.original.amount))
+            .collect()
+    };
+    assert_eq!(
+        moves(added),
+        vec![(account(10), amount(3300)), (account(WAGES), amount(-3300))]
+    );
+
+    let corrected = admit(&state, &good).unwrap();
+    assert_eq!(dated_postings(&corrected, 10), dated_postings(&state, 10));
+    // Credit balances: unresolved equity falls by 3,300 and wages rises by 3,300.
+    assert_eq!(balance(&state, UNRESOLVED), amount(-3300));
+    assert_eq!(balance(&corrected, UNRESOLVED), amount(0));
+    assert_eq!(balance(&state, WAGES), amount(0));
+    assert_eq!(balance(&corrected, WAGES), amount(-3300));
+    // The earlier prefix still shows the unresolved-equity recognition as
+    // active, and the old adoption, leg and recognition stay byte-identical.
+    assert!(
+        !state
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&original)
+    );
+    assert!(
+        corrected
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&original)
+    );
+    for key in [id(DEPOSIT + 10), id(DEPOSIT + 11), id(DEPOSIT + 13)] {
+        assert_eq!(
+            serde_json::to_vec(&corrected.records[&key]).unwrap(),
+            serde_json::to_vec(&state.records[&key]).unwrap()
+        );
+    }
+
+    // Replay derives the revision again and refuses one that differs.
+    let forged = |change: fn(&mut StableLegsReinterpretationV1)| {
+        let mut records = plan.records.clone();
+        let AuthoritativeRecordV1::RecognitionCorrectionRevision(revision) = &mut records[0] else {
+            panic!("revision first")
+        };
+        let RecognitionCorrectionRemapV1::ReinterpretedStableLegs(interpretation) =
+            &mut revision.remap_disposition
+        else {
+            panic!("reinterpreted")
+        };
+        change(interpretation);
+        candidate(&state, records, &plan.invalidations, good.batch.clone())
+    };
+    replay_refused(&state, &forged(|i| i.changed_accounts.truncate(1)));
+    replay_refused(
+        &state,
+        &forged(|i| i.unresolved_account = Some(account(UNRESOLVED))),
+    );
+    replay_refused(&state, &forged(|i| i.governing_policy.version = 2));
+}
+
+#[test]
+fn cur_016_reinterpret_split_purchase() {
+    let state = card_purchase();
+    let request = reinterpretation(
+        &state,
+        CARD_PURCHASE + 13,
+        8300,
+        &[(EXPENSE, 60), (EXPENSE_B, 36)],
+    );
+    let plan = reinterpret(&state, 8400, &request, None).unwrap();
+    let RecognitionCorrectionRemapV1::ReinterpretedStableLegs(interpretation) =
+        &correction_revision(&plan).remap_disposition
+    else {
+        panic!("reinterpreted")
+    };
+    assert_eq!(
+        interpretation.changed_accounts,
+        vec![account(EXPENSE), account(EXPENSE_B)]
+    );
+    let corrected = admit(&state, &planned(&state, &plan)).unwrap();
+    assert_eq!(balance(&corrected, CARD), amount(-96));
+    assert_eq!(balance(&corrected, EXPENSE), amount(60));
+    assert_eq!(balance(&corrected, EXPENSE_B), amount(36));
+}
+
+#[test]
+fn cur_016_reinterpret_refuses_leg_changes() {
+    let state = card_purchase();
+    let request = reinterpretation(
+        &state,
+        CARD_PURCHASE + 13,
+        8300,
+        &[(EXPENSE, 60), (EXPENSE_B, 36)],
+    );
+    reinterpret(&state, 8400, &request, None).unwrap();
+    let before = snapshot(&state);
+    type Change = Box<dyn Fn(&mut RecognitionV1)>;
+    let changes: [(&str, Change); 8] = [
+        (
+            "card amount",
+            Box::new(|r| {
+                r.postings[0].amount = amount(-90);
+                r.postings[1].amount = amount(54);
+            }),
+        ),
+        (
+            "card account",
+            Box::new(|r| r.postings[0].account_id = account(10)),
+        ),
+        (
+            "effective date",
+            Box::new(|r| {
+                for p in &mut r.postings {
+                    p.effective = date("2026-11-04");
+                }
+                r.scope.start = Some(civil("2026-11-04"));
+                r.scope.end = Some(civil("2026-11-04"));
+            }),
+        ),
+        (
+            "posting date",
+            Box::new(|r| {
+                for p in &mut r.postings {
+                    p.posting = date("2026-11-04");
+                }
+            }),
+        ),
+        (
+            "unbalanced",
+            Box::new(|r| r.postings[2].amount = amount(35)),
+        ),
+        (
+            "opening equity",
+            Box::new(|r| r.postings[2].account_id = account(EQUITY)),
+        ),
+        (
+            "clearing",
+            Box::new(|r| r.postings[2].account_id = account(CLEARING)),
+        ),
+        (
+            "unnamed unresolved equity",
+            Box::new(|r| r.postings[2].account_id = account(UNRESOLVED)),
+        ),
+    ];
+    for (name, change) in &changes {
+        let mut changed = request.clone();
+        change(&mut changed.replacement[0]);
+        assert!(
+            reinterpret(&state, 8400, &changed, None).is_err(),
+            "{name} must be refused"
+        );
+    }
+    // Naming the unresolved account it posts to is a valid interpretation.
+    let mut unresolved = request.clone();
+    (changes[7].1)(&mut unresolved.replacement[0]);
+    reinterpret(&state, 8400, &unresolved, Some(UNRESOLVED)).unwrap();
+    // The governing policy must be an exact retained version.
+    for version in [0, 2] {
+        let policy = PolicyReferenceV1 {
+            id: id(104),
+            version,
+        };
+        assert!(
+            currents_domain::correction::CorrectionEngine::reinterpret(
+                &state,
+                id(8400),
+                &request,
+                &policy,
+                None
+            )
+            .is_err()
+        );
+    }
+    assert_eq!(snapshot(&state), before);
+}
+
+#[test]
+fn cur_016_reinterpretation_invalidates_claims_in_scope() {
+    let claims = [
+        claim(8501, WAGES, "2026-11-01", "2026-11-30"),
+        claim(8502, 10, "2026-11-01", "2026-11-30"),
+    ];
+    let state = recorded(
+        &deposited(),
+        claims
+            .into_iter()
+            .map(AuthoritativeRecordV1::ReconciliationClaim)
+            .collect(),
+    );
+    let request = reinterpretation(&state, DEPOSIT + 13, 8100, &[(WAGES, -3300)]);
+    let plan = reinterpret(&state, 8200, &request, None).unwrap();
+    assert!(plan.invalidations.contains(&id(8501)));
+    assert!(!plan.invalidations.contains(&id(8502)));
+    let corrected = admit(&state, &planned(&state, &plan)).unwrap();
+    assert_eq!(
+        corrected.claim_status(id(8501)),
+        Some(ReconciliationStatus::Invalidated)
+    );
+    assert_eq!(
+        corrected.claim_status(id(8502)),
+        Some(ReconciliationStatus::Matched)
+    );
+}
+
+#[test]
+fn cur_016_reinterpretation_keeps_organization() {
+    let leg = id(DEPOSIT + 11);
+    let state = recorded(&deposited(), vec![note(8601, leg)]);
+    let request = reinterpretation(&state, DEPOSIT + 13, 8100, &[(WAGES, -3300)]);
+    let plan = reinterpret(&state, 8200, &request, None).unwrap();
+    assert!(!plan.invalidations.contains(&id(8601)));
+    let corrected = admit(&state, &planned(&state, &plan)).unwrap();
+    assert!(!corrected.invalidated.contains(&id(8601)));
+    for key in [id(8601), leg] {
+        assert_eq!(
+            serde_json::to_vec(&corrected.records[&key]).unwrap(),
+            serde_json::to_vec(&state.records[&key]).unwrap()
+        );
     }
 }
