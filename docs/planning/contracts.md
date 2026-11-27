@@ -489,8 +489,12 @@ The claim is `Proposed` only when it has no reasons. Otherwise it is
   has no civil date by the request's basis. It leaves the comparison.
 - `MissingAllocation`, `UnexpectedAllocation`, `RepeatedIdentity` and
   `DifferentTerms` each name one `EvidenceLineV1 { observation, facet }`.
-  They serialize as `{"MissingAllocation":{...}}`; the other reasons stay
-  plain strings.
+  They serialize as `{"MissingAllocation":{...}}`.
+- `UnsupportedLeg` names a live leg on the account, with a civil date inside
+  the interval, that allocates no source line, such as a leg an association
+  admitted. Excluding the leg removes the reason. It serializes as
+  `{"UnsupportedLeg":"<leg id>"}`; the reasons without a payload stay plain
+  strings.
 
 The claim records the request's basis, account, `cutoffs` and sorted
 evidence and exclusions, the account's unit and comparison version 1.

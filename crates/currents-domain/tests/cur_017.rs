@@ -488,6 +488,30 @@ fn cur_017_activity_explicit_exclusion() {
     // An exclusion must name a source line or a recognized leg.
     request.exclusions = vec![id(9999)];
     assert!(ReconciliationEngine::evaluate(&world.state, &request).is_err());
+
+    // A recognized leg on A in November that allocates no source line, as
+    // an association's transfer leg does, keeps the claim partial until it
+    // is excluded.
+    let mut world = World::complete();
+    let transfer = world.observe(3300, ObservationKind::Movement, -100, date("2026-11-15"));
+    let (leg, recognition) = world.recognize(transfer, ACCOUNT_A, -100, "2026-11-15", "2026-11-15");
+    for record in world.state.records.values_mut() {
+        match record {
+            AuthoritativeRecordV1::FinancialLeg(l) if l.id == leg => l.allocations.clear(),
+            AuthoritativeRecordV1::Recognition(r) if r.id == recognition => {
+                r.evidence_allocations.clear()
+            }
+            _ => {}
+        }
+    }
+    let mut request = world.request();
+    let claim = world.evaluate(&request);
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::UnsupportedLeg(leg)]);
+    request.exclusions = vec![RecordId(leg.0)];
+    let claim = world.evaluate(&request);
+    assert_eq!(claim.status, ReconciliationStatus::Proposed);
+    assert_eq!(claim.exclusions, vec![RecordId(leg.0)]);
 }
 
 #[test]

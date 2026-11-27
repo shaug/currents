@@ -8322,6 +8322,19 @@
                           "DifferentTerms"
                         ],
                         "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "UnsupportedLeg": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "UnsupportedLeg"
+                        ],
+                        "type": "object"
                       }
                     ]
                   },
@@ -42394,6 +42407,19 @@
                                 "DifferentTerms"
                               ],
                               "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "UnsupportedLeg": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "UnsupportedLeg"
+                              ],
+                              "type": "object"
                             }
                           ]
                         },
@@ -56240,6 +56266,19 @@
                                 "DifferentTerms"
                               ],
                               "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "UnsupportedLeg": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "UnsupportedLeg"
+                              ],
+                              "type": "object"
                             }
                           ]
                         },
@@ -67905,6 +67944,19 @@
                                   },
                                   "required": [
                                     "DifferentTerms"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "UnsupportedLeg": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "UnsupportedLeg"
                                   ],
                                   "type": "object"
                                 }

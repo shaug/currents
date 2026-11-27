@@ -253,6 +253,7 @@ fn activity(
     let mut allocations = Vec::new();
     let mut accounting = BTreeSet::new();
     let mut unmapped = statement.unmapped();
+    let mut unsupported = Vec::new();
     for live in &legs {
         let leg = live.leg;
         if scope.relevant(leg) {
@@ -265,6 +266,11 @@ fn activity(
         if scope.unmapped(leg) {
             unmapped = true;
             continue;
+        }
+        // A leg without allocations, such as one an association admitted,
+        // gives the comparison no row, so it is reported here.
+        if leg.allocations.is_empty() && scope.within(leg) {
+            unsupported.push(leg.id);
         }
         for allocation in leg.allocations.iter() {
             if excluded(allocation.observation) {
@@ -327,6 +333,7 @@ fn activity(
         unmatched.insert(line);
         reasons.push(reason);
     }
+    reasons.extend(unsupported.into_iter().map(ClaimReasonV1::UnsupportedLeg));
     let matched_allocations = sources
         .iter()
         .filter(|s| {

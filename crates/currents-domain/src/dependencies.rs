@@ -76,6 +76,14 @@ impl<'a> ActivityScope<'a> {
                 .any(|a| self.evidence.contains(&a.observation))
     }
 
+    /// The leg is on the scope account with a civil date inside the interval.
+    pub(crate) fn within(&self, leg: &FinancialLegV1) -> bool {
+        leg.account_id == self.account
+            && self
+                .day(leg)
+                .is_some_and(|day| self.start <= day && day <= self.end)
+    }
+
     /// The leg is on the scope account and has no civil date by the basis.
     pub(crate) fn unmapped(&self, leg: &FinancialLegV1) -> bool {
         leg.account_id == self.account && self.day(leg).is_none()
