@@ -1814,3 +1814,44 @@ fn cur_016_reinterpretation_keeps_organization() {
         );
     }
 }
+
+/// A replacement of the anchored opening with `count` backfill movements of
+/// -1 USD on 2026-10-31 and a new opening at 2026-10-30 that reconciles them.
+fn many_backfills(state: &mut DomainState, count: usize) -> SegmentReplacementV1 {
+    let opening = 3300 + i128::try_from(count).unwrap();
+    replacement_from(
+        state,
+        100_000,
+        opening,
+        "2026-10-30",
+        &vec![(-1, "2026-10-31"); count],
+    )
+}
+
+#[test]
+fn cur_016_4_20001_operations_fail_visibly() {
+    // The old opening's reversal, the new opening and 19,999 backfills.
+    let mut state = anchored();
+    let request = many_backfills(&mut state, 19_999);
+    let before = snapshot(&state);
+    let heads = state.accounting.as_ref().unwrap().prefix.clone();
+    assert_eq!(
+        SegmentEngine::replace(&state, &request).unwrap(),
+        SegmentPreviewV1::TooLarge {
+            operations: 20_001,
+            limit: 20_000,
+        }
+    );
+    assert_eq!(snapshot(&state), before);
+    assert_eq!(state.accounting.as_ref().unwrap().prefix, heads);
+
+    // One movement fewer fits the closure limit, so the preview goes on to
+    // check the drafts and refuses the first one, moved to another account.
+    let mut fits = request;
+    fits.backfill.pop();
+    fits.backfill[0].legs[0].leg.account_id = account(EQUITY);
+    assert_eq!(
+        SegmentEngine::replace(&state, &fits).unwrap_err().class,
+        ErrorClass::UnsupportedVersion
+    );
+}

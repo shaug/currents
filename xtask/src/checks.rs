@@ -436,6 +436,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_reinterpret_refuses_leg_changes",
             "cur_016_reinterpretation_invalidates_claims_in_scope",
             "cur_016_reinterpretation_keeps_organization",
+            "cur_016_4_20001_operations_fail_visibly",
         ],
     ),
     (
@@ -452,6 +453,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_backfill_invalidates_claim_in_scope",
             "cur_016_replay_checks_invalidations",
             "cur_016_reinterpretation_encrypted_commit",
+            "cur_016_4_1200_operation_replacement_is_atomic",
         ],
     ),
     (
