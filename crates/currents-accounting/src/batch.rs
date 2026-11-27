@@ -31,6 +31,18 @@ fn canonical<T: serde::Serialize>(v: &T) -> Result<Vec<u8>, EngineError> {
 fn digest(bytes: &[u8]) -> Digest {
     Digest(Sha256::digest(bytes).into())
 }
+/// The prefix's date conversion policy records by ID and version, in record
+/// order. A batch reads them once instead of once per recognition.
+type DatePolicies<'a> = BTreeMap<(RecordId, u32), Vec<&'a DateConversionPolicyV1>>;
+fn date_policies(state: &DomainState) -> DatePolicies<'_> {
+    let mut policies = DatePolicies::new();
+    for record in state.records.values() {
+        if let AuthoritativeRecordV1::DateConversionPolicy(p) = record {
+            policies.entry((p.id, p.version)).or_default().push(p);
+        }
+    }
+    policies
+}
 impl AccountingAdapter {
     pub fn freeze(
         intent: &AccountingIntent,
@@ -79,9 +91,9 @@ impl AccountingAdapter {
                     }
                 }
             }
-            AccountingIntent::Recognition(r) => {
-                operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?))
-            }
+            AccountingIntent::Recognition(r) => operations.push(FrozenNativeOperationV1::Entry(
+                Self::recognition(r, state, &date_policies(state))?,
+            )),
             AccountingIntent::Recognitions(recognitions) => {
                 Self::recognitions(recognitions, state, &mut operations)?;
             }
@@ -133,6 +145,7 @@ impl AccountingAdapter {
             .flat_map(|entry| entry.postings.iter().map(|p| p.original.id))
             .collect();
         let mut legs = BTreeSet::new();
+        let policies = date_policies(state);
         let mut lineages: BTreeSet<_> = state
             .records
             .values()
@@ -156,7 +169,9 @@ impl AccountingAdapter {
             {
                 return Err(EngineError::invalid());
             }
-            operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
+            operations.push(FrozenNativeOperationV1::Entry(Self::recognition(
+                r, state, &policies,
+            )?));
         }
         Ok(())
     }
@@ -207,6 +222,7 @@ impl AccountingAdapter {
                 }
             }
         }
+        let policies = date_policies(state);
         for c in corrections {
             let original = index
                 .recognitions
@@ -233,7 +249,9 @@ impl AccountingAdapter {
                 operations.push(FrozenNativeOperationV1::Entry(reversal));
             }
             for r in &c.replacement {
-                operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
+                operations.push(FrozenNativeOperationV1::Entry(Self::recognition(
+                    r, state, &policies,
+                )?));
             }
             if operations.len() > 20_000 {
                 return Err(EngineError::invalid());
@@ -241,19 +259,20 @@ impl AccountingAdapter {
         }
         Ok(())
     }
-    fn recognition(r: &RecognitionV1, state: &DomainState) -> Result<FrozenEntryV1, EngineError> {
+    fn recognition(
+        r: &RecognitionV1,
+        state: &DomainState,
+        policies: &DatePolicies,
+    ) -> Result<FrozenEntryV1, EngineError> {
         let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
         if !index.calendar_declared || index.recognitions.contains_key(&r.id) {
             return Err(EngineError::invalid());
         }
-        let mut policies = state.records.values().filter_map(|record| match record {
-            AuthoritativeRecordV1::DateConversionPolicy(p)
-                if p.id == r.date_policy.id && p.version == r.date_policy.version =>
-            {
-                Some(p)
-            }
-            _ => None,
-        });
+        let mut policies = policies
+            .get(&(r.date_policy.id, r.date_policy.version))
+            .into_iter()
+            .flatten()
+            .copied();
         let cached = index
             .date_policies
             .get(&(r.date_policy.id, r.date_policy.version));

@@ -498,8 +498,9 @@ fn same_sources(
     retired: &ActivityAdoptionV1,
     replacing: &ActivityAdoptionV1,
 ) -> Result<(), EngineError> {
-    let old = crate::recognition::portions(state, retired.facets.iter().map(|f| &f.source))?;
-    let new = crate::recognition::portions(state, replacing.facets.iter().map(|f| &f.source))?;
+    let lookup = crate::lookup::Lookup::new(state);
+    let old = crate::recognition::portions(&lookup, retired.facets.iter().map(|f| &f.source))?;
+    let new = crate::recognition::portions(&lookup, replacing.facets.iter().map(|f| &f.source))?;
     if !old.keys().eq(new.keys()) {
         return Err(EngineError::invalid());
     }

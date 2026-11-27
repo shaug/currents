@@ -1,9 +1,10 @@
 //! Evidence-supported openings and one-component segment replacement.
 use crate::{
     associations::IdentityEngine,
-    catalog::{CatalogEngine, incomplete},
+    catalog::incomplete,
     dependents::{self, Change, Dependents, OrganizationQuestionV1},
-    recognition::{adopt_drafts, fact, restore},
+    lookup::Lookup,
+    recognition::{adopt_drafts, fact_in, restore},
 };
 use currents_types::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,14 +14,14 @@ fn civil(value: &TemporalValue) -> Result<Date, EngineError> {
         _ => Err(incomplete()),
     }
 }
-pub(crate) fn source_time(
-    state: &DomainState,
+fn source_time(
+    lookup: &Lookup,
     binding: &SourceFacetBindingV1,
     kind: ObservationKind,
 ) -> Result<Date, EngineError> {
-    fact(state, binding)?;
+    fact_in(lookup, binding)?;
     let Some(AuthoritativeRecordV1::AddressedParseProduct(p)) =
-        state.records.get(&binding.parse_product)
+        lookup.state.records.get(&binding.parse_product)
     else {
         return Err(incomplete());
     };
@@ -35,17 +36,18 @@ pub(crate) fn source_time(
     }
     civil(&f.temporal)
 }
-type Basis<'a> = (
-    &'a AccountComponentV1,
-    &'a RecognitionTermsV1,
-    &'a OpeningBasisV1,
+type Basis<'s, 'r> = (
+    &'s AccountComponentV1,
+    &'r RecognitionTermsV1,
+    &'r OpeningBasisV1,
     Date,
 );
 /// The supported opening terms that initial adoption and replacement share.
-fn opening_basis<'a>(
-    state: &'a DomainState,
-    request: &'a ActivityRequestV1,
-) -> Result<Option<Basis<'a>>, EngineError> {
+fn opening_basis<'s, 'r>(
+    lookup: &Lookup<'s>,
+    request: &'r ActivityRequestV1,
+) -> Result<Option<Basis<'s, 'r>>, EngineError> {
+    let state = lookup.state;
     let Some(terms) = &request.financial else {
         return Ok(None);
     };
@@ -70,7 +72,7 @@ fn opening_basis<'a>(
         || c.account_id != leg.leg.account_id
         || c.unit_id != opening.amount.unit_id
         || !matches!(c.opening_boundary, SourceValue::Unknown)
-        || CatalogEngine::current(state, c.id)?.origin != AccountOriginV1::External
+        || lookup.current(c.id)?.origin != AccountOriginV1::External
         || opening.amount.normalized()? != leg.leg.movement.normalized()?
         || opening.evidence.amount.normalized()? != opening.amount.normalized()?
         || leg.sources != vec![opening.evidence.clone()]
@@ -78,7 +80,7 @@ fn opening_basis<'a>(
         return Err(EngineError::invalid());
     }
     let cutoff = civil(&opening.cutoff)?;
-    if source_time(state, &opening.evidence, ObservationKind::Balance)? != cutoff
+    if source_time(lookup, &opening.evidence, ObservationKind::Balance)? != cutoff
         || civil(&leg.leg.effective)? != cutoff
         || civil(&terms.bookkeeping_date)? != cutoff
     {
@@ -95,8 +97,8 @@ fn opening_basis<'a>(
     let mut facts = BTreeSet::new();
     for source in &opening.included_activity {
         if source.amount.unit_id != c.unit_id
-            || source_time(state, source, ObservationKind::Movement)? > cutoff
-            || !facts.insert(fact(state, source)?)
+            || source_time(lookup, source, ObservationKind::Movement)? > cutoff
+            || !facts.insert(fact_in(lookup, source)?)
         {
             return Err(EngineError::invalid());
         }
@@ -104,11 +106,12 @@ fn opening_basis<'a>(
     Ok(Some((c, terms, opening, cutoff)))
 }
 pub(crate) fn initial(
-    state: &DomainState,
+    lookup: &Lookup,
     request: &ActivityRequestV1,
     admission: bool,
 ) -> Result<Option<AccountingSegmentV1>, EngineError> {
-    let Some((c, terms, opening, _)) = opening_basis(state, request)? else {
+    let state = lookup.state;
+    let Some((c, terms, opening, _)) = opening_basis(lookup, request)? else {
         return Ok(None);
     };
     if admission
@@ -321,17 +324,10 @@ pub enum SegmentPreviewV1 {
         limit: usize,
     },
 }
-fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError> {
-    let component = state
-        .records
-        .values()
-        .find_map(|r| match r {
-            AuthoritativeRecordV1::AccountComponent(c) if c.account_id == account => Some(c),
-            _ => None,
-        })
-        .ok_or_else(incomplete)?;
+fn clearing(lookup: &Lookup, account: AccountId) -> Result<bool, EngineError> {
+    let component = lookup.components(account).first().ok_or_else(incomplete)?;
     Ok(matches!(
-        CatalogEngine::current(state, component.id)?.origin,
+        lookup.current(component.id)?.origin,
         AccountOriginV1::Internal(control) if control.role == ControlRoleV1::Clearing
     ))
 }
@@ -447,6 +443,9 @@ impl SegmentEngine {
         request: &SegmentReplacementV1,
     ) -> Result<SegmentPreviewV1, EngineError> {
         let invalid = EngineError::invalid;
+        // Every draft is planned against this one prefix, so its lookups are
+        // shared rather than repeated per draft.
+        let lookup = Lookup::new(state);
         let index = state.accounting.as_ref().ok_or_else(incomplete)?;
         if index.prefix.through != state.through
             || index.prefix.domain_digest != state.domain_digest
@@ -508,7 +507,7 @@ impl SegmentEngine {
                 limit: MAX_CLOSURE_OPERATIONS,
             });
         }
-        let Some((component, _, basis, new_cutoff)) = opening_basis(state, &request.opening)?
+        let Some((component, _, basis, new_cutoff)) = opening_basis(&lookup, &request.opening)?
         else {
             return Err(invalid());
         };
@@ -544,7 +543,7 @@ impl SegmentEngine {
                 within(civil(day)?)?;
             }
             for source in draft.legs.iter().flat_map(|l| &l.sources) {
-                within(source_time(state, source, ObservationKind::Movement)?)?;
+                within(source_time(&lookup, source, ObservationKind::Movement)?)?;
             }
         }
         // Ordinary adoption refuses activity at or before the cutoff, so the
@@ -632,18 +631,19 @@ impl SegmentEngine {
         }
         // Each fact the old opening included moves exactly once: to a
         // backfill's sources or to the new opening's inclusion map.
-        let mut moved = Vec::new();
+        let mut moved = BTreeMap::<_, usize>::new();
         for source in basis.included_activity.iter().chain(
             request
                 .backfill
                 .iter()
                 .flat_map(|d| d.legs.iter().flat_map(|l| &l.sources)),
         ) {
-            moved.push(fact(state, source)?);
+            let count = moved.entry(fact_in(&lookup, source)?).or_default();
+            *count = count.saturating_add(1);
         }
         for source in &old_basis.included_activity {
-            let key = fact(state, source)?;
-            if moved.iter().filter(|m| **m == key).count() != 1 {
+            let key = fact_in(&lookup, source)?;
+            if moved.get(&key) != Some(&1) {
                 return Err(invalid());
             }
         }
@@ -673,7 +673,7 @@ impl SegmentEngine {
             }
         }
         let drafts = adopt_drafts(
-            state,
+            &lookup,
             std::iter::once(&request.opening).chain(&request.backfill),
             old.id,
             &added,
@@ -684,7 +684,7 @@ impl SegmentEngine {
         for (_, recognition) in &drafts {
             let mut cleared = false;
             for p in &recognition.postings {
-                cleared |= clearing(state, p.account_id)?;
+                cleared |= clearing(&lookup, p.account_id)?;
             }
             let join = joined
                 .iter()
@@ -693,7 +693,7 @@ impl SegmentEngine {
                 (None, _) if !cleared => {}
                 (Some((join, leg, head)), [anchor, counter])
                     if anchor.account_id == c.account_id
-                        && clearing(state, counter.account_id)?
+                        && clearing(&lookup, counter.account_id)?
                         && originals.iter().any(|r| {
                             head.recognitions.contains(&r.id)
                                 && r.postings
@@ -836,15 +836,17 @@ pub(crate) fn readmit(
     successor: &AccountingSegmentV1,
 ) -> Result<(), EngineError> {
     let invalid = EngineError::invalid;
-    let draft = |id: RecognitionId| {
-        let mut owners = next.records.values().filter_map(|r| match r {
-            AuthoritativeRecordV1::ActivityAdoption(a) if a.recognition == Some(id) => Some(a),
-            _ => None,
-        });
-        let (Some(owner), None) = (owners.next(), owners.next()) else {
-            return Err(invalid());
-        };
-        restore(next, owner)
+    let mut owners = BTreeMap::<RecognitionId, Vec<&ActivityAdoptionV1>>::new();
+    for record in next.records.values() {
+        if let AuthoritativeRecordV1::ActivityAdoption(a) = record
+            && let Some(id) = a.recognition
+        {
+            owners.entry(id).or_default().push(a);
+        }
+    }
+    let draft = |id: RecognitionId| match owners.get(&id).map(Vec::as_slice) {
+        Some([owner]) => restore(next, owner),
+        _ => Err(invalid()),
     };
     // Each joined family's new revision adds the backfilled leg and its
     // relationship evidence last.
