@@ -18,6 +18,20 @@ pub(crate) fn validate_transition(
     }) {
         return crate::segments::readmit(prior, next, commit, successor);
     }
+    // So does a correction that replaces a recognition's legs.
+    if let Some(revision) = commit.records.iter().find_map(|record| match record {
+        AuthoritativeRecordV1::RecognitionCorrectionRevision(r)
+            if matches!(
+                r.remap_disposition,
+                RecognitionCorrectionRemapV1::ReplacedLegs { .. }
+            ) =>
+        {
+            Some(r)
+        }
+        _ => None,
+    }) {
+        return crate::correction::readmit_replaced_legs(prior, commit, revision);
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {
@@ -74,6 +88,7 @@ pub(crate) fn validate_transition(
                         remapping: vec![],
                         reason: revision.reason.clone(),
                     },
+                    &[],
                 )?;
                 // The commit records exactly the invalidations derived again.
                 if commit.command_result.effects.invalidations != plan.invalidations {

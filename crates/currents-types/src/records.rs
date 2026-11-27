@@ -287,13 +287,21 @@ dto!(RecognitionCorrectionRevisionV1 {
     reason: String,
     remap_disposition: RecognitionCorrectionRemapV1
 });
-/// What a correction does to its recognition's interpretation. The legs stay
-/// in both cases. A version-1 revision keeps the interpretation and changes
-/// identities only; a version-2 revision records a new interpretation.
+/// What a correction does to its recognition's legs and interpretation. A
+/// version-1 revision keeps the legs and interpretation and changes
+/// identities only; a version-2 revision keeps the legs and records a new
+/// interpretation. A version-3 revision retires the adoption that owns the
+/// legs and names the fresh adoption that replaces them for the same source
+/// facets.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum RecognitionCorrectionRemapV1 {
     UnchangedStableLegs,
     ReinterpretedStableLegs(StableLegsReinterpretationV1),
+    ReplacedLegs {
+        retired_adoption: RecordId,
+        replacement_adoption: RecordId,
+    },
 }
 impl RecognitionCorrectionRemapV1 {
     /// The revision schema version this disposition requires.
@@ -301,6 +309,7 @@ impl RecognitionCorrectionRemapV1 {
         match self {
             Self::UnchangedStableLegs => 1,
             Self::ReinterpretedStableLegs(_) => 2,
+            Self::ReplacedLegs { .. } => 3,
         }
     }
 }
@@ -314,6 +323,22 @@ impl Schema for RecognitionCorrectionRemapV1 {
                 "required": ["ReinterpretedStableLegs"],
                 "properties": {
                     "ReinterpretedStableLegs": StableLegsReinterpretationV1::schema()
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ReplacedLegs"],
+                "properties": {
+                    "ReplacedLegs": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["retired_adoption", "replacement_adoption"],
+                        "properties": {
+                            "retired_adoption": RecordId::schema(),
+                            "replacement_adoption": RecordId::schema()
+                        }
+                    }
                 }
             }
         ]})
@@ -362,7 +387,9 @@ dto!(NativeHead {
 });
 dto!(DomainCommitV1 { seq:CommitSeq, previous_digest:Digest, records:Vec<AuthoritativeRecordV1>, decisions:Vec<DecisionEnvelopeV1>, native_head_after:NativeHead, command_result:CommandResultV1, digest:Digest });
 dto!(MetadataDeclarationV1 { accounts:Vec<AccountComponentV1>, units:Vec<UnitDefinition> });
-dto!(CorrectionV1 { active_recognition:RecognitionId, replacement:Vec<RecognitionV1>, remapping:Vec<AssociationV1>, reason:String });
+// `remapping` holds the owner's successor version of each organization record
+// on a leg the correction retires.
+dto!(CorrectionV1 { active_recognition:RecognitionId, replacement:Vec<RecognitionV1>, remapping:Vec<OrganizationRecordV1>, reason:String });
 dto!(NoEffectV1 { reason: String });
 tagged!(AccountingIntent { MetadataDeclaration(MetadataDeclarationV1), Recognition(RecognitionV1), Recognitions(Vec<RecognitionV1>), Correction(CorrectionV1), Corrections(Vec<CorrectionV1>), NoEffect(NoEffectV1) });
 dto!(DecisionPlan { records:Vec<AuthoritativeRecordV1>, invalidations:Vec<RecordId>, accounting:AccountingIntent });

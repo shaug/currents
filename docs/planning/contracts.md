@@ -194,9 +194,57 @@ plan again from the revision, and the chain audit checks each reinterpreted
 link with the rules for retained history. A later identity correction or
 reinterpretation starts from the live tip. Claims and organization follow the
 dependent invalidation checkpoint. Corrections that change amounts, dates or
-leg splits are a separate ticket (#115). Transfer, payroll and duplicate
+leg splits follow the leg correction checkpoint. Transfer, payroll and duplicate
 families stay with CUR-015 association remaps, and openings with segment
 replacement. There is no command route.
+
+### CUR-016 leg correction checkpoint
+
+`CorrectionEngine::replace_legs(state, revision_id, request, adoption)`
+corrects a live standalone activity recognition whose legs change: a
+provider-revised amount, a changed effective date or one leg split into
+several. `adoption` is a fresh posted `ActivityRequestV1` with new event,
+legs, recognition, lineage and postings, adopted by the rules of a new
+adoption, and the recognition it derives is the request's one replacement.
+It binds the same source facts as the retired adoption and no others. For
+each fact the bound total stays the same, unless the new adoption binds a
+later source revision of that facet, which it binds for that version's whole
+amount. Only this adoption may bind one facet version to several legs, and
+those portions must total its amount. The old facet version stays as
+evidence.
+
+`CorrectionPreviewV1` is `Ready(Box<DecisionPlan>)` or
+`NeedsOrganizationDecision`, which lists each organization record on a
+retired leg with that leg, and no plan. The owner answers through
+`CorrectionRequestV1.remapping`, which holds `OrganizationRecordV1` successor
+versions: exactly one per affected record, with the next version, the same
+kind and parent, `supersedes` naming the record, no allocations and only
+replacement legs as targets. A remap that drops, duplicates or adds a record
+is refused, and so are records with allocations. The old record stays
+byte-identical.
+
+A ready plan holds a version-3 `RecognitionCorrectionRevisionV1` whose
+`ReplacedLegs { retired_adoption, replacement_adoption }` disposition names
+both adoptions, then the new event, legs, adoption and recognition, then the
+organization successors. Its accounting intent is one `Correction`, so C05
+reverses the original once at its own dates and adds the replacement at its
+dates. The plan invalidates the original recognition, its legs and the claims
+the change reaches; the old adoption, event and legs also retire for the
+dependent check. The old adoption, event, legs and recognition stay
+byte-identical, so replay through an earlier commit still shows them active.
+
+Replay derives the whole commit again from the prior prefix and the commit's
+own records. An adoption is retired once a `ReplacedLegs` revision names it
+and the native index shows its recognition reversed; it then owns no facts,
+and its replacement owns them. The chain audit follows each revision as one
+edge: a leg correction checks the two adoptions and their facts, and the
+replacement starts a chain that its adoption owns, so a later identity
+correction, reinterpretation or leg correction starts from that live tip. The
+planner refuses a facet another adoption owns, a correction of a retired
+original and a second reversal. Merges of separate adoptions use the CUR-015
+duplicate route, and associated families use CUR-015 remaps. A posted
+adoption that consumed a pending one, trade quantity legs and allocation
+remaps stay unsupported. There is no command route.
 
 ### CUR-016 segment replacement checkpoint
 
@@ -294,7 +342,8 @@ change is kept by account, unit, effective date and posting date. A
 replacement retires the prior segment, the old opening's adoption, event and
 legs, each joined family's prior revision, and every reversed recognition
 with its postings. A correction retires only the corrected recognition and
-its postings; its legs stay.
+its postings; its legs stay. A leg correction also retires the old adoption,
+its event and its legs.
 
 A reconciliation claim is invalidated when the net change on one of its scope
 accounts is nonzero on a date inside its cutoffs, by the claim's own date
@@ -311,7 +360,9 @@ whose recorded invalidations differ.
 Organization records on legs that stay keep their targets. A replacement that
 retires a leg that an organization record targets returns
 `SegmentPreviewV1::NeedsOrganizationDecision`, which lists each record and
-leg, and no plan. An organization record that names another retired identity
+leg, and no plan. A leg correction returns
+`CorrectionPreviewV1::NeedsOrganizationDecision` the same way until the
+request remaps each record. An organization record that names another retired identity
 refuses the change. So does a review record, forecast run, occurrence match,
 allocation or association that names an account the change touches or a
 retired identity. The durable correction keeps refusing any forecast run,

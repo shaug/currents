@@ -141,10 +141,12 @@ impl Change {
     }
 }
 
-pub(crate) enum Dependents {
+pub(crate) struct Dependents {
     /// The claims the change invalidates, in record order.
-    Claims(Vec<RecordId>),
-    NeedsOrganizationDecision(Vec<OrganizationQuestionV1>),
+    pub(crate) claims: Vec<RecordId>,
+    /// Each organization record on a leg the change retires, with that leg.
+    /// The change needs the owner's decision while any remain.
+    pub(crate) questions: Vec<OrganizationQuestionV1>,
 }
 
 /// Assess every dependent record against one change. Review records,
@@ -207,11 +209,7 @@ pub(crate) fn assess(state: &DomainState, change: &Change) -> Result<Dependents,
             _ => {}
         }
     }
-    if questions.is_empty() {
-        Ok(Dependents::Claims(claims))
-    } else {
-        Ok(Dependents::NeedsOrganizationDecision(questions))
-    }
+    Ok(Dependents { claims, questions })
 }
 
 fn serialized(record: &AuthoritativeRecordV1) -> Result<serde_json::Value, EngineError> {

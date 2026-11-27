@@ -1,6 +1,6 @@
 //! Separate CUR-016_2 acceptance of append-only compensation and new refunds.
 use currents_accounting::AccountingAdapter;
-use currents_domain::correction::{CorrectionEngine, CorrectionRequestV1};
+use currents_domain::correction::{CorrectionEngine, CorrectionPreviewV1, CorrectionRequestV1};
 use currents_protocol::OperationV1;
 use currents_service as service_api;
 use currents_service::{ReplayCoordinator, synthetic_commit_verified_correction};
@@ -209,6 +209,86 @@ async fn cur_016_2_reinterpreted_tip_chain() {
         }),
     );
     assert!(RecognitionEngine::audit(&forged).is_err());
+}
+
+#[tokio::test]
+async fn cur_016_leg_correction_encrypted_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("leg-correction.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
+    let purchase = fixture::posted(legacy_binding(200), 300, 30);
+    let original = purchase.financial.as_ref().unwrap().recognition_id;
+    let adoption = purchase.adoption_id;
+    submit(&mut f, 56_001, OperationV1::AdoptActivity(purchase)).await;
+    let initial = refresh_financial(&mut f, None).await;
+
+    // New legs move the purchase from 2026-11-01 to 2026-11-02.
+    let mut replacing = fixture::posted(legacy_binding(200), 9800, 30);
+    let day = fixture::date("2026-11-02");
+    for item in &mut replacing.legs {
+        item.leg.effective = day.clone();
+        item.leg.posting = day.clone();
+    }
+    let terms = replacing.financial.as_mut().unwrap();
+    terms.bookkeeping_date = day.clone();
+    for posting in &mut terms.postings {
+        posting.effective = day.clone();
+        posting.posting = day.clone();
+    }
+    let replacement = fixture::recognized(&replacing);
+    let request = CorrectionRequestV1 {
+        active_recognition: original,
+        replacement: vec![replacement.clone()],
+        remapping: vec![],
+        reason: "Correct the purchase date".into(),
+    };
+    let revision = fixture::id(56_010);
+    let CorrectionPreviewV1::Ready(plan) =
+        CorrectionEngine::replace_legs(&initial, revision, &request, &replacing).unwrap()
+    else {
+        panic!("no organization depends on the purchase");
+    };
+    commit(&mut f, &path, prepared(&initial, *plan, 56_010).unwrap()).await;
+    let current = refresh_financial(&mut f, None).await;
+    let index = current.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&original));
+    assert!(!index.reversed.contains(&replacement.id));
+    let [entry] = index.recognitions[&replacement.id].as_slice() else {
+        panic!("one native entry")
+    };
+    assert_eq!(entry.value_date, "2026-11-02");
+    assert_eq!(
+        current.records.get(&adoption),
+        initial.records.get(&adoption)
+    );
+    assert!(matches!(current.records.get(&revision),
+    Some(AuthoritativeRecordV1::RecognitionCorrectionRevision(r))
+        if r.schema_version == 3
+            && r.remap_disposition == RecognitionCorrectionRemapV1::ReplacedLegs {
+                retired_adoption: adoption,
+                replacement_adoption: replacing.adoption_id,
+            }));
+    use currents_domain::recognition::RecognitionEngine;
+    RecognitionEngine::audit(&current).unwrap();
+
+    // History through the earlier commit still holds the old belief, and a
+    // fresh rebuild re-admits the correction.
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .history()
+        .verify_checkpoint(initial.through, initial.domain_digest)
+        .await
+        .unwrap();
+    let head = store.writer().audited_prefix().await.unwrap().native_head;
+    let fresh = open(&dir.path().join("leg-rebuild.db")).await;
+    let report = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(report.native_head, head);
+    store.close().await.unwrap();
 }
 
 #[tokio::test]

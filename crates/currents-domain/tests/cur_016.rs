@@ -1882,3 +1882,401 @@ fn cur_016_4_commit_record_limit() {
     );
     assert_eq!(snapshot(&state), before);
 }
+
+// Leg corrections: the card purchase's 96 USD leg is replaced by new legs for
+// the same source facet. The old adoption is `CARD_PURCHASE + 10`, its leg
+// `CARD_PURCHASE + 11`, its event `CARD_PURCHASE + 12` and its recognition
+// `CARD_PURCHASE + 13`.
+const OLD_ADOPTION: u32 = CARD_PURCHASE + 10;
+const OLD_CARD_LEG: u32 = CARD_PURCHASE + 11;
+const OLD_PURCHASE: u32 = CARD_PURCHASE + 13;
+const NEW_ADOPTION: u32 = 8710;
+const LEG_REVISION: u32 = 8790;
+type LegCorrection = (
+    currents_domain::correction::CorrectionRequestV1,
+    ActivityRequestV1,
+);
+
+/// A fresh posted adoption from `base` on `day` with one card leg per
+/// `(source, amount, counter)`, each bound to `source` for its amount and
+/// recognized against `counter`, and the correction that replaces the card
+/// purchase with it. The first leg is `base + 1`, leg `i` after it
+/// `base + 10 + i`, and the recognition `base + 3`.
+fn leg_correction(
+    base: u32,
+    day: &str,
+    legs: &[(&SourceFacetBindingV1, i128, u32)],
+) -> LegCorrection {
+    let bound = |source: &SourceFacetBindingV1, value: i128| SourceFacetBindingV1 {
+        amount: amount(value),
+        ..source.clone()
+    };
+    let (first, value, counter) = legs[0];
+    let mut adoption = posted(bound(first, value), base, counter);
+    adoption.legs[0].leg.account_id = account(CARD);
+    adoption.financial.as_mut().unwrap().postings[0].account_id = account(CARD);
+    for (&(source, value, counter), i) in legs.iter().zip(0u32..).skip(1) {
+        let binding = bound(source, value);
+        let mut item = adoption.legs[0].clone();
+        item.leg.id = LegId(id(base + 10 + i).0);
+        item.leg.movement = binding.amount;
+        item.leg.allocations = vec![EvidenceAllocationV1 {
+            observation: binding.observation,
+            facet: binding.facet,
+            amount: binding.amount,
+        }];
+        item.sources = vec![binding];
+        adoption.event.legs.push(item.leg.id);
+        adoption.legs.push(item);
+        let terms = adoption.financial.as_mut().unwrap();
+        let template = terms.postings[0].clone();
+        terms.postings.push(PostingV1 {
+            id: id(base + 20 + 2 * i),
+            amount: amount(value),
+            ..template.clone()
+        });
+        terms.postings.push(PostingV1 {
+            id: id(base + 21 + 2 * i),
+            account_id: account(counter),
+            amount: amount(-value),
+            ..template
+        });
+    }
+    at(&mut adoption, day);
+    let request = currents_domain::correction::CorrectionRequestV1 {
+        active_recognition: recognition(OLD_PURCHASE),
+        replacement: vec![recognized(&adoption)],
+        remapping: vec![],
+        reason: "Correct the purchase's legs".into(),
+    };
+    (request, adoption)
+}
+fn replace_legs(
+    state: &DomainState,
+    (request, adoption): &LegCorrection,
+) -> Result<currents_domain::correction::CorrectionPreviewV1, EngineError> {
+    currents_domain::correction::CorrectionEngine::replace_legs(
+        state,
+        id(LEG_REVISION),
+        request,
+        adoption,
+    )
+}
+fn legs_ready(state: &DomainState, correction: &LegCorrection) -> DecisionPlan {
+    match replace_legs(state, correction) {
+        Ok(currents_domain::correction::CorrectionPreviewV1::Ready(plan)) => *plan,
+        other => panic!("expected a ready plan: {other:?}"),
+    }
+}
+/// The one reversal and the one new entry of a correction batch.
+fn reversal_and_entry(batch: &AccountingBatchV1) -> (&FrozenEntryV1, &FrozenEntryV1) {
+    let [
+        FrozenNativeOperationV1::Entry(reversal),
+        FrozenNativeOperationV1::Entry(added),
+    ] = batch.operations.as_slice()
+    else {
+        panic!("one reversal, then one new entry")
+    };
+    (reversal, added)
+}
+/// The old purchase's adoption, leg, event and recognition are unchanged.
+fn old_purchase_kept(before: &DomainState, after: &DomainState) {
+    for n in [OLD_ADOPTION, OLD_CARD_LEG, CARD_PURCHASE + 12, OLD_PURCHASE] {
+        assert_eq!(
+            serde_json::to_vec(&after.records[&id(n)]).unwrap(),
+            serde_json::to_vec(&before.records[&id(n)]).unwrap()
+        );
+    }
+}
+
+#[test]
+fn cur_016_leg_provider_revision() {
+    use currents_domain::correction::CorrectionEngine;
+    let mut state = card_purchase();
+    let old = binding_of(&state, CARD_PURCHASE);
+    // The provider revises the posted purchase from 96 to 94 USD.
+    let revised = dated(
+        &mut state,
+        8700,
+        -94,
+        "2026-11-03",
+        ObservationKind::Movement,
+    );
+    let Some(AuthoritativeRecordV1::ObservationVersion(version)) = state.records.get_mut(&id(8700))
+    else {
+        panic!("revised version missing")
+    };
+    version.prior_version = Some(id(CARD_PURCHASE));
+    let correction = leg_correction(NEW_ADOPTION, "2026-11-03", &[(&revised, -94, EXPENSE)]);
+    let plan = legs_ready(&state, &correction);
+    assert_eq!(
+        correction_revision(&plan),
+        &RecognitionCorrectionRevisionV1 {
+            id: id(LEG_REVISION),
+            schema_version: 3,
+            prior_recognition: recognition(OLD_PURCHASE),
+            replacement_recognition: recognition(NEW_ADOPTION + 3),
+            reason: correction.0.reason.clone(),
+            remap_disposition: RecognitionCorrectionRemapV1::ReplacedLegs {
+                retired_adoption: id(OLD_ADOPTION),
+                replacement_adoption: id(NEW_ADOPTION),
+            },
+        }
+    );
+    // The 96 recognition is reversed once at its own dates; the 94
+    // recognition binds the revised facet.
+    let good = planned(&state, &plan);
+    let (reversal, added) = reversal_and_entry(&good.batch);
+    let [frozen] =
+        state.accounting.as_ref().unwrap().recognitions[&recognition(OLD_PURCHASE)].as_slice()
+    else {
+        panic!("one native entry")
+    };
+    assert_eq!(reversal.reverses.as_ref(), Some(&frozen.key));
+    for entry in [reversal, added] {
+        assert_eq!(entry.value_date, "2026-11-03");
+        assert_eq!(entry.booking_date, "2026-11-03");
+    }
+    assert_eq!(on_account(added, CARD), amount(-94));
+    let corrected = admit(&state, &good).unwrap();
+    let AuthoritativeRecordV1::ActivityAdoption(new) = &corrected.records[&id(NEW_ADOPTION)] else {
+        panic!("the new adoption is retained")
+    };
+    assert_eq!(new.facets[0].source, revised);
+    assert_eq!(balance(&corrected, CARD), amount(-94));
+    assert_eq!(balance(&corrected, EXPENSE), amount(94));
+    // Replay through the earlier commit still shows 96, and the old version
+    // stays as evidence.
+    assert_eq!(balance(&state, CARD), amount(-96));
+    old_purchase_kept(&state, &corrected);
+    assert_eq!(
+        corrected.records[&id(CARD_PURCHASE)],
+        state.records[&id(CARD_PURCHASE)]
+    );
+
+    // The old version cannot carry the revised amount.
+    let stale = leg_correction(NEW_ADOPTION, "2026-11-03", &[(&old, -94, EXPENSE)]);
+    assert!(replace_legs(&state, &stale).is_err());
+    // Replay refuses a revision that names other adoptions.
+    let mut records = plan.records.clone();
+    let AuthoritativeRecordV1::RecognitionCorrectionRevision(forged) = &mut records[0] else {
+        panic!("revision first")
+    };
+    forged.remap_disposition = RecognitionCorrectionRemapV1::ReplacedLegs {
+        retired_adoption: id(NEW_ADOPTION),
+        replacement_adoption: id(OLD_ADOPTION),
+    };
+    replay_refused(
+        &state,
+        &candidate(&state, records, &plan.invalidations, good.batch.clone()),
+    );
+    // The new recognition is the live tip, and its adoption owns it.
+    let again = identity_correction(&corrected, NEW_ADOPTION + 3, 8800);
+    let plan = CorrectionEngine::correct_durable(&corrected, id(8830), &again).unwrap();
+    admit(&corrected, &planned(&corrected, &plan)).unwrap();
+}
+
+#[test]
+fn cur_016_leg_date_correction() {
+    let claims = [
+        claim(8501, CARD, "2026-11-03", "2026-11-03"),
+        claim(8502, CARD, "2026-11-02", "2026-11-02"),
+        claim(8503, EXPENSE, "2026-11-02", "2026-11-02"),
+        claim(8504, CARD, "2026-11-01", "2026-11-01"),
+    ];
+    let state = recorded(
+        &card_purchase(),
+        claims
+            .into_iter()
+            .map(AuthoritativeRecordV1::ReconciliationClaim)
+            .collect(),
+    );
+    let source = binding_of(&state, CARD_PURCHASE);
+    let correction = leg_correction(NEW_ADOPTION, "2026-11-02", &[(&source, -96, EXPENSE)]);
+    let plan = legs_ready(&state, &correction);
+    let good = planned(&state, &plan);
+    let (reversal, added) = reversal_and_entry(&good.batch);
+    assert_eq!(reversal.value_date, "2026-11-03");
+    assert_eq!(reversal.booking_date, "2026-11-03");
+    assert_eq!(added.value_date, "2026-11-02");
+    assert_eq!(added.booking_date, "2026-11-02");
+    // Claims covering either date become invalid; 2026-11-01 stays.
+    assert_eq!(
+        plan.invalidations,
+        [OLD_PURCHASE, OLD_CARD_LEG, 8501, 8502, 8503].map(id)
+    );
+    let corrected = admit(&state, &good).unwrap();
+    for n in [8501, 8502, 8503] {
+        assert_eq!(
+            corrected.claim_status(id(n)),
+            Some(ReconciliationStatus::Invalidated)
+        );
+    }
+    assert_eq!(
+        corrected.claim_status(id(8504)),
+        Some(ReconciliationStatus::Matched)
+    );
+    assert_eq!(
+        dated_postings(&state, CARD),
+        vec![("2026-11-03".to_string(), amount(-96))]
+    );
+    assert_eq!(
+        dated_postings(&corrected, CARD),
+        vec![("2026-11-02".to_string(), amount(-96))]
+    );
+    old_purchase_kept(&state, &corrected);
+}
+
+#[test]
+fn cur_016_leg_split() {
+    let state = card_purchase();
+    let source = binding_of(&state, CARD_PURCHASE);
+    let split = [(&source, -60, EXPENSE), (&source, -36, EXPENSE_B)];
+    let plan = legs_ready(&state, &leg_correction(NEW_ADOPTION, "2026-11-03", &split));
+    let corrected = admit(&state, &planned(&state, &plan)).unwrap();
+    assert_eq!(balance(&corrected, CARD), amount(-96));
+    assert_eq!(balance(&corrected, EXPENSE), amount(60));
+    assert_eq!(balance(&corrected, EXPENSE_B), amount(36));
+    // Both new legs bind the one facet, whose bound total stays 96.
+    let AuthoritativeRecordV1::ActivityAdoption(new) = &corrected.records[&id(NEW_ADOPTION)] else {
+        panic!("the new adoption is retained")
+    };
+    assert_eq!(new.legs.len(), 2);
+    let mut total = amount(0);
+    for facet in &new.facets {
+        assert_eq!(
+            (facet.source.observation, facet.source.facet),
+            (source.observation, source.facet)
+        );
+        total = total.checked_add(&facet.source.amount).unwrap();
+    }
+    assert_eq!(total.normalized().unwrap(), amount(-96));
+    old_purchase_kept(&state, &corrected);
+
+    // A split totaling 95 is refused with no plan.
+    let short = [(&source, -60, EXPENSE), (&source, -35, EXPENSE_B)];
+    let before = snapshot(&state);
+    assert!(replace_legs(&state, &leg_correction(NEW_ADOPTION, "2026-11-03", &short)).is_err());
+    assert_eq!(snapshot(&state), before);
+}
+
+#[test]
+fn cur_016_leg_split_asks_organization_remap() {
+    use currents_domain::correction::CorrectionPreviewV1;
+    const NOTE: u32 = 8601;
+    let state = recorded(&card_purchase(), vec![note(NOTE, id(OLD_CARD_LEG))]);
+    let source = binding_of(&state, CARD_PURCHASE);
+    let split = [(&source, -60, EXPENSE), (&source, -36, EXPENSE_B)];
+    let mut correction = leg_correction(NEW_ADOPTION, "2026-11-03", &split);
+    let before = snapshot(&state);
+    assert_eq!(
+        replace_legs(&state, &correction).unwrap(),
+        CorrectionPreviewV1::NeedsOrganizationDecision(vec![OrganizationQuestionV1 {
+            record: id(NOTE),
+            leg: LegId(id(OLD_CARD_LEG).0),
+        }])
+    );
+    assert_eq!(snapshot(&state), before);
+
+    // One successor version on a replacement leg makes the plan ready.
+    let AuthoritativeRecordV1::Organization(prior) = &state.records[&id(NOTE)] else {
+        panic!("note missing")
+    };
+    let successor = OrganizationRecordV1 {
+        id: id(8602),
+        version: prior.version + 1,
+        targets: vec![id(NEW_ADOPTION + 1)],
+        supersedes: Some(id(NOTE)),
+        ..prior.clone()
+    };
+    correction.0.remapping = vec![successor.clone()];
+    let plan = legs_ready(&state, &correction);
+    assert_eq!(
+        plan.records.last(),
+        Some(&AuthoritativeRecordV1::Organization(successor.clone()))
+    );
+    let good = planned(&state, &plan);
+    let corrected = admit(&state, &good).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&corrected.records[&id(NOTE)]).unwrap(),
+        serde_json::to_vec(&state.records[&id(NOTE)]).unwrap()
+    );
+    assert_eq!(
+        corrected.records[&id(8602)],
+        AuthoritativeRecordV1::Organization(successor.clone())
+    );
+    // Replay refuses the commit without the successor.
+    let dropped = plan.records[..plan.records.len() - 1].to_vec();
+    replay_refused(
+        &state,
+        &candidate(&state, dropped, &plan.invalidations, good.batch.clone()),
+    );
+
+    // A remap that drops or duplicates the note, or targets a retired leg, is
+    // refused. One successor may organize both replacement legs.
+    let unrelated = OrganizationRecordV1 {
+        supersedes: Some(id(8699)),
+        ..successor.clone()
+    };
+    let twice = OrganizationRecordV1 {
+        id: id(8603),
+        ..successor.clone()
+    };
+    let retired = OrganizationRecordV1 {
+        targets: vec![id(OLD_CARD_LEG)],
+        ..successor.clone()
+    };
+    for remapping in [
+        vec![unrelated],
+        vec![successor.clone(), twice],
+        vec![retired],
+    ] {
+        correction.0.remapping = remapping;
+        assert!(replace_legs(&state, &correction).is_err());
+    }
+    correction.0.remapping = vec![OrganizationRecordV1 {
+        targets: vec![id(NEW_ADOPTION + 1), id(NEW_ADOPTION + 11)],
+        ..successor
+    }];
+    legs_ready(&state, &correction);
+    assert_eq!(snapshot(&state), before);
+}
+
+#[test]
+fn cur_016_leg_guards() {
+    use currents_domain::correction::CorrectionEngine;
+    let state = card_purchase();
+    let source = binding_of(&state, CARD_PURCHASE);
+    let plan = legs_ready(
+        &state,
+        &leg_correction(NEW_ADOPTION, "2026-11-03", &[(&source, -96, EXPENSE)]),
+    );
+
+    // A facet another adoption owns cannot be bound by the new legs.
+    let owned = purchase(&state, 8900, "2026-11-03");
+    let elsewhere = binding_of(&owned, 8900);
+    let merged = [(&source, -96, EXPENSE), (&elsewhere, -25, EXPENSE)];
+    let moved = [(&elsewhere, -25, EXPENSE)];
+    for legs in [&merged[..], &moved[..]] {
+        let correction = leg_correction(NEW_ADOPTION, "2026-11-03", legs);
+        assert!(replace_legs(&owned, &correction).is_err());
+    }
+
+    // The retired original cannot be corrected again.
+    let good = planned(&state, &plan);
+    let corrected = admit(&state, &good).unwrap();
+    let (again, adoption) = leg_correction(8910, "2026-11-04", &[(&source, -96, EXPENSE)]);
+    assert!(CorrectionEngine::replace_legs(&corrected, id(8990), &again, &adoption).is_err());
+    let identity = identity_correction(&corrected, OLD_PURCHASE, 8920);
+    assert!(CorrectionEngine::correct_durable(&corrected, id(8930), &identity).is_err());
+
+    // The original cannot be reversed a second time.
+    assert!(AccountingAdapter::freeze(&plan.accounting, &corrected).is_err());
+    let replayed = candidate(
+        &corrected,
+        plan.records.clone(),
+        &plan.invalidations,
+        good.batch,
+    );
+    refused(&corrected, &replayed);
+}

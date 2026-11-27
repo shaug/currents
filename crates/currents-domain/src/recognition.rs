@@ -19,6 +19,15 @@ pub(crate) fn fact(
     state: &DomainState,
     source: &SourceFacetBindingV1,
 ) -> Result<(RecordId, RecordId), EngineError> {
+    Ok(facet_of(state, source, true)?.0)
+}
+/// The fact `source` binds and the known amount of its facet version. When
+/// `whole` holds, the binding must carry that whole amount.
+pub(crate) fn facet_of(
+    state: &DomainState,
+    source: &SourceFacetBindingV1,
+    whole: bool,
+) -> Result<((RecordId, RecordId), Amount), EngineError> {
     let Some(AuthoritativeRecordV1::AddressedParseProduct(product)) =
         state.records.get(&source.parse_product)
     else {
@@ -47,7 +56,7 @@ pub(crate) fn fact(
     let SourceValue::Known(value) = facet.amount else {
         return Err(incomplete());
     };
-    if !equal(value, source.amount)? {
+    if whole && !equal(value, source.amount)? {
         return Err(EngineError::invalid());
     }
     let (root, kind) = source_root(state, source.observation)?;
@@ -98,7 +107,29 @@ pub(crate) fn fact(
             None => break,
         }
     }
-    Ok((root, source.facet))
+    Ok(((root, source.facet), value))
+}
+/// `later` is `earlier` or one of its explicit source revisions.
+pub(crate) fn revises(
+    state: &DomainState,
+    later: RecordId,
+    earlier: RecordId,
+) -> Result<bool, EngineError> {
+    let mut current = later;
+    let mut seen = BTreeSet::new();
+    while current != earlier {
+        let Some(AuthoritativeRecordV1::ObservationVersion(observation)) =
+            state.records.get(&current)
+        else {
+            return Err(incomplete());
+        };
+        match observation.prior_version {
+            Some(prior) if seen.insert(current) => current = prior,
+            Some(_) => return Err(EngineError::invalid()),
+            None => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 fn source_root(
     state: &DomainState,
@@ -137,10 +168,14 @@ fn source_root(
     }
 }
 
+/// Check `request` and return its facet bindings. A `split` adoption, which
+/// replaces the legs of a retired one, may bind portions of one facet
+/// version to several legs, and those portions must total its amount.
 fn validate(
     state: &DomainState,
     request: &ActivityRequestV1,
     admission: bool,
+    split: bool,
 ) -> Result<Vec<AdoptedFacetV1>, EngineError> {
     version(request.schema_version)?;
     match request.status {
@@ -195,6 +230,8 @@ fn validate(
         return Err(EngineError::invalid());
     }
     let mut facts = BTreeSet::new();
+    // Each split facet version: its binding, its amount and the bound total.
+    let mut portions = BTreeMap::<_, (&SourceFacetBindingV1, Amount, Amount)>::new();
     let mut adopted = Vec::new();
     for item in &request.legs {
         let leg = &item.leg;
@@ -263,13 +300,34 @@ fn validate(
             {
                 return Err(EngineError::invalid());
             }
-            if !equal(source.amount, leg.movement)? || !facts.insert(fact(state, source)?) {
+            if !equal(source.amount, leg.movement)? {
+                return Err(duplicate());
+            }
+            if split {
+                let (key, value) = facet_of(state, source, false)?;
+                if !facts.insert((key, Some(leg.id))) {
+                    return Err(duplicate());
+                }
+                let zero = Amount::new(0, 0, value.unit_id)?;
+                let (first, _, total) = portions.entry(key).or_insert((source, value, zero));
+                if (first.observation, first.parse_product)
+                    != (source.observation, source.parse_product)
+                {
+                    return Err(EngineError::invalid());
+                }
+                *total = total.checked_add(&source.amount)?;
+            } else if !facts.insert((fact(state, source)?, None)) {
                 return Err(duplicate());
             }
             adopted.push(AdoptedFacetV1 {
                 leg_id: leg.id,
                 source: source.clone(),
             });
+        }
+    }
+    for (_, value, total) in portions.values() {
+        if !equal(*value, *total)? {
+            return Err(EngineError::invalid());
         }
     }
     Ok(adopted)
@@ -484,7 +542,7 @@ pub(crate) fn readopt(
     request: &ActivityRequestV1,
     admission: bool,
 ) -> Result<Option<RecognitionV1>, EngineError> {
-    validate(state, request, admission)?;
+    validate(state, request, admission, false)?;
     let mode = if admission {
         Admission::Ordinary
     } else {
@@ -624,6 +682,9 @@ fn consumed(
             _ => None,
         })
         .collect();
+    // An adoption whose legs a correction replaced no longer owns its facts;
+    // its replacement binds them.
+    let released = crate::correction::replaced_adoptions(state).retired;
     for a in adoptions {
         for leg in &a.legs {
             if !legs.insert(*leg) {
@@ -661,13 +722,21 @@ fn consumed(
                 return Err(EngineError::invalid());
             }
         }
-        for source in a.facets.iter().map(|f| &f.source).chain(
-            a.opening
-                .iter()
-                .filter(|o| !retired.contains(&o.segment_id))
-                .flat_map(|o| o.included_activity.iter()),
-        ) {
+        // A split replacement binds one fact to several legs; it owns it once.
+        let mut facts = BTreeSet::new();
+        for facet in a.facets.iter().filter(|_| !released.contains(&a.id)) {
+            facts.insert(facet_of(state, &facet.source, false)?.0);
+        }
+        for source in a
+            .opening
+            .iter()
+            .filter(|o| !retired.contains(&o.segment_id))
+            .flat_map(|o| o.included_activity.iter())
+        {
             owners.entry(fact(state, source)?).or_default().push(a);
+        }
+        for fact in facts {
+            owners.entry(fact).or_default().push(a);
         }
     }
     for record in state.records.values() {
@@ -707,7 +776,7 @@ impl RecognitionEngine {
         state: &DomainState,
         request: &ActivityRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
-        let draft = Self::draft(state, request, Admission::Ordinary)?;
+        let draft = Self::draft(state, request, Admission::Ordinary, None)?;
         let mut all = Self::audit(state)?;
         all.push(draft.adoption);
         consumed(&prospective(state, &draft.records), &all)?;
@@ -722,12 +791,15 @@ impl RecognitionEngine {
             },
         })
     }
+    /// Draft one adoption. A draft that replaces the legs of `retiring` may
+    /// split its facts and binds facts that `retiring` adopted.
     fn draft(
         state: &DomainState,
         request: &ActivityRequestV1,
         mode: Admission,
+        retiring: Option<&ActivityAdoptionV1>,
     ) -> Result<Draft, EngineError> {
-        let facets = validate(state, request, true)?;
+        let facets = validate(state, request, true, retiring.is_some())?;
         let recognition = monetary(state, request, mode)?;
         let segment = match mode {
             Admission::Ordinary => crate::segments::initial(state, request, true)?,
@@ -744,6 +816,15 @@ impl RecognitionEngine {
                 return Err(duplicate());
             }
         }
+        // Legs whose adoption a correction retired, or this draft retires, no
+        // longer own their facts.
+        let mut released = BTreeSet::new();
+        for id in crate::correction::replaced_adoptions(state).retired {
+            if let Some(AuthoritativeRecordV1::ActivityAdoption(a)) = state.records.get(&id) {
+                released.extend(a.legs.iter().copied());
+            }
+        }
+        released.extend(retiring.iter().flat_map(|a| a.legs.iter().copied()));
         // Older delivered recognitions may precede ActivityAdoption. Their legs
         // and explicit allocations remain owned; the new route cannot bypass them.
         for record in state.records.values() {
@@ -759,10 +840,13 @@ impl RecognitionEngine {
                 {
                     return Err(duplicate());
                 }
+                if !old.leg_ids.is_empty() && old.leg_ids.iter().all(|l| released.contains(l)) {
+                    continue;
+                }
                 for allocation in &old.evidence_allocations {
                     for binding in &facets {
                         if source_root(state, allocation.observation)?.0
-                            == fact(state, &binding.source)?.0
+                            == facet_of(state, &binding.source, false)?.0.0
                             && allocation.facet == binding.source.facet
                         {
                             return Err(duplicate());
@@ -814,6 +898,7 @@ impl RecognitionEngine {
         // prior prefix. Keep the original adoption's reconstruction independent
         // of the replacement while binding both to the verified native index.
         let corrections = crate::correction::correction_chains(state)?;
+        let split = crate::correction::replaced_adoptions(state).replacements;
         let mut lineage_owners = BTreeMap::<RecordId, Vec<RecognitionId>>::new();
         for record in state.records.values() {
             if let AuthoritativeRecordV1::Recognition(r) = record
@@ -830,7 +915,7 @@ impl RecognitionEngine {
                 return Err(EngineError::invalid());
             }
             let request = restore(state, a)?;
-            if validate(state, &request, false)? != a.facets {
+            if validate(state, &request, false, split.contains(&a.id))? != a.facets {
                 return Err(EngineError::invalid());
             }
             if let Some(segment) = crate::segments::initial(state, &request, false)?
@@ -903,7 +988,7 @@ pub(crate) fn adopt_drafts<'a>(
     let mut ids = BTreeSet::new();
     let mut planned = Vec::new();
     for request in requests {
-        let draft = RecognitionEngine::draft(state, request, Admission::Replacement)?;
+        let draft = RecognitionEngine::draft(state, request, Admission::Replacement, None)?;
         let Some(recognition) = draft.recognition else {
             return Err(EngineError::invalid());
         };
@@ -931,4 +1016,40 @@ pub(crate) fn adopt_drafts<'a>(
     }
     consumed(&prospective(state, &records), &all)?;
     Ok(planned)
+}
+/// Plan `request`, a posted adoption that replaces the legs of `retired`,
+/// against the same prior prefix by the rules of a new adoption. It may split
+/// a fact across its legs. The retired adoption no longer owns its facts, and
+/// every other adoption keeps its own. Returns the adoption's records, its
+/// adoption and its recognition.
+pub(crate) fn replace_adoption(
+    state: &DomainState,
+    request: &ActivityRequestV1,
+    retired: &ActivityAdoptionV1,
+) -> Result<
+    (
+        Vec<AuthoritativeRecordV1>,
+        ActivityAdoptionV1,
+        RecognitionV1,
+    ),
+    EngineError,
+> {
+    if request.status != ActivityStatusV1::Posted
+        || request.prior_pending.is_some()
+        || request
+            .financial
+            .as_ref()
+            .is_none_or(|f| f.opening.is_some())
+    {
+        return Err(EngineError::invalid());
+    }
+    let draft = RecognitionEngine::draft(state, request, Admission::Ordinary, Some(retired))?;
+    let recognition = draft.recognition.ok_or_else(EngineError::invalid)?;
+    let mut all = RecognitionEngine::audit(state)?;
+    for adoption in all.iter_mut().filter(|a| a.id == retired.id) {
+        adoption.facets.clear();
+    }
+    all.push(draft.adoption.clone());
+    consumed(&prospective(state, &draft.records), &all)?;
+    Ok((draft.records, draft.adoption, recognition))
 }

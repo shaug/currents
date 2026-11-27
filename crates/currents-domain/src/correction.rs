@@ -1,16 +1,27 @@
 //! Proposals for corrections to an accepted recognition.
-use crate::dependents::{self, Change, Dependents};
+use crate::dependents::{self, Change, Dependents, OrganizationQuestionV1};
 use currents_types::{
-    AccountId, AccountingIndexV1, AccountingIntent, ActivityAdoptionV1, ActivityStatusV1,
-    AuthoritativeRecordV1, DecisionPlan, DomainState, EngineError, PolicyReferenceV1,
-    RecognitionCorrectionRemapV1, RecognitionCorrectionRevisionV1, RecognitionId, RecognitionKind,
-    RecognitionTermsV1, RecognitionV1, RecordId, StableLegsReinterpretationV1,
+    AccountId, AccountingIndexV1, AccountingIntent, ActivityAdoptionV1, ActivityRequestV1,
+    ActivityStatusV1, AuthoritativeRecordV1, DecisionPlan, DomainCommitV1, DomainState,
+    EngineError, LegId, OrganizationRecordV1, PolicyReferenceV1, RecognitionCorrectionRemapV1,
+    RecognitionCorrectionRevisionV1, RecognitionId, RecognitionKind, RecognitionTermsV1,
+    RecognitionV1, RecordId, StableLegsReinterpretationV1,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 pub use currents_types::CorrectionV1 as CorrectionRequestV1;
 
 pub struct CorrectionEngine;
+
+/// The preview of a correction that replaces a recognition's legs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CorrectionPreviewV1 {
+    Ready(Box<DecisionPlan>),
+    /// Organization records target a leg the correction retires, and the
+    /// request does not remap them. No plan exists: the owner must give each
+    /// record one successor version on the replacement legs.
+    NeedsOrganizationDecision(Vec<OrganizationQuestionV1>),
+}
 
 impl CorrectionEngine {
     /// Preview a one-for-one correction that changes recognition/posting identities only.
@@ -22,7 +33,7 @@ impl CorrectionEngine {
         request: &CorrectionRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
         let (original, replacement) = live(state, request)?;
-        if !same_economics(original, replacement) {
+        if !request.remapping.is_empty() || !same_economics(original, replacement) {
             return Err(EngineError::version());
         }
         Ok(plan(original, request))
@@ -57,11 +68,89 @@ impl CorrectionEngine {
         };
         Self::durable(state, revision_id, request, interpretation)
     }
-    /// Derive again the plan that `revision` records for `request`.
+    /// Preview a correction that replaces the legs of a live standalone
+    /// recognition: a revised amount, a changed date or a split leg.
+    /// `adoption` is a fresh posted adoption of new legs for the same source
+    /// facets, and the recognition it derives is the request's one
+    /// replacement. Each facet keeps its bound total, unless the adoption
+    /// binds a later source revision of that facet, which binds its own
+    /// amount. The plan holds a version-3 revision, the new adoption's
+    /// records and the owner's successor version of each organization record
+    /// on a retired leg. Dispatch remains disabled.
+    pub fn replace_legs(
+        state: &DomainState,
+        revision_id: RecordId,
+        request: &CorrectionRequestV1,
+        adoption: &ActivityRequestV1,
+    ) -> Result<CorrectionPreviewV1, EngineError> {
+        let (original, replacement) = live(state, request)?;
+        fresh_revision(state, revision_id, replacement)?;
+        let chains = correction_chains(state)?;
+        let owner = original_adoption(state, chains.root_of(original.id))?;
+        refuse_dependents(state, &chains, original.id, owner)?;
+        let (records, replacing, recognition) =
+            crate::recognition::replace_adoption(state, adoption, owner)?;
+        if recognition != *replacement
+            || [adoption.adoption_id, adoption.event.id]
+                .into_iter()
+                .chain(replacing.legs.iter().map(|l| RecordId(l.0)))
+                .any(|id| id == revision_id)
+        {
+            return Err(EngineError::invalid());
+        }
+        same_sources(state, owner, &replacing)?;
+        // The old adoption, its event, legs, recognition and postings retire.
+        let change = Change::new(
+            state,
+            std::slice::from_ref(request),
+            owner.legs.iter().copied(),
+            [owner.id, owner.event_id],
+        )?;
+        let Dependents { claims, questions } = dependents::assess(state, &change)?;
+        let mut taken: BTreeSet<RecordId> = [revision_id, recognition.lineage]
+            .into_iter()
+            .chain(recognition.postings.iter().map(|p| p.id))
+            .collect();
+        for record in &records {
+            taken.insert(record_id(record).ok_or_else(EngineError::invalid)?);
+        }
+        let Some(successors) = remapped(state, &questions, &request.remapping, &replacing, taken)?
+        else {
+            return Ok(CorrectionPreviewV1::NeedsOrganizationDecision(questions));
+        };
+        let revision = RecognitionCorrectionRevisionV1 {
+            id: revision_id,
+            schema_version: 3,
+            prior_recognition: original.id,
+            replacement_recognition: replacement.id,
+            reason: request.reason.clone(),
+            remap_disposition: RecognitionCorrectionRemapV1::ReplacedLegs {
+                retired_adoption: owner.id,
+                replacement_adoption: replacing.id,
+            },
+        };
+        let mut plan = plan(original, request);
+        plan.records = std::iter::once(AuthoritativeRecordV1::RecognitionCorrectionRevision(
+            revision,
+        ))
+        .chain(records)
+        .chain(
+            successors
+                .into_iter()
+                .map(AuthoritativeRecordV1::Organization),
+        )
+        .collect();
+        plan.invalidations.extend(claims);
+        Ok(CorrectionPreviewV1::Ready(Box::new(plan)))
+    }
+    /// Derive again the plan that `revision` records for `request`. `records`
+    /// are the plan's records after the revision; a leg correction's new
+    /// adoption is restored from them.
     pub fn readmit(
         state: &DomainState,
         revision: &RecognitionCorrectionRevisionV1,
         request: &CorrectionRequestV1,
+        records: &[AuthoritativeRecordV1],
     ) -> Result<DecisionPlan, EngineError> {
         match &revision.remap_disposition {
             RecognitionCorrectionRemapV1::UnchangedStableLegs => {
@@ -74,6 +163,28 @@ impl CorrectionEngine {
                 &new.governing_policy,
                 new.unresolved_account,
             ),
+            RecognitionCorrectionRemapV1::ReplacedLegs {
+                replacement_adoption,
+                ..
+            } => {
+                let mut held = DomainState::default();
+                for record in records {
+                    let id = record_id(record).ok_or_else(EngineError::invalid)?;
+                    held.records.insert(id, record.clone());
+                }
+                let Some(AuthoritativeRecordV1::ActivityAdoption(adoption)) =
+                    held.records.get(replacement_adoption)
+                else {
+                    return Err(EngineError::invalid());
+                };
+                let adoption = crate::recognition::restore(&held, adoption)?;
+                match Self::replace_legs(state, revision.id, request, &adoption)? {
+                    CorrectionPreviewV1::Ready(plan) => Ok(*plan),
+                    CorrectionPreviewV1::NeedsOrganizationDecision(_) => {
+                        Err(EngineError::invalid())
+                    }
+                }
+            }
         }
     }
     fn durable(
@@ -83,62 +194,18 @@ impl CorrectionEngine {
         interpretation: Interpretation,
     ) -> Result<DecisionPlan, EngineError> {
         let (original, replacement) = live(state, request)?;
-        if interpretation == Interpretation::Unchanged && !same_economics(original, replacement) {
+        if !request.remapping.is_empty()
+            || (interpretation == Interpretation::Unchanged
+                && !same_economics(original, replacement))
+        {
             return Err(EngineError::version());
         }
         let mut plan = plan(original, request);
         let original_id = request.active_recognition;
-        let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
-        if revision_id.0.is_nil()
-            || revision_id == RecordId(replacement.id.0)
-            || revision_id == replacement.lineage
-            || replacement.postings.iter().any(|p| p.id == revision_id)
-            || index
-                .recognitions
-                .values()
-                .flatten()
-                .flat_map(|e| &e.postings)
-                .any(|p| p.original.id == revision_id)
-            || state.records.contains_key(&revision_id)
-        {
-            return Err(EngineError::invalid());
-        }
+        fresh_revision(state, revision_id, replacement)?;
         let chains = correction_chains(state)?;
-        let root = chains.root_of(original_id);
-        let owner = original_adoption(state, root)?;
-        let in_family = |candidate: &RecognitionId| chains.root_of(*candidate) == root;
-        let target_in_family = |candidate: &RecordId| in_family(&RecognitionId(candidate.0));
-        if state.records.values().any(|record| match record {
-            AuthoritativeRecordV1::Association(_)
-            | AuthoritativeRecordV1::Allocation(_)
-            | AuthoritativeRecordV1::OccurrenceMatch(_)
-            | AuthoritativeRecordV1::ForecastRun(_) => true,
-            AuthoritativeRecordV1::AssociationRevision(a) => {
-                a.recognitions.iter().any(in_family)
-                    || a.retired_recognitions.iter().any(in_family)
-                    || a.superseded_adoptions.contains(&owner.id)
-                    || a.legs.iter().any(|leg| owner.legs.contains(leg))
-            }
-            AuthoritativeRecordV1::Review(review) => {
-                review.targets.iter().any(target_in_family)
-                    || review.targets.contains(&owner.id)
-                    || owner
-                        .legs
-                        .iter()
-                        .any(|leg| review.targets.contains(&RecordId(leg.0)))
-            }
-            AuthoritativeRecordV1::AccountingSegment(s) => {
-                in_family(&s.opening)
-                    || s.included_activity.iter().any(in_family)
-                    || s.replacement_closure.iter().any(in_family)
-            }
-            AuthoritativeRecordV1::SegmentReemission(r) => {
-                in_family(&r.original) || in_family(&r.replacement)
-            }
-            _ => false,
-        }) {
-            return Err(EngineError::version());
-        }
+        let owner = original_adoption(state, chains.root_of(original_id))?;
+        refuse_dependents(state, &chains, original_id, owner)?;
         if let Interpretation::New {
             governing_policy,
             unresolved_account,
@@ -150,9 +217,10 @@ impl CorrectionEngine {
         // The legs stay, so organization on them stays current. Claims that
         // see the change or name the retired recognition are invalidated.
         let change = Change::new(state, std::slice::from_ref(request), [], [])?;
-        let Dependents::Claims(claims) = dependents::assess(state, &change)? else {
+        let Dependents { claims, questions } = dependents::assess(state, &change)?;
+        if !questions.is_empty() {
             return Err(EngineError::invalid());
-        };
+        }
         plan.invalidations.extend(claims);
         let remap_disposition = match interpretation {
             Interpretation::Unchanged => RecognitionCorrectionRemapV1::UnchangedStableLegs,
@@ -180,6 +248,55 @@ impl CorrectionEngine {
         );
         Ok(plan)
     }
+}
+
+/// Replay admits a leg correction only by deriving its whole commit again
+/// from the prior prefix: the revision, the new adoption's records and the
+/// organization successors, then the frozen manifest.
+pub(crate) fn readmit_replaced_legs(
+    prior: &DomainState,
+    commit: &DomainCommitV1,
+    revision: &RecognitionCorrectionRevisionV1,
+) -> Result<(), EngineError> {
+    let invalid = EngineError::invalid;
+    let Some((AuthoritativeRecordV1::FrozenAccountingManifest(_), held)) =
+        commit.records.split_last()
+    else {
+        return Err(invalid());
+    };
+    let [
+        AuthoritativeRecordV1::RecognitionCorrectionRevision(first),
+        body @ ..,
+    ] = held
+    else {
+        return Err(invalid());
+    };
+    let replacement = body.iter().find_map(|record| match record {
+        AuthoritativeRecordV1::Recognition(r) if r.id == revision.replacement_recognition => {
+            Some(r)
+        }
+        _ => None,
+    });
+    let (Some(replacement), true) = (replacement, first == revision) else {
+        return Err(invalid());
+    };
+    let request = CorrectionRequestV1 {
+        active_recognition: revision.prior_recognition,
+        replacement: vec![replacement.clone()],
+        remapping: body
+            .iter()
+            .filter_map(|record| match record {
+                AuthoritativeRecordV1::Organization(o) => Some(o.clone()),
+                _ => None,
+            })
+            .collect(),
+        reason: revision.reason.clone(),
+    };
+    let plan = CorrectionEngine::readmit(prior, revision, &request, body)?;
+    if plan.records != held || commit.command_result.effects.invalidations != plan.invalidations {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 /// The interpretation a durable correction asks for: the current one, or a
@@ -220,9 +337,6 @@ fn live<'a>(
     let [replacement] = request.replacement.as_slice() else {
         return Err(EngineError::version());
     };
-    if !request.remapping.is_empty() {
-        return Err(EngineError::version());
-    }
     if replacement.id.0.is_nil()
         || state.records.contains_key(&RecordId(replacement.id.0))
         || index.recognitions.contains_key(&replacement.id)
@@ -244,6 +358,213 @@ fn live<'a>(
         }
     }
     Ok((original, replacement))
+}
+
+/// The revision ID is new and differs from the replacement's identities.
+fn fresh_revision(
+    state: &DomainState,
+    revision_id: RecordId,
+    replacement: &RecognitionV1,
+) -> Result<(), EngineError> {
+    let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
+    if revision_id.0.is_nil()
+        || revision_id == RecordId(replacement.id.0)
+        || revision_id == replacement.lineage
+        || replacement.postings.iter().any(|p| p.id == revision_id)
+        || index
+            .recognitions
+            .values()
+            .flatten()
+            .flat_map(|e| &e.postings)
+            .any(|p| p.original.id == revision_id)
+        || state.records.contains_key(&revision_id)
+    {
+        return Err(EngineError::invalid());
+    }
+    Ok(())
+}
+
+/// Refuse a correction of `original` that association, review or segment
+/// records depend on, and any correction while an association, allocation,
+/// occurrence match or forecast run exists. `owner` adopted the legs.
+fn refuse_dependents(
+    state: &DomainState,
+    chains: &CorrectionChains,
+    original: RecognitionId,
+    owner: &ActivityAdoptionV1,
+) -> Result<(), EngineError> {
+    let root = chains.root_of(original);
+    let in_family = |candidate: &RecognitionId| chains.root_of(*candidate) == root;
+    let target_in_family = |candidate: &RecordId| in_family(&RecognitionId(candidate.0));
+    if state.records.values().any(|record| match record {
+        AuthoritativeRecordV1::Association(_)
+        | AuthoritativeRecordV1::Allocation(_)
+        | AuthoritativeRecordV1::OccurrenceMatch(_)
+        | AuthoritativeRecordV1::ForecastRun(_) => true,
+        AuthoritativeRecordV1::AssociationRevision(a) => {
+            a.recognitions.iter().any(in_family)
+                || a.retired_recognitions.iter().any(in_family)
+                || a.superseded_adoptions.contains(&owner.id)
+                || a.legs.iter().any(|leg| owner.legs.contains(leg))
+        }
+        AuthoritativeRecordV1::Review(review) => {
+            review.targets.iter().any(target_in_family)
+                || review.targets.contains(&owner.id)
+                || owner
+                    .legs
+                    .iter()
+                    .any(|leg| review.targets.contains(&RecordId(leg.0)))
+        }
+        AuthoritativeRecordV1::AccountingSegment(s) => {
+            in_family(&s.opening)
+                || s.included_activity.iter().any(in_family)
+                || s.replacement_closure.iter().any(in_family)
+        }
+        AuthoritativeRecordV1::SegmentReemission(r) => {
+            in_family(&r.original) || in_family(&r.replacement)
+        }
+        _ => false,
+    }) {
+        return Err(EngineError::version());
+    }
+    Ok(())
+}
+
+/// The owner's successor versions for the organization `questions` name, or
+/// `None` when the request gives none. Each affected record needs exactly
+/// one successor: the next version, superseding it, with its kind and
+/// parent, no allocations and only `replacing`'s legs as targets. Its ID
+/// must be new and differ from every ID in `taken`.
+fn remapped(
+    state: &DomainState,
+    questions: &[OrganizationQuestionV1],
+    remapping: &[OrganizationRecordV1],
+    replacing: &ActivityAdoptionV1,
+    mut taken: BTreeSet<RecordId>,
+) -> Result<Option<Vec<OrganizationRecordV1>>, EngineError> {
+    let affected: BTreeSet<RecordId> = questions.iter().map(|q| q.record).collect();
+    if remapping.is_empty() {
+        return Ok(affected.is_empty().then(Vec::new));
+    }
+    let mut answered = BTreeSet::new();
+    for next in remapping {
+        let Some(old) = next.supersedes else {
+            return Err(EngineError::invalid());
+        };
+        let Some(AuthoritativeRecordV1::Organization(prior)) = state.records.get(&old) else {
+            return Err(EngineError::invalid());
+        };
+        if !prior.allocations.is_empty() || !next.allocations.is_empty() {
+            return Err(EngineError::version());
+        }
+        let mut targets = BTreeSet::new();
+        if !affected.contains(&old)
+            || !answered.insert(old)
+            || prior.version.checked_add(1) != Some(next.version)
+            || next.kind != prior.kind
+            || next.parent != prior.parent
+            || next.targets.is_empty()
+            || next
+                .targets
+                .iter()
+                .any(|t| !targets.insert(*t) || !replacing.legs.contains(&LegId(t.0)))
+            || next.id.0.is_nil()
+            || state.records.contains_key(&next.id)
+            || !taken.insert(next.id)
+        {
+            return Err(EngineError::invalid());
+        }
+    }
+    if answered != affected {
+        return Err(EngineError::invalid());
+    }
+    Ok(Some(remapping.to_vec()))
+}
+
+/// The ID of a record a leg correction's plan holds.
+fn record_id(record: &AuthoritativeRecordV1) -> Option<RecordId> {
+    match record {
+        AuthoritativeRecordV1::FinancialEvent(e) => Some(e.id),
+        AuthoritativeRecordV1::FinancialLeg(l) => Some(RecordId(l.id.0)),
+        AuthoritativeRecordV1::ActivityAdoption(a) => Some(a.id),
+        AuthoritativeRecordV1::Recognition(r) => Some(RecordId(r.id.0)),
+        AuthoritativeRecordV1::Organization(o) => Some(o.id),
+        _ => None,
+    }
+}
+
+/// `replacing` binds the facts `retired` bound, and nothing else. Each fact
+/// keeps its facet version and bound total, or binds a later source revision
+/// of that facet, whose own amount the adoption's checks have bound.
+fn same_sources(
+    state: &DomainState,
+    retired: &ActivityAdoptionV1,
+    replacing: &ActivityAdoptionV1,
+) -> Result<(), EngineError> {
+    let bound = |adoption: &ActivityAdoptionV1| {
+        let mut facts = BTreeMap::<_, (RecordId, currents_types::Amount)>::new();
+        for facet in &adoption.facets {
+            let source = &facet.source;
+            let (key, _) = crate::recognition::facet_of(state, source, false)?;
+            let zero = currents_types::Amount::new(0, 0, source.amount.unit_id)?;
+            let (observation, total) = facts.entry(key).or_insert((source.observation, zero));
+            if *observation != source.observation {
+                return Err(EngineError::invalid());
+            }
+            *total = total.checked_add(&source.amount)?;
+        }
+        Ok::<_, EngineError>(facts)
+    };
+    let (old, new) = (bound(retired)?, bound(replacing)?);
+    if !old.keys().eq(new.keys()) {
+        return Err(EngineError::invalid());
+    }
+    for (key, (observation, total)) in &old {
+        let (revised, now) = new[key];
+        let kept = if revised == *observation {
+            now.normalized()? == total.normalized()?
+        } else {
+            crate::recognition::revises(state, revised, *observation)?
+        };
+        if !kept {
+            return Err(EngineError::invalid());
+        }
+    }
+    Ok(())
+}
+
+/// The adoptions whose legs a correction replaced, and their replacements.
+/// An adoption is retired once a `ReplacedLegs` revision names it and the
+/// native index shows its recognition reversed.
+pub(crate) struct ReplacedAdoptions {
+    pub(crate) retired: BTreeSet<RecordId>,
+    pub(crate) replacements: BTreeSet<RecordId>,
+}
+pub(crate) fn replaced_adoptions(state: &DomainState) -> ReplacedAdoptions {
+    let mut replaced = ReplacedAdoptions {
+        retired: BTreeSet::new(),
+        replacements: BTreeSet::new(),
+    };
+    let reversed = state.accounting.as_ref().map(|index| &index.reversed);
+    for record in state.records.values() {
+        let AuthoritativeRecordV1::RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1 {
+            prior_recognition,
+            remap_disposition:
+                RecognitionCorrectionRemapV1::ReplacedLegs {
+                    retired_adoption,
+                    replacement_adoption,
+                },
+            ..
+        }) = record
+        else {
+            continue;
+        };
+        replaced.replacements.insert(*replacement_adoption);
+        if reversed.is_some_and(|r| r.contains(prior_recognition)) {
+            replaced.retired.insert(*retired_adoption);
+        }
+    }
+    replaced
 }
 
 /// Reverse the original and add its replacement. The original recognition
@@ -383,8 +704,10 @@ fn retained_recognition<'a>(
 
 pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains, EngineError> {
     let invalid = EngineError::invalid;
-    let mut successors = BTreeMap::new();
-    let mut predecessors = BTreeMap::new();
+    // Each revision is the one edge out of its prior recognition and the one
+    // edge into its replacement.
+    let mut edges = BTreeMap::new();
+    let mut targets = BTreeSet::new();
     for (id, record) in &state.records {
         let AuthoritativeRecordV1::RecognitionCorrectionRevision(revision) = record else {
             continue;
@@ -396,18 +719,14 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
             || id.0.is_nil()
             || revision.prior_recognition == revision.replacement_recognition
             || revision.reason.trim().is_empty()
-            || successors
-                .insert(revision.prior_recognition, revision)
-                .is_some()
-            || predecessors
-                .insert(revision.replacement_recognition, revision.prior_recognition)
-                .is_some()
+            || edges.insert(revision.prior_recognition, revision).is_some()
+            || !targets.insert(revision.replacement_recognition)
         {
             return Err(invalid());
         }
     }
     let mut chains = CorrectionChains::default();
-    if successors.is_empty() {
+    if edges.is_empty() {
         return Ok(chains);
     }
     let index = state.accounting.as_ref().ok_or_else(invalid)?;
@@ -417,11 +736,12 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
     {
         return Err(invalid());
     }
-    let roots = successors
-        .keys()
-        .filter(|id| !predecessors.contains_key(id));
+    let roots = edges.keys().filter(|id| !targets.contains(id));
     for &root in roots {
-        let owner = original_adoption(state, root)?;
+        let mut owner = original_adoption(state, root)?;
+        // A leg correction starts a new chain at its replacement, which its
+        // new adoption owns.
+        let mut chain = root;
         let mut prior_id = root;
         let mut prior = retained_recognition(state, index, prior_id)?;
         if prior.leg_ids != owner.legs || chains.roots.insert(root, root).is_some() {
@@ -435,11 +755,10 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
         {
             return Err(invalid());
         }
-        while let Some(&revision) = successors.get(&prior_id) {
+        while let Some(&revision) = edges.get(&prior_id) {
             let next_id = revision.replacement_recognition;
             let next = retained_recognition(state, index, next_id)?;
             if !index.reversed.contains(&prior_id)
-                || chains.roots.insert(next_id, root).is_some()
                 || next.postings.iter().any(|p| !posting_ids.insert(p.id))
             {
                 return Err(invalid());
@@ -464,6 +783,24 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
                         return Err(invalid());
                     }
                 }
+                RecognitionCorrectionRemapV1::ReplacedLegs {
+                    retired_adoption,
+                    replacement_adoption,
+                } => {
+                    let successor = original_adoption(state, next_id)?;
+                    if owner.id != *retired_adoption
+                        || successor.id != *replacement_adoption
+                        || next.leg_ids != successor.legs
+                    {
+                        return Err(invalid());
+                    }
+                    same_sources(state, owner, successor)?;
+                    owner = successor;
+                    chain = next_id;
+                }
+            }
+            if chains.roots.insert(next_id, chain).is_some() {
+                return Err(invalid());
             }
             prior_id = next_id;
             prior = next;
@@ -473,7 +810,7 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
         }
     }
     // A disconnected cycle cannot be reached from a uniquely adopted root.
-    if successors.keys().any(|id| !chains.roots.contains_key(id))
+    if edges.keys().any(|id| !chains.roots.contains_key(id))
         || state.records.values().any(|record| {
             matches!(record,
             AuthoritativeRecordV1::ActivityAdoption(adoption)

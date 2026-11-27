@@ -608,6 +608,23 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 m.reference(&["Account"], &new["unresolved_account"], None);
                 m.many(&["Account"], &new["changed_accounts"]);
             }
+            if let RecognitionCorrectionRemapV1::ReplacedLegs {
+                retired_adoption,
+                replacement_adoption,
+            } = &r.remap_disposition
+            {
+                if retired_adoption == replacement_adoption {
+                    return Err(EngineError::invalid());
+                }
+                let replaced = &v["remap_disposition"]["ReplacedLegs"];
+                m.reference(&["ActivityAdoption"], &replaced["retired_adoption"], None);
+                m.reference(
+                    &["ActivityAdoption"],
+                    &replaced["replacement_adoption"],
+                    None,
+                );
+                m.define("ReplacedAdoption", &replaced["retired_adoption"], 0, false);
+            }
             if r.prior_recognition == r.replacement_recognition || r.reason.trim().is_empty() {
                 return Err(EngineError::invalid());
             }
