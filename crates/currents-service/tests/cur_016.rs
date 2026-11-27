@@ -1571,7 +1571,7 @@ async fn cur_016_1_encrypted_cross_account_commit() {
 }
 
 // Claims on account A: K1 covers 2026-10-01 to 2026-10-31 with status
-// Matched, K2 covers 2026-11-05 to 2026-11-30. Both have empty explicit
+// Proposed, K2 covers 2026-11-05 to 2026-11-30. Both have empty explicit
 // dependency lists.
 const K1: u32 = 4001;
 const K2: u32 = 4002;
@@ -1598,7 +1598,8 @@ fn claim_on_a(n: u32, start: &str, end: &str) -> AuthoritativeRecordV1 {
         end: civil(end),
         basis: DateBasis::Effective,
     };
-    claim.status = ReconciliationStatus::Matched;
+    claim.status = ReconciliationStatus::Proposed;
+    claim.basis.dataset_id = DatasetId(support::id(1000).0);
     AuthoritativeRecordV1::ReconciliationClaim(claim)
 }
 
@@ -1682,18 +1683,9 @@ async fn cur_016_backfill_invalidates_claim_in_scope() {
     witness.close().await.unwrap();
     store.close().await.unwrap();
 
-    assert_eq!(
-        at_claims.claim_status(fixture::id(K1)),
-        Some(ReconciliationStatus::Matched)
-    );
-    assert_eq!(
-        replaced.claim_status(fixture::id(K1)),
-        Some(ReconciliationStatus::Invalidated)
-    );
-    assert_eq!(
-        replaced.claim_status(fixture::id(K2)),
-        Some(ReconciliationStatus::Matched)
-    );
+    assert!(!at_claims.claim_invalidated(fixture::id(K1)));
+    assert!(replaced.claim_invalidated(fixture::id(K1)));
+    assert!(!replaced.claim_invalidated(fixture::id(K2)));
     for kept in [K1, K2] {
         let key = fixture::id(kept);
         assert_eq!(
@@ -1728,6 +1720,7 @@ async fn cur_016_replay_checks_invalidations() {
     for claim in [K1, K2] {
         let key = fixture::id(claim);
         assert_eq!(again.claim_status(key), source.claim_status(key));
+        assert_eq!(again.claim_invalidated(key), source.claim_invalidated(key));
     }
 
     // Replay rejects a commit whose recorded invalidations add or omit a claim.

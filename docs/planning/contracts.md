@@ -355,15 +355,16 @@ its event and its legs.
 
 A reconciliation claim is invalidated when the net change on one of its scope
 accounts is nonzero on a date inside its cutoffs, by the claim's own date
-basis, or when its evidence, decision, exclusion or matched-allocation
-identities name a retired identity. A posting date that is not a civil date
-counts as inside every range. A claim that is already invalidated is skipped.
-The plan lists each invalidated claim in record order after its other
-invalidations, so the command result's effects list it too. The claim record
-is never rewritten. `DomainState::claim_status` reports `Invalidated` from the
-commit whose result invalidated the claim, and the record's own status before
-it. Replay derives the plan again and rejects a segment or correction commit
-whose recorded invalidations differ.
+basis, or when its evidence, decision, accounting, exclusion or
+matched-allocation identities name a retired identity. A posting date that is
+not a civil date counts as inside every range. A claim that is already
+invalidated is skipped. The plan lists each invalidated claim in record order
+after its other invalidations, so the command result's effects list it too.
+The claim record is never rewritten. `DomainState::claim_invalidated` reports
+true from the commit whose result invalidated the claim, and
+`DomainState::claim_status` keeps reporting the record's own lifecycle status.
+Replay derives the plan again and rejects a segment or correction commit whose
+recorded invalidations differ.
 
 Organization records on legs that stay keep their targets. A replacement that
 retires a leg that an organization record targets returns
@@ -432,7 +433,18 @@ frozen.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoff, evidence, exclusions, basis }`; `ClaimV1 { id, inputs, dependency_digest, predicate_dependencies, differences, status, basis }`; `ReconciliationEngine::evaluate(state,&request)->Result<ClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoff, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+
+`ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
+`status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
+or `Superseded`. `reasons` lists why a claim is partial: `UnknownOpening`,
+`IncompleteInterval`, `IncompatibleBalanceKinds`, `MissingDateMapping` or
+`UnexplainedResidual`. Storage checks references by role:
+`evidence_dependencies` name evidence records, `decision_dependencies` name
+decisions, and `accounting_dependencies` name recognitions, legs,
+association revisions and accounting segments. `unit` names a declared unit,
+and `basis` names the dataset, its unit catalog version and a commit at or
+before the claim's own. No route writes claims yet.
 
 The bounded in-process Activity comparison compares caller-selected source
 and allocation lines by exact observation/facet identity, scope, selected
