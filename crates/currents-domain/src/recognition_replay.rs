@@ -32,6 +32,16 @@ pub(crate) fn validate_transition(
     }) {
         return crate::correction::readmit_replaced_legs(prior, commit, revision);
     }
+    // So does a reconciliation claim, confirmation or dispute.
+    if commit.records.iter().any(|record| {
+        matches!(
+            record,
+            AuthoritativeRecordV1::ReconciliationClaim(_)
+                | AuthoritativeRecordV1::ReconciliationDisposition(_)
+        )
+    }) {
+        return crate::reconciliation::readmit(prior, commit);
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {

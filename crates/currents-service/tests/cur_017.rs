@@ -8,6 +8,8 @@ use currents_types::*;
 use std::path::Path;
 use std::sync::Arc;
 
+#[path = "support/claims.rs"]
+mod claims;
 #[path = "../../currents-domain/tests/support/recognition.rs"]
 #[allow(dead_code)]
 mod fixture;
@@ -204,29 +206,35 @@ async fn replay_through(
 #[tokio::test]
 async fn cur_017_correction_invalidates_named_recognition() {
     use currents_service::synthetic_commit_verified_correction;
-    const NAMED: u32 = 4001;
-    const DATED: u32 = 4002;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("named-recognition.db");
-    let (mut f, state, recognition) = purchase_on_a(&path).await;
+    let (mut f, mut state, recognition) = purchase_on_a(&path).await;
     f.service.close().await.unwrap();
 
-    let mut named = claim(&state, NAMED);
-    named.accounting_dependencies = vec![RecordId(recognition.0)];
-    let store = open(&path).await;
-    store
-        .writer()
-        .commit(prepared(
-            &state,
-            claims_plan(vec![named, claim(&state, DATED)]),
-            52_000,
-        ))
-        .await
-        .unwrap();
-    store.close().await.unwrap();
-    f.service = f.reopen().await;
-    let claimed = refresh_financial(&mut f, None).await;
-    f.service.close().await.unwrap();
+    // NAMED is the October claim on A, which names R. DATED is the October
+    // claim on the expense account, which names nothing R touches; R's
+    // counter posting falls on a date inside it.
+    let mut recorded = Vec::new();
+    for (n, on) in [(52_000, ACCOUNT_A), (52_010, EXPENSE)] {
+        let on = AccountId(fixture::id(on).0);
+        let request = claims::request(&state, on, "2026-10-01", "2026-10-31");
+        let (claim, prepared) = claims::recorded(&state, &request, n);
+        let store = open(&path).await;
+        store.writer().commit(prepared).await.unwrap();
+        store.close().await.unwrap();
+        f.service = f.reopen().await;
+        state = refresh_financial(&mut f, None).await;
+        f.service.close().await.unwrap();
+        recorded.push(claim);
+    }
+    let claimed = state;
+    let (named, dated) = (recorded[0].id, recorded[1].id);
+    assert!(
+        recorded[0]
+            .accounting_dependencies
+            .contains(&RecordId(recognition.0))
+    );
+    assert!(recorded[1].accounting_dependencies.is_empty());
 
     // An identity-only correction of R: the same purchase with fresh IDs.
     let AuthoritativeRecordV1::Recognition(original) = &claimed.records[&RecordId(recognition.0)]
@@ -246,8 +254,8 @@ async fn cur_017_correction_invalidates_named_recognition() {
     };
     let revision = fixture::id(55_010);
     let plan = CorrectionEngine::correct_durable(&claimed, revision, &request).unwrap();
-    assert_eq!(plan.invalidations.last(), Some(&fixture::id(NAMED)));
-    assert!(!plan.invalidations.contains(&fixture::id(DATED)));
+    assert_eq!(plan.invalidations.last(), Some(&named));
+    assert!(!plan.invalidations.contains(&dated));
     let store = open(&path).await;
     let receipt =
         synthetic_commit_verified_correction(store.writer(), prepared(&claimed, plan, 55_011))
@@ -258,15 +266,11 @@ async fn cur_017_correction_invalidates_named_recognition() {
     let replayed = replay_through(&store.history(), receipt.commit, &witness).await;
     witness.close().await.unwrap();
     store.close().await.unwrap();
-    assert!(replayed.claim_invalidated(fixture::id(NAMED)));
-    assert!(!replayed.claim_invalidated(fixture::id(DATED)));
-    for n in [NAMED, DATED] {
-        let key = fixture::id(n);
+    assert!(replayed.claim_invalidated(named));
+    assert!(!replayed.claim_invalidated(dated));
+    for key in [named, dated] {
         assert!(!claimed.claim_invalidated(key));
-        assert_eq!(
-            replayed.claim_status(key),
-            Some(ReconciliationStatus::Proposed)
-        );
+        assert_eq!(replayed.claim_status(key), claimed.claim_status(key));
         assert_eq!(
             serde_json::to_vec(&replayed.records[&key]).unwrap(),
             serde_json::to_vec(&claimed.records[&key]).unwrap()

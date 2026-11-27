@@ -73,6 +73,15 @@ Files: `crates/currents-domain/src/replay.rs`, `crates/currents-service/src/repl
 
 `ReplayEngine::apply(state:&mut DomainState,commit:&DomainCommitV1)->Result<(),EngineError>` uses frozen decisions only; `async ReplayCoordinator::rebuild(source:HistoryReader,destination:EncryptedStore)->Result<ReplayReport,EngineError>` lives in currents-service; verifier composes it headlessly. Domain ReplayEngine only applies typed records with no storage dependency; `ReplayReport { through, domain_hash, posting_hash, native_head, native_leaf_hash, identity_map_hash, problems }`. `SnapshotV1 { dataset_id, through, prefix_digest, schema_version, projector_version, replay_state, state_hash, basis }`; `SnapshotManager::select(prefix:&HistoryReader,candidate:SnapshotV1)->Result<Option<DomainState>,EngineError>` discards incompatible caches but never masks corrupt authority. Native ledger always full replay until a separately proven restoration API exists. Create at 10,000 records/clean close 1,000 tail; monthly unlocked full comparison; restore/upgrades full replay.
 
+A commit that records a reconciliation claim, confirmation or dispute holds
+exactly that one record and its frozen manifest, one `Reconciliation`
+decision and no invalidations. Replay derives the claim again with
+`ReconciliationEngine::record` from a request rebuilt from the claim, or the
+confirmation or dispute again with `confirm` or `dispute`, at the prior
+history, and rejects the commit when the derived record differs. A confirmation
+whose digest is no longer the digest derived at the prior history is
+rejected.
+
 <a id="c07"></a>
 
 ## C07: Acquisition and source identity, owners CUR-012, CUR-015, CUR-041
@@ -433,7 +442,7 @@ frozen.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
@@ -503,7 +512,9 @@ with its source amount. `accounting_dependencies` names each live leg the
 claim compared, and its recognitions: a leg on the account inside the
 interval or without a civil date, or one that allocates a named observation.
 `decision_dependencies` is empty. The claim ID is a version 8 UUID derived
-from the request, so the same request at the same basis gives the same claim.
+from the request's kind, accounts, `cutoffs`, sorted evidence and exclusions,
+and basis, so the same request at the same basis gives the same claim and
+replay can derive the ID again from the claim.
 
 `dependency_digest` is a SHA-256 over the comparison version, the account
 and interval, each named observation with its latest explicit revision, each
@@ -513,6 +524,46 @@ current catalog terms except its display name, and the receipt coverage the
 claim used. Recognition and posting IDs are not inputs, so an identity-only
 correction keeps the digest. Evaluation records the digest; deciding when a
 claim stops applying belongs to a later CUR-017 leaf.
+
+### CUR-017 claim lifecycle checkpoint
+
+```text
+ReconciliationEngine::record(state,&request)->Result<DecisionPlan,EngineError>
+ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>
+ReconciliationEngine::dispute(state,claim:RecordId,digest:Digest,reason:&str)->Result<DecisionPlan,EngineError>
+ReconciliationEngine::lifecycle(state,claim:RecordId)->Result<ReconciliationStatus,EngineError>
+```
+
+`record` evaluates the request and returns a plan with the one claim, no
+invalidations and `AccountingIntent::NoEffect`. Its commit holds one
+`Reconciliation` decision.
+
+An owner confirms or disputes a claim with a
+`ReconciliationDispositionV1 { id, claim, dependency_digest, disposition, reason }`
+record, where `disposition` is `ConfirmedForScope` or `Disputed`. The plan
+holds only that record, with no invalidations and no accounting effect. Its
+ID derives from the claim and the disposition, so a claim takes at most one.
+Storage checks that `claim` names a `ReconciliationClaim`. The claim record
+itself is never rewritten.
+
+- `confirm` refuses with `InvalidReference` unless the claim's lifecycle
+  status is `Proposed`. It refuses with `StaleBasis` unless `digest` equals
+  the claim's recorded digest and the digest computed at `state` still equals
+  it.
+- `dispute` accepts a `Proposed` or `PartiallySupported` claim with a
+  nonblank reason, and refuses with `StaleBasis` unless `digest` equals the
+  claim's recorded digest. It does not recompute the digest.
+- `lifecycle` reports `Superseded` once the state holds a newer claim with the
+  same kind, accounts, unit and `cutoffs`. A claim's commit follows its basis
+  commit, so the newer claim has the later `basis.through_commit`. Otherwise it
+  reports `ConfirmedForScope` or `Disputed` once the state holds the claim's
+  disposition, and the claim's own recorded status before either. Each status
+  holds from the commit that records the deciding record, so replay through an
+  earlier commit reports the earlier status.
+
+`DomainState::claim_status` still reports the record's own status, and
+`DomainState::claim_invalidated` keeps its CUR-016 meaning. Deciding when a
+claim stops applying, and routes for these operations, belong to later work.
 
 <a id="c10"></a>
 

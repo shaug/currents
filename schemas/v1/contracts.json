@@ -8396,6 +8396,55 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "ReconciliationDisposition"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "claim": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "dependency_digest": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "disposition": {
+                  "enum": [
+                    "ConfirmedForScope",
+                    "Disputed"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "claim",
+                "dependency_digest",
+                "disposition",
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "Organization"
             },
             "value": {
@@ -42481,6 +42530,55 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "ReconciliationDisposition"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "claim": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "dependency_digest": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "enum": [
+                          "ConfirmedForScope",
+                          "Disputed"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "claim",
+                      "dependency_digest",
+                      "disposition",
+                      "reason"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "Organization"
                   },
                   "value": {
@@ -56325,6 +56423,55 @@
                       "exclusions",
                       "status",
                       "reasons",
+                      "reason"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "ReconciliationDisposition"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "claim": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "dependency_digest": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "enum": [
+                          "ConfirmedForScope",
+                          "Disputed"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "claim",
+                      "dependency_digest",
+                      "disposition",
                       "reason"
                     ],
                     "type": "object"

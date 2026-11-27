@@ -1,8 +1,12 @@
-//! CUR-017 reconciliation claim records and activity coverage evaluation.
+//! CUR-017 reconciliation claim records, activity coverage evaluation, and
+//! recording, confirming and replaying claims.
+use currents_accounting::AccountingAdapter;
+use currents_domain::ReplayEngine;
 use currents_domain::catalog::CatalogEngine;
 use currents_domain::reconciliation::ReconciliationEngine;
 use currents_types::*;
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 use std::collections::BTreeMap;
 
 #[path = "support/recognition.rs"]
@@ -707,4 +711,438 @@ fn cur_017_activity_refuses_other_bases() {
         let error = ReconciliationEngine::evaluate(&world.state, &request).unwrap_err();
         assert_eq!(error.class, ErrorClass::UnsupportedVersion);
     }
+}
+
+// Recording, confirming and replaying claims. K is the November activity
+// claim on A with every statement line recognized, so it is `Proposed`.
+
+/// One commit of `plan` after `state` with one decision of `kind`, and the
+/// frozen instruction bytes its manifest names.
+fn proposed(
+    state: &DomainState,
+    plan: &DecisionPlan,
+    kind: DecisionKind,
+) -> (DomainCommitV1, Vec<u8>) {
+    let seq = CommitSeq(state.through.0 + 1);
+    let n = 8000 + 10 * seq.0 as u32;
+    let batch = AccountingAdapter::freeze(&plan.accounting, state).unwrap();
+    let mut records = plan.records.clone();
+    records.push(AuthoritativeRecordV1::FrozenAccountingManifest(
+        AccountingAdapter::manifest(id(n), &batch).unwrap(),
+    ));
+    let command_id = CommandId(id(n + 1).0);
+    let command_digest = Digest([9; 32]);
+    let adopted: Vec<RecordId> = plan
+        .records
+        .iter()
+        .map(|r| serde_json::from_value(serde_json::to_value(r).unwrap()["value"]["id"].clone()))
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let decision = DecisionEnvelopeV1 {
+        id: id(n + 2),
+        commit: seq,
+        item_position: records.len() as u32 + 1,
+        decision_type: kind,
+        schema_version: 1,
+        actor: id(102),
+        authority: AuthorityKind::Owner,
+        grant_id: None,
+        command_id,
+        command_digest,
+        references: vec![],
+        recorded_time: serde_json::from_value(json!("2026-12-01T00:00:00Z")).unwrap(),
+        adopted_result: adopted.clone(),
+        policy: PolicyReferenceV1 {
+            id: id(104),
+            version: 1,
+        },
+        corrections: vec![],
+        supersedes: vec![],
+    };
+    let mut commit = DomainCommitV1 {
+        seq,
+        previous_digest: state.domain_digest,
+        records,
+        decisions: vec![decision],
+        native_head_after: state
+            .accounting
+            .as_ref()
+            .unwrap()
+            .prefix
+            .native_head
+            .clone(),
+        command_result: CommandResultV1 {
+            command_id,
+            digest: command_digest,
+            state: CommandState::Committed,
+            commit: Some(seq),
+            effects: EffectsV1 {
+                records: adopted,
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: plan.invalidations.clone(),
+            },
+            health: vec![],
+        },
+        digest: Digest([0; 32]),
+    };
+    seal(&mut commit);
+    let bytes = AccountingAdapter::instruction_bytes(&batch).unwrap();
+    (commit, bytes)
+}
+
+/// Bind `commit`'s digest again after a change.
+fn seal(commit: &mut DomainCommitV1) {
+    commit.digest = Digest([0; 32]);
+    commit.digest =
+        Digest(Sha256::digest(serde_json_canonicalizer::to_vec(&*commit).unwrap()).into());
+}
+
+/// Replay `commit` after `state`; the native index follows it.
+fn admit(
+    state: &DomainState,
+    (commit, bytes): &(DomainCommitV1, Vec<u8>),
+) -> Result<DomainState, EngineError> {
+    let mut next = state.clone();
+    ReplayEngine::apply(&mut next, commit)?;
+    let mut native = state.clone();
+    AccountingAdapter::advance_index(&mut native, commit, bytes)?;
+    next.accounting = native.accounting;
+    Ok(next)
+}
+
+/// The domain replay refuses `commit` after `state` and keeps the prior head.
+fn refused(state: &DomainState, (commit, _): &(DomainCommitV1, Vec<u8>)) {
+    let mut copy = state.clone();
+    assert!(ReplayEngine::apply(&mut copy, commit).is_err());
+    assert_eq!(copy.through, state.through);
+    assert_eq!(copy.records, state.records);
+}
+
+fn only_claim(plan: &DecisionPlan) -> ReconciliationClaimV1 {
+    let [AuthoritativeRecordV1::ReconciliationClaim(claim)] = plan.records.as_slice() else {
+        panic!("one claim")
+    };
+    claim.clone()
+}
+
+fn only_disposition(plan: &DecisionPlan) -> ReconciliationDispositionV1 {
+    let [AuthoritativeRecordV1::ReconciliationDisposition(d)] = plan.records.as_slice() else {
+        panic!("one disposition")
+    };
+    d.clone()
+}
+
+fn lifecycle(state: &DomainState, claim: RecordId) -> ReconciliationStatus {
+    ReconciliationEngine::lifecycle(state, claim).unwrap()
+}
+
+fn bytes(state: &DomainState, record: RecordId) -> Vec<u8> {
+    serde_json::to_vec(&state.records[&record]).unwrap()
+}
+
+impl World {
+    /// Commit `plan` with one `Reconciliation` decision.
+    fn commit(&mut self, plan: &DecisionPlan) -> (DomainCommitV1, Vec<u8>) {
+        let commit = proposed(&self.state, plan, DecisionKind::Reconciliation);
+        self.state = admit(&self.state, &commit).unwrap();
+        commit
+    }
+
+    /// Record the claim `request` evaluates.
+    fn record(&mut self, request: &ReconciliationRequestV1) -> ReconciliationClaimV1 {
+        let plan = ReconciliationEngine::record(&self.state, request).unwrap();
+        self.commit(&plan);
+        only_claim(&plan)
+    }
+
+    /// Recognize a backdated -20 line on A on 2026-11-08.
+    fn backdate(&mut self) {
+        let line = self.observe(3400, ObservationKind::Movement, -20, date("2026-11-08"));
+        self.recognize(line, ACCOUNT_A, -20, "2026-11-08", "2026-11-08");
+        self.advance();
+    }
+}
+
+#[test]
+fn cur_017_record_and_replay_claim() {
+    let world = World::complete();
+    let request = world.request();
+    let plan = ReconciliationEngine::record(&world.state, &request).unwrap();
+    let k = world.evaluate(&request);
+    assert_eq!(k.status, ReconciliationStatus::Proposed);
+    assert_eq!(
+        plan.records,
+        vec![AuthoritativeRecordV1::ReconciliationClaim(k.clone())]
+    );
+    assert!(plan.invalidations.is_empty());
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    let batch = AccountingAdapter::freeze(&plan.accounting, &world.state).unwrap();
+    assert!(batch.operations.is_empty());
+
+    // The commit holds one claim and one `Reconciliation` decision.
+    let good = proposed(&world.state, &plan, DecisionKind::Reconciliation);
+    let claims = good
+        .0
+        .records
+        .iter()
+        .filter(|r| matches!(r, AuthoritativeRecordV1::ReconciliationClaim(_)))
+        .count();
+    assert_eq!(claims, 1);
+    assert_eq!(good.0.decisions.len(), 1);
+    assert_eq!(
+        good.0.decisions[0].decision_type,
+        DecisionKind::Reconciliation
+    );
+    let recorded = admit(&world.state, &good).unwrap();
+    assert_eq!(recorded.records[&k.id], plan.records[0]);
+    assert_eq!(lifecycle(&recorded, k.id), ReconciliationStatus::Proposed);
+    let index = |s: &DomainState| s.accounting.as_ref().unwrap().recognitions.clone();
+    assert_eq!(index(&recorded), index(&world.state));
+
+    // Replay derives the claim again and rejects any that differ.
+    let forged = |change: &dyn Fn(&mut ReconciliationClaimV1)| {
+        let mut claim = k.clone();
+        change(&mut claim);
+        let mut plan = plan.clone();
+        plan.records = vec![AuthoritativeRecordV1::ReconciliationClaim(claim)];
+        proposed(&world.state, &plan, DecisionKind::Reconciliation)
+    };
+    refused(
+        &world.state,
+        &forged(&|c| c.status = ReconciliationStatus::ConfirmedForScope),
+    );
+    refused(
+        &world.state,
+        &forged(&|c| c.status = ReconciliationStatus::PartiallySupported),
+    );
+    refused(&world.state, &forged(&|c| c.differences.push(amount(1))));
+    refused(
+        &world.state,
+        &forged(&|c| c.exclusions.push(world.line("deposit").observation)),
+    );
+    refused(
+        &world.state,
+        &forged(&|c| c.dependency_digest = Digest([1; 32])),
+    );
+
+    // So does a claim commit with another decision kind, a second decision,
+    // or an invalidation.
+    refused(
+        &world.state,
+        &proposed(&world.state, &plan, DecisionKind::Correction),
+    );
+    let mut twice = good.clone();
+    let mut second = twice.0.decisions[0].clone();
+    second.id = id(8999);
+    twice.0.decisions.push(second);
+    seal(&mut twice.0);
+    refused(&world.state, &twice);
+    let mut invalidating = plan.clone();
+    invalidating.invalidations = vec![k.id];
+    refused(
+        &world.state,
+        &proposed(&world.state, &invalidating, DecisionKind::Reconciliation),
+    );
+    // A claim whose basis is not the prior commit cannot be derived again.
+    let mut later = world.state.clone();
+    later.through.0 += 1;
+    later.accounting.as_mut().unwrap().prefix.through = later.through;
+    refused(
+        &later,
+        &proposed(&later, &plan, DecisionKind::Reconciliation),
+    );
+}
+
+#[test]
+fn cur_017_confirm_rechecks_digest() {
+    let mut world = World::complete();
+    let k = world.record(&world.request());
+    let at_claim = world.state.clone();
+
+    let error = ReconciliationEngine::confirm(&world.state, k.id, Digest([7; 32])).unwrap_err();
+    assert_eq!(error.class, ErrorClass::StaleBasis);
+    let plan = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap();
+    assert!(plan.invalidations.is_empty());
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    let confirmation = only_disposition(&plan);
+    assert_eq!(confirmation.claim, k.id);
+    assert_eq!(confirmation.dependency_digest, k.dependency_digest);
+    assert_eq!(
+        confirmation.disposition,
+        ClaimDispositionV1::ConfirmedForScope
+    );
+    world.commit(&plan);
+    assert_eq!(lifecycle(&at_claim, k.id), ReconciliationStatus::Proposed);
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::ConfirmedForScope
+    );
+    assert_eq!(bytes(&world.state, k.id), bytes(&at_claim, k.id));
+    // A confirmed claim is not confirmed or disputed again.
+    assert!(ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).is_err());
+    assert!(
+        ReconciliationEngine::dispute(&world.state, k.id, k.dependency_digest, "Wrong").is_err()
+    );
+
+    // After a backdated November line on A is recognized, K's digest no
+    // longer matches the current one.
+    let mut late = World::complete();
+    let k = late.record(&late.request());
+    late.backdate();
+    let error = ReconciliationEngine::confirm(&late.state, k.id, k.dependency_digest).unwrap_err();
+    assert_eq!(error.class, ErrorClass::StaleBasis);
+    assert_eq!(lifecycle(&late.state, k.id), ReconciliationStatus::Proposed);
+}
+
+#[test]
+fn cur_017_partial_claim_cannot_be_confirmed() {
+    let mut world = World::new();
+    let claim = world.record(&world.request());
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    let at_claim = world.state.clone();
+    let digest = claim.dependency_digest;
+    assert!(ReconciliationEngine::confirm(&world.state, claim.id, digest).is_err());
+
+    let reason = "The deposit and its reversal are on the statement";
+    assert!(
+        ReconciliationEngine::dispute(&world.state, claim.id, Digest([7; 32]), reason).is_err()
+    );
+    assert!(ReconciliationEngine::dispute(&world.state, claim.id, digest, " ").is_err());
+    let plan = ReconciliationEngine::dispute(&world.state, claim.id, digest, reason).unwrap();
+    let dispute = only_disposition(&plan);
+    assert_eq!(dispute.disposition, ClaimDispositionV1::Disputed);
+    assert_eq!(dispute.dependency_digest, digest);
+    assert_eq!(dispute.reason, reason);
+    world.commit(&plan);
+    assert_eq!(
+        lifecycle(&at_claim, claim.id),
+        ReconciliationStatus::PartiallySupported
+    );
+    assert_eq!(
+        lifecycle(&world.state, claim.id),
+        ReconciliationStatus::Disputed
+    );
+    assert_eq!(bytes(&world.state, claim.id), bytes(&at_claim, claim.id));
+    assert!(ReconciliationEngine::dispute(&world.state, claim.id, digest, reason).is_err());
+}
+
+#[test]
+fn cur_017_supersession() {
+    let mut world = World::complete();
+    let k = world.record(&world.request());
+    let original = bytes(&world.state, k.id);
+
+    // A December claim on A leaves K unchanged.
+    let mut december = world.request();
+    december.cutoffs.start = Some(civil("2026-12-01"));
+    december.cutoffs.end = Some(civil("2026-12-31"));
+    let other = world.record(&december);
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::Proposed
+    );
+    assert_eq!(lifecycle(&world.state, other.id), other.status);
+    let before = world.state.clone();
+
+    // A second November activity claim on A supersedes K from its commit.
+    let newer = world.record(&world.request());
+    assert_ne!(newer.id, k.id);
+    assert_eq!(lifecycle(&before, k.id), ReconciliationStatus::Proposed);
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::Superseded
+    );
+    assert_eq!(
+        lifecycle(&world.state, newer.id),
+        ReconciliationStatus::Proposed
+    );
+    assert_eq!(lifecycle(&world.state, other.id), other.status);
+    assert_eq!(bytes(&world.state, k.id), original);
+    // A superseded claim is not confirmed or disputed.
+    assert!(ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).is_err());
+    assert!(
+        ReconciliationEngine::dispute(&world.state, k.id, k.dependency_digest, "Stale").is_err()
+    );
+}
+
+#[test]
+fn cur_017_original_confirmation_reproducible() {
+    let mut world = World::complete();
+    let base = world.state.clone();
+    let mut commits = Vec::new();
+    let plan = ReconciliationEngine::record(&world.state, &world.request()).unwrap();
+    let k = only_claim(&plan);
+    commits.push(world.commit(&plan));
+    let original = bytes(&world.state, k.id);
+    let plan = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap();
+    let confirmation = only_disposition(&plan);
+    commits.push(world.commit(&plan));
+    let plan = ReconciliationEngine::record(&world.state, &world.request()).unwrap();
+    commits.push(world.commit(&plan));
+
+    // Replay through the confirmation commit, then through the supersession.
+    let mut state = base;
+    for commit in &commits[..2] {
+        state = admit(&state, commit).unwrap();
+    }
+    assert_eq!(
+        lifecycle(&state, k.id),
+        ReconciliationStatus::ConfirmedForScope
+    );
+    let Some(AuthoritativeRecordV1::ReconciliationDisposition(replayed)) =
+        state.records.get(&confirmation.id)
+    else {
+        panic!("the confirmation is replayed")
+    };
+    assert_eq!(replayed.dependency_digest, k.dependency_digest);
+    assert_eq!(bytes(&state, k.id), original);
+
+    state = admit(&state, &commits[2]).unwrap();
+    assert_eq!(lifecycle(&state, k.id), ReconciliationStatus::Superseded);
+    assert_eq!(bytes(&state, k.id), original);
+    assert_eq!(
+        state.records[&confirmation.id],
+        AuthoritativeRecordV1::ReconciliationDisposition(confirmation)
+    );
+    assert_eq!(state.records, world.state.records);
+}
+
+#[test]
+fn cur_017_replay_rejects_forged_confirmation() {
+    let mut world = World::complete();
+    let k = world.record(&world.request());
+    let plan = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap();
+    let with = |change: &dyn Fn(&mut ReconciliationDispositionV1)| {
+        let mut confirmation = only_disposition(&plan);
+        change(&mut confirmation);
+        let mut plan = plan.clone();
+        plan.records = vec![AuthoritativeRecordV1::ReconciliationDisposition(
+            confirmation,
+        )];
+        proposed(&world.state, &plan, DecisionKind::Reconciliation)
+    };
+    refused(
+        &world.state,
+        &with(&|c| c.dependency_digest = Digest([5; 32])),
+    );
+    refused(
+        &world.state,
+        &with(&|c| c.disposition = ClaimDispositionV1::Disputed),
+    );
+    refused(&world.state, &with(&|c| c.claim = id(9999)));
+    admit(
+        &world.state,
+        &proposed(&world.state, &plan, DecisionKind::Reconciliation),
+    )
+    .unwrap();
+
+    // After a backdated line, the digest derived again at the prior history
+    // differs from K's, so the confirmation K's digest earned earlier is
+    // rejected.
+    world.backdate();
+    refused(
+        &world.state,
+        &proposed(&world.state, &plan, DecisionKind::Reconciliation),
+    );
 }
