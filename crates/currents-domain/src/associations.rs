@@ -344,6 +344,38 @@ impl IdentityEngine {
         })
     }
 }
+/// The current revision of each association family, by root.
+pub(crate) fn current_heads(
+    state: &DomainState,
+) -> Result<BTreeMap<RecordId, AssociationRevisionV1>, EngineError> {
+    let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
+    for record in state.records.values() {
+        if let AuthoritativeRecordV1::AssociationRevision(r) = record {
+            families.entry(r.root).or_default().push(r.clone());
+        }
+    }
+    let mut heads = BTreeMap::new();
+    for (root, revisions) in families {
+        let head = IdentityEngine::revision_chain(&revisions, root)?
+            .pop()
+            .ok_or_else(EngineError::invalid)?;
+        heads.insert(root, head);
+    }
+    Ok(heads)
+}
+/// The captured facts these current family revisions allocate. Only current
+/// heads own capacity; prior snapshots never consume it a second time.
+pub(crate) fn held_facts<'a>(
+    state: &DomainState,
+    heads: impl IntoIterator<Item = &'a AssociationRevisionV1>,
+) -> Result<BTreeSet<String>, EngineError> {
+    let mut held = BTreeSet::new();
+    for edge in heads.into_iter().flat_map(|h| &h.captured_allocations) {
+        let fact = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
+        held.insert(fact.fact_key);
+    }
+    Ok(held)
+}
 impl IdentityEngine {
     pub fn associate(
         state: &DomainState,

@@ -6,9 +6,7 @@ use currents_domain::{
     associations::IdentityEngine,
     catalog::CatalogEngine,
     recognition::RecognitionEngine,
-    segments::{
-        ReemissionV1, SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
-    },
+    segments::{SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1},
 };
 use currents_types::*;
 use sha2::{Digest as _, Sha256};
@@ -707,22 +705,6 @@ fn with_transfer() -> DomainState {
         &transfers::clearing_family(capture, &rows, 1600, &[(C, 1)]),
     )
 }
-/// `original` again with fresh identities from `base`.
-fn reemission(state: &DomainState, original: u32, base: u32) -> ReemissionV1 {
-    let Some(AuthoritativeRecordV1::Recognition(r)) = state.records.get(&id(original)) else {
-        panic!("recognition {original} missing")
-    };
-    let mut replacement = r.clone();
-    replacement.id = recognition(base + 10);
-    for (posting, n) in replacement.postings.iter_mut().zip(base + 11..) {
-        posting.id = id(n);
-    }
-    ReemissionV1 {
-        id: id(base),
-        original: recognition(original),
-        replacement,
-    }
-}
 /// A's earlier opening of `opening` USD at 2026-10-30 and its 2026-10-31
 /// send of 1,000 USD to clearing, which joins C's transfer family.
 fn cross_account(state: &mut DomainState, opening: i128) -> SegmentReplacementV1 {
@@ -735,7 +717,7 @@ fn cross_account(state: &mut DomainState, opening: i128) -> SegmentReplacementV1
         leg: LegId(id(3111).0),
         source: transfers::row_fact(id(1501), "send-a"),
     }];
-    request.reemissions = vec![reemission(state, RECEIPT, 3600)];
+    request.reemissions = vec![transfers::reemission(state, RECEIPT, 3600)];
     request
 }
 /// Native postings on account `n` by value date, from active recognitions.
@@ -883,7 +865,9 @@ fn cur_016_1_post_cutoff_activity_untouched() {
         (1711, 3900, None),
     ] {
         let mut named = request.clone();
-        named.reemissions.push(reemission(&state, original, base));
+        named
+            .reemissions
+            .push(transfers::reemission(&state, original, base));
         named.approved_accounts.extend(extra.map(account));
         let before = snapshot(&state);
         assert!(SegmentEngine::replace(&state, &named).is_err());
@@ -893,8 +877,8 @@ fn cur_016_1_post_cutoff_activity_untouched() {
     let mut later_family = request.clone();
     later_family.transfers[0].prior_revision = id(1750);
     later_family.reemissions = vec![
-        reemission(&state, 1710, 3700),
-        reemission(&state, 1711, 3800),
+        transfers::reemission(&state, 1710, 3700),
+        transfers::reemission(&state, 1711, 3800),
     ];
     assert!(SegmentEngine::replace(&state, &later_family).is_err());
 }
@@ -1016,7 +1000,9 @@ fn cur_016_1_partial_or_changed_reemission_refused() {
         request.approved_accounts.retain(|a| *a != account(C));
     });
     refuse("the transfer named twice", &|state, request| {
-        request.reemissions.push(reemission(state, RECEIPT, 3700));
+        request
+            .reemissions
+            .push(transfers::reemission(state, RECEIPT, 3700));
     });
     refuse("the transfer left out", &|_, request| {
         request.reemissions.clear();
@@ -1038,7 +1024,7 @@ fn cur_016_1_partial_or_changed_reemission_refused() {
     let mut state = associated(&state, &unrelated);
     let mut request = cross_account(&mut state, 4300);
     request.transfers[0].prior_revision = id(1750);
-    request.reemissions = vec![reemission(&state, 1710, 3700)];
+    request.reemissions = vec![transfers::reemission(&state, 1710, 3700)];
     let before = snapshot(&state);
     let result = SegmentEngine::replace(&state, &request);
     assert!(result.is_err(), "unrelated family: {result:?}");

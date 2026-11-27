@@ -1,6 +1,6 @@
 //! CUR-016 corrections against an actual committed and replayed accounting prefix.
 use currents_domain::segments::{
-    ReemissionV1, SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
+    SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
 };
 use currents_service as service_api;
 use currents_types::*;
@@ -1305,20 +1305,7 @@ fn cross_account_request(state: &DomainState) -> SegmentReplacementV1 {
         leg: LegId(fixture::id(3111).0),
         source: transfers::row_fact(fixture::id(1501), "send-a"),
     }];
-    let Some(AuthoritativeRecordV1::Recognition(receipt)) = state.records.get(&fixture::id(1610))
-    else {
-        panic!("C's receipt is recognized");
-    };
-    let mut replacement = receipt.clone();
-    replacement.id = RecognitionId(fixture::id(3610).0);
-    for (posting, n) in replacement.postings.iter_mut().zip(3611..) {
-        posting.id = fixture::id(n);
-    }
-    request.reemissions = vec![ReemissionV1 {
-        id: fixture::id(3600),
-        original: receipt.id,
-        replacement,
-    }];
+    request.reemissions = vec![transfers::reemission(state, 1610, 3600)];
     request
 }
 

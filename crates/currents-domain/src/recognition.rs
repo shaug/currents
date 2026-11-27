@@ -835,11 +835,14 @@ fn prospective(state: &DomainState, records: &[AuthoritativeRecordV1]) -> Domain
 /// Plan the posted drafts of one segment replacement against the same prior
 /// prefix. Identities and evidence ownership are checked across the drafts
 /// and against retained history; the replacement checks dates and accounts.
-/// The `retired` opening adoption no longer owns its inclusion map.
+/// The `retired` opening adoption no longer owns its inclusion map. The
+/// `added` identities the replacement adds beyond its drafts must differ from
+/// every draft identity and from each other.
 pub(crate) fn adopt_drafts<'a>(
     state: &DomainState,
     requests: impl IntoIterator<Item = &'a ActivityRequestV1>,
     retired: RecordId,
+    added: &[RecordId],
 ) -> Result<Vec<(Vec<AuthoritativeRecordV1>, RecognitionV1)>, EngineError> {
     let mut all = RecognitionEngine::audit(state)?;
     for adoption in &mut all {
@@ -873,6 +876,9 @@ pub(crate) fn adopt_drafts<'a>(
         records.extend(draft.records.iter().cloned());
         all.push(draft.adoption);
         planned.push((draft.records, recognition));
+    }
+    if added.iter().any(|id| !ids.insert(*id)) {
+        return Err(duplicate());
     }
     consumed(&prospective(state, &records), &all)?;
     Ok(planned)

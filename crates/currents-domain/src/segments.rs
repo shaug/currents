@@ -329,25 +329,6 @@ fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError
         AccountOriginV1::Internal(control) if control.role == ControlRoleV1::Clearing
     ))
 }
-/// The current revision of each association family, by revision ID.
-fn family_heads(
-    state: &DomainState,
-) -> Result<BTreeMap<RecordId, AssociationRevisionV1>, EngineError> {
-    let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
-    for record in state.records.values() {
-        if let AuthoritativeRecordV1::AssociationRevision(r) = record {
-            families.entry(r.root).or_default().push(r.clone());
-        }
-    }
-    let mut heads = BTreeMap::new();
-    for (root, revisions) in families {
-        let head = IdentityEngine::revision_chain(&revisions, root)?
-            .pop()
-            .ok_or_else(EngineError::invalid)?;
-        heads.insert(head.id, head);
-    }
-    Ok(heads)
-}
 /// The joined leg's relationship evidence decides its family. The fact is a
 /// posted movement with the leg's date and amount, from the same capture
 /// source and group as every fact the family already holds, and no current
@@ -381,11 +362,8 @@ fn join_evidence(
             return Err(invalid());
         }
     }
-    for edge in heads.values().flat_map(|h| &h.captured_allocations) {
-        let held = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
-        if held.fact_key == fact.fact_key {
-            return Err(invalid());
-        }
+    if crate::associations::held_facts(state, heads.values())?.contains(&fact.fact_key) {
+        return Err(invalid());
     }
     Ok(())
 }
@@ -564,12 +542,15 @@ impl SegmentEngine {
             }
         }
         // Each joined family adds its current recognitions to the closure.
-        let heads = family_heads(state)?;
+        let heads = crate::associations::current_heads(state)?;
         let mut joined = Vec::new();
         let mut derived = BTreeSet::new();
         let mut roots = BTreeSet::new();
         for join in &request.transfers {
-            let head = heads.get(&join.prior_revision).ok_or_else(invalid)?;
+            let head = heads
+                .values()
+                .find(|h| h.id == join.prior_revision)
+                .ok_or_else(invalid)?;
             // Payroll and duplicate families are outside this replacement.
             if head.kind != RelationshipKind::Transfer {
                 return Err(EngineError::version());
@@ -674,10 +655,36 @@ impl SegmentEngine {
                 return Err(invalid());
             }
         }
+        // Every identity the plan adds beyond the drafts is fresh.
+        let added: Vec<RecordId> = request
+            .transfers
+            .iter()
+            .map(|j| j.revision)
+            .chain(request.reemissions.iter().flat_map(|r| {
+                [r.id, RecordId(r.replacement.id.0)]
+                    .into_iter()
+                    .chain(r.replacement.postings.iter().map(|p| p.id))
+            }))
+            .collect();
+        for id in &added {
+            if id.0.is_nil()
+                || state.records.contains_key(id)
+                || index.recognitions.contains_key(&RecognitionId(id.0))
+                || index
+                    .recognitions
+                    .values()
+                    .flatten()
+                    .flat_map(|e| &e.postings)
+                    .any(|p| p.original.id == *id)
+            {
+                return Err(invalid());
+            }
+        }
         let drafts = adopt_drafts(
             state,
             std::iter::once(&request.opening).chain(&request.backfill),
             old.id,
+            &added,
         )?;
         // A draft posts to clearing exactly when its leg joins a transfer
         // family, against a clearing account that family already uses.
@@ -711,44 +718,6 @@ impl SegmentEngine {
                     )?);
                 }
                 _ => return Err(invalid()),
-            }
-        }
-        // Every identity the plan adds beyond the drafts is fresh.
-        let posted: BTreeSet<RecordId> = index
-            .recognitions
-            .values()
-            .flatten()
-            .flat_map(|e| e.postings.iter().map(|p| p.original.id))
-            .collect();
-        let mut used: BTreeSet<RecordId> = drafts
-            .iter()
-            .flat_map(|(records, r)| {
-                records
-                    .iter()
-                    .filter_map(record_id)
-                    .chain([r.lineage])
-                    .chain(r.postings.iter().map(|p| p.id))
-            })
-            .chain([basis.segment_id])
-            .collect();
-        for id in
-            request
-                .transfers
-                .iter()
-                .map(|j| j.revision)
-                .chain(request.reemissions.iter().flat_map(|r| {
-                    [r.id, RecordId(r.replacement.id.0)]
-                        .into_iter()
-                        .chain(r.replacement.postings.iter().map(|p| p.id))
-                }))
-        {
-            if id.0.is_nil()
-                || state.records.contains_key(&id)
-                || posted.contains(&id)
-                || index.recognitions.contains_key(&RecognitionId(id.0))
-                || !used.insert(id)
-            {
-                return Err(invalid());
             }
         }
         let mut touched: BTreeSet<_> = old_opening.postings.iter().map(|p| p.account_id).collect();
@@ -849,16 +818,6 @@ impl SegmentEngine {
             invalidations,
             accounting,
         })))
-    }
-}
-/// The identity a draft record is stored under.
-fn record_id(record: &AuthoritativeRecordV1) -> Option<RecordId> {
-    match record {
-        AuthoritativeRecordV1::FinancialEvent(v) => Some(v.id),
-        AuthoritativeRecordV1::FinancialLeg(v) => Some(RecordId(v.id.0)),
-        AuthoritativeRecordV1::ActivityAdoption(v) => Some(v.id),
-        AuthoritativeRecordV1::Recognition(v) => Some(RecordId(v.id.0)),
-        _ => None,
     }
 }
 fn names_any(value: &serde_json::Value, ids: &BTreeSet<String>) -> bool {

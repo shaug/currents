@@ -289,15 +289,9 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
             {
                 return Err(invalid());
             }
-            let mut same_economics = next.clone();
-            same_economics.id = prior.id;
-            for (new, old) in same_economics.postings.iter_mut().zip(&prior.postings) {
-                if !posting_ids.insert(new.id) {
-                    return Err(invalid());
-                }
-                new.id = old.id;
-            }
-            if &same_economics != prior {
+            if next.postings.iter().any(|p| !posting_ids.insert(p.id))
+                || !crate::segments::same_economics(prior, next)
+            {
                 return Err(invalid());
             }
             prior_id = next_id;

@@ -144,3 +144,25 @@ pub(crate) fn row_fact(capture: RecordId, record: &str) -> CapturedFacetBindingV
         parse_revision: None,
     }
 }
+/// Recognition `original` again with fresh identities from `base`: record
+/// `base`, recognition `base + 10` and postings from `base + 11`.
+pub(crate) fn reemission(
+    state: &DomainState,
+    original: u32,
+    base: u32,
+) -> currents_domain::segments::ReemissionV1 {
+    use fixture::id;
+    let Some(AuthoritativeRecordV1::Recognition(r)) = state.records.get(&id(original)) else {
+        panic!("recognition {original} missing")
+    };
+    let mut replacement = r.clone();
+    replacement.id = RecognitionId(id(base + 10).0);
+    for (posting, n) in replacement.postings.iter_mut().zip(base + 11..) {
+        posting.id = id(n);
+    }
+    currents_domain::segments::ReemissionV1 {
+        id: id(base),
+        original: r.id,
+        replacement,
+    }
+}
