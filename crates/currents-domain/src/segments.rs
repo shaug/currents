@@ -2,6 +2,7 @@
 use crate::{
     associations::IdentityEngine,
     catalog::{CatalogEngine, incomplete},
+    dependents::{self, Change, Dependents, OrganizationQuestionV1},
     recognition::{adopt_drafts, fact, restore},
 };
 use currents_types::*;
@@ -304,6 +305,9 @@ pub enum SegmentPreviewV1 {
     /// The new opening plus backfill at the old cutoff, minus the old opening.
     /// No plan exists: the owner must resolve the difference.
     UnresolvedResidual(Amount),
+    /// Organization records target a leg the replacement retires. No plan
+    /// exists: the owner must decide what each record now organizes.
+    NeedsOrganizationDecision(Vec<OrganizationQuestionV1>),
 }
 fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError> {
     let component = state
@@ -599,33 +603,6 @@ impl SegmentEngine {
             originals.push(original);
             reissues.push(reissue);
         }
-        // Later leaves invalidate dependent records. Until then, refuse any
-        // that names the account, a recognition in the closure or its legs.
-        let named: BTreeSet<String> = [c.account_id.0, prior.opening.0, old.id.0, old.event_id.0]
-            .into_iter()
-            .chain(old.legs.iter().map(|l| l.0))
-            .chain(old_opening.postings.iter().map(|p| p.id.0))
-            .chain(originals.iter().flat_map(|r| {
-                std::iter::once(r.id.0)
-                    .chain(r.leg_ids.iter().map(|l| l.0))
-                    .chain(r.postings.iter().map(|p| p.id.0))
-            }))
-            .map(|id| id.to_string())
-            .collect();
-        for record in state.records.values() {
-            if matches!(
-                record,
-                AuthoritativeRecordV1::ReconciliationClaim(_)
-                    | AuthoritativeRecordV1::Organization(_)
-                    | AuthoritativeRecordV1::Review(_)
-                    | AuthoritativeRecordV1::ForecastRun(_)
-            ) && names_any(
-                &serde_json::to_value(record).map_err(|_| invalid())?,
-                &named,
-            ) {
-                return Err(EngineError::version());
-            }
-        }
         // Each fact the old opening included moves exactly once: to a
         // backfill's sources or to the new opening's inclusion map.
         let mut moved = Vec::new();
@@ -737,12 +714,6 @@ impl SegmentEngine {
         if residual.coefficient != 0 {
             return Ok(SegmentPreviewV1::UnresolvedResidual(residual));
         }
-        let invalidations = [prior.id, RecordId(prior.opening.0)]
-            .into_iter()
-            .chain(old.legs.iter().map(|l| RecordId(l.0)))
-            .chain(joined.iter().map(|(join, _, _)| join.prior_revision))
-            .chain(request.reemissions.iter().map(|r| RecordId(r.original.0)))
-            .collect();
         let (records, replacement): (Vec<_>, Vec<_>) = drafts.into_iter().unzip();
         let Some((opening, backfill)) = replacement.split_first() else {
             return Err(invalid());
@@ -759,6 +730,37 @@ impl SegmentEngine {
             approved_accounts: request.approved_accounts.clone(),
             residual_disposition: SourceValue::Absent,
         };
+        let retire = CorrectionV1 {
+            active_recognition: prior.opening,
+            replacement,
+            remapping: vec![],
+            reason: "Replace the segment opening at an earlier proven boundary".into(),
+        };
+        let corrections: Vec<_> = std::iter::once(retire).chain(reissues).collect();
+        // Claims in the changed scope are invalidated in this commit.
+        // Organization on the old opening's legs needs the owner's decision.
+        let retired_revisions = joined.iter().map(|(join, _, _)| join.prior_revision);
+        let change = Change::new(
+            state,
+            &corrections,
+            old.legs.iter().copied(),
+            [prior.id, old.id, old.event_id]
+                .into_iter()
+                .chain(retired_revisions.clone()),
+        )?;
+        let claims = match dependents::assess(state, &change)? {
+            Dependents::Claims(claims) => claims,
+            Dependents::NeedsOrganizationDecision(questions) => {
+                return Ok(SegmentPreviewV1::NeedsOrganizationDecision(questions));
+            }
+        };
+        let invalidations = [prior.id, RecordId(prior.opening.0)]
+            .into_iter()
+            .chain(old.legs.iter().map(|l| RecordId(l.0)))
+            .chain(retired_revisions)
+            .chain(request.reemissions.iter().map(|r| RecordId(r.original.0)))
+            .chain(claims)
+            .collect();
         let mut records: Vec<_> = records.into_iter().flatten().collect();
         records.extend(
             request
@@ -781,30 +783,15 @@ impl SegmentEngine {
                 replacement: r.replacement.id,
             })
         }));
-        let retire = CorrectionV1 {
-            active_recognition: prior.opening,
-            replacement,
-            remapping: vec![],
-            reason: "Replace the segment opening at an earlier proven boundary".into(),
-        };
-        let accounting = if request.reemissions.is_empty() {
-            AccountingIntent::Correction(retire)
-        } else {
-            AccountingIntent::Corrections(std::iter::once(retire).chain(reissues).collect())
+        let accounting = match <[_; 1]>::try_from(corrections) {
+            Ok([retire]) => AccountingIntent::Correction(retire),
+            Err(corrections) => AccountingIntent::Corrections(corrections),
         };
         Ok(SegmentPreviewV1::Ready(Box::new(DecisionPlan {
             records,
             invalidations,
             accounting,
         })))
-    }
-}
-fn names_any(value: &serde_json::Value, ids: &BTreeSet<String>) -> bool {
-    match value {
-        serde_json::Value::String(text) => ids.contains(text),
-        serde_json::Value::Array(items) => items.iter().any(|v| names_any(v, ids)),
-        serde_json::Value::Object(fields) => fields.values().any(|v| names_any(v, ids)),
-        _ => false,
     }
 }
 /// Replay re-admits a successor segment only by deriving the same plan again
@@ -879,7 +866,9 @@ pub(crate) fn readmit(
     else {
         return Err(invalid());
     };
-    if records != plan.records.as_slice() {
+    if records != plan.records.as_slice()
+        || commit.command_result.effects.invalidations != plan.invalidations
+    {
         return Err(invalid());
     }
     Ok(())

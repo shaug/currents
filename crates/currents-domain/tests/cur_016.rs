@@ -5,6 +5,7 @@ use currents_domain::{
     ReplayEngine,
     associations::IdentityEngine,
     catalog::CatalogEngine,
+    dependents::OrganizationQuestionV1,
     recognition::RecognitionEngine,
     segments::{SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1},
 };
@@ -33,7 +34,8 @@ fn recognition(n: u32) -> RecognitionId {
     RecognitionId(id(n).0)
 }
 
-/// One proposed commit with the exact frozen operations its manifest names.
+/// One proposed commit with the exact frozen operations its manifest names
+/// and the invalidations its result records.
 #[derive(Clone)]
 struct Candidate {
     commit: DomainCommitV1,
@@ -43,6 +45,7 @@ struct Candidate {
 fn candidate(
     state: &DomainState,
     mut records: Vec<AuthoritativeRecordV1>,
+    invalidations: &[RecordId],
     batch: AccountingBatchV1,
 ) -> Candidate {
     let seq = CommitSeq(state.through.0 + 1);
@@ -66,7 +69,7 @@ fn candidate(
                 records: vec![],
                 accounts: vec![],
                 amounts: vec![],
-                invalidations: vec![],
+                invalidations: invalidations.to_vec(),
             },
             health: vec![],
         },
@@ -83,7 +86,7 @@ fn candidate(
 }
 fn planned(state: &DomainState, plan: &DecisionPlan) -> Candidate {
     let batch = AccountingAdapter::freeze(&plan.accounting, state).unwrap();
-    candidate(state, plan.records.clone(), batch)
+    candidate(state, plan.records.clone(), &plan.invalidations, batch)
 }
 /// Replay one commit as the service does: domain re-admission, the native
 /// index and its correspondence, then the C08 audit of the whole projection.
@@ -159,6 +162,69 @@ fn replay_refused(state: &DomainState, c: &Candidate) {
     let mut copy = state.clone();
     assert!(ReplayEngine::apply(&mut copy, &c.commit).is_err());
     assert_eq!(snapshot(&copy), snapshot(state));
+}
+
+/// The contract fixture record of `kind`.
+fn fixture_record(kind: &str) -> AuthoritativeRecordV1 {
+    let fixtures: Vec<AuthoritativeRecordV1> =
+        serde_json::from_str(include_str!("../../../fixtures/contracts/v1/records.json")).unwrap();
+    fixtures
+        .into_iter()
+        .find(|r| serde_json::to_value(r).unwrap()["kind"] == kind)
+        .unwrap()
+}
+fn civil(day: &str) -> Date {
+    let TemporalValue::Date { civil, .. } = date(day) else {
+        panic!("civil date")
+    };
+    civil
+}
+/// Claim `n`, Matched on account `on` from `start` through `end` by
+/// effective date, with no explicit dependencies.
+fn claim(n: u32, on: u32, start: &str, end: &str) -> ReconciliationClaimV1 {
+    let AuthoritativeRecordV1::ReconciliationClaim(mut claim) =
+        fixture_record("ReconciliationClaim")
+    else {
+        panic!("claim fixture")
+    };
+    claim.id = id(n);
+    claim.scope = vec![account(on)];
+    claim.cutoffs = DateScope {
+        start: Some(civil(start)),
+        end: Some(civil(end)),
+        basis: DateBasis::Effective,
+    };
+    claim.status = ReconciliationStatus::Matched;
+    claim
+}
+/// Note `n` on `target`.
+fn note(n: u32, target: RecordId) -> AuthoritativeRecordV1 {
+    let AuthoritativeRecordV1::Organization(mut note) = fixture_record("Organization") else {
+        panic!("organization fixture")
+    };
+    note.id = id(n);
+    note.kind = OrganizationKind::Note;
+    note.targets = vec![target];
+    AuthoritativeRecordV1::Organization(note)
+}
+/// Commit `records` with no accounting effect, as their owners will.
+fn recorded(state: &DomainState, records: Vec<AuthoritativeRecordV1>) -> DomainState {
+    let reason = "Synthetic dependent records".into();
+    let batch =
+        AccountingAdapter::freeze(&AccountingIntent::NoEffect(NoEffectV1 { reason }), state)
+            .unwrap();
+    let mut c = candidate(state, records, &[], batch);
+    c.commit.native_head_after = state
+        .accounting
+        .as_ref()
+        .unwrap()
+        .prefix
+        .native_head
+        .clone();
+    c.commit.digest = Digest([0; 32]);
+    c.commit.digest =
+        Digest(Sha256::digest(serde_json_canonicalizer::to_vec(&c.commit).unwrap()).into());
+    admit(state, &c).unwrap()
 }
 
 fn anchored() -> DomainState {
@@ -409,6 +475,7 @@ fn cur_016_2_overlapping_active_segments_rejected() {
     let fork = candidate(
         &replaced,
         other_plan.records.clone(),
+        &other_plan.invalidations,
         AccountingAdapter::freeze(&other_plan.accounting, &state).unwrap(),
     );
     replay_refused(&replaced, &fork);
@@ -432,7 +499,10 @@ fn cur_016_2_overlapping_active_segments_rejected() {
             s.prior_segment = Some(s.id);
         }
     }
-    replay_refused(&state, &candidate(&state, records, first.batch.clone()));
+    replay_refused(
+        &state,
+        &candidate(&state, records, &plan.invalidations, first.batch.clone()),
+    );
 
     // A commit that would leave two active segments for account A.
     let mut records = plan.records.clone();
@@ -440,7 +510,10 @@ fn cur_016_2_overlapping_active_segments_rejected() {
     second.id = id(3999);
     second.prior_segment = None;
     records.push(AuthoritativeRecordV1::AccountingSegment(second));
-    replay_refused(&state, &candidate(&state, records, first.batch.clone()));
+    replay_refused(
+        &state,
+        &candidate(&state, records, &plan.invalidations, first.batch.clone()),
+    );
     assert_eq!(snapshot(&state), before);
 }
 
@@ -520,7 +593,10 @@ fn cur_016_replay_readmits_only_the_exact_plan() {
             r.postings[1].amount.coefficient += 1;
         }
     }
-    replay_refused(&state, &candidate(&state, records, good.batch.clone()));
+    replay_refused(
+        &state,
+        &candidate(&state, records, &plan.invalidations, good.batch.clone()),
+    );
 
     // Native operations that differ from the plan derived again. The adapter
     // itself refuses each one, and so does the whole replay.
@@ -529,7 +605,10 @@ fn cur_016_replay_readmits_only_the_exact_plan() {
         assert!(
             AccountingAdapter::verify_correspondence(&good.commit, Some(&batch), index).is_err()
         );
-        refused(&state, &candidate(&state, plan.records.clone(), batch));
+        refused(
+            &state,
+            &candidate(&state, plan.records.clone(), &plan.invalidations, batch),
+        );
     };
     let mut missing = good.batch.clone();
     missing.operations.remove(0);
@@ -589,37 +668,23 @@ fn cur_016_replacement_refuses_cross_account_and_dependents() {
     assert!(SegmentEngine::replace(&state, &request).is_err());
     assert_eq!(snapshot(&state), before);
 
-    // A claim, organization record, review record or forecast run that names
-    // the account, the old opening or one of its legs.
-    let fixtures: Vec<AuthoritativeRecordV1> =
-        serde_json::from_str(include_str!("../../../fixtures/contracts/v1/records.json")).unwrap();
-    let find = |kind: &str| {
-        fixtures
-            .iter()
-            .find(|r| serde_json::to_value(r).unwrap()["kind"] == kind)
-            .unwrap()
-            .clone()
-    };
+    // An organization record, review record or forecast run that names the
+    // account, the old opening or one of its legs.
     let TemporalValue::Date { civil, .. } = date("2026-11-02") else {
         panic!("civil date")
     };
     let mut dependents = vec![];
-    if let AuthoritativeRecordV1::ReconciliationClaim(mut claim) = find("ReconciliationClaim") {
-        claim.id = id(3401);
-        claim.scope = vec![account(10)];
-        dependents.push(AuthoritativeRecordV1::ReconciliationClaim(claim));
-    }
-    if let AuthoritativeRecordV1::Organization(mut organization) = find("Organization") {
+    if let AuthoritativeRecordV1::Organization(mut organization) = fixture_record("Organization") {
         organization.id = id(3402);
         organization.targets = vec![id(OLD_OPENING)];
         dependents.push(AuthoritativeRecordV1::Organization(organization));
     }
-    if let AuthoritativeRecordV1::Review(mut review) = find("Review") {
+    if let AuthoritativeRecordV1::Review(mut review) = fixture_record("Review") {
         review.id = id(3403);
         review.targets = vec![id(701)];
         dependents.push(AuthoritativeRecordV1::Review(review));
     }
-    if let AuthoritativeRecordV1::ForecastRun(mut run) = find("ForecastRun") {
+    if let AuthoritativeRecordV1::ForecastRun(mut run) = fixture_record("ForecastRun") {
         run.id = id(3404);
         run.expanded_inputs
             .starting_positions
@@ -632,7 +697,7 @@ fn cur_016_replacement_refuses_cross_account_and_dependents() {
             });
         dependents.push(AuthoritativeRecordV1::ForecastRun(run));
     }
-    assert_eq!(dependents.len(), 4);
+    assert_eq!(dependents.len(), 3);
     for dependent in dependents {
         let mut state = anchored();
         let request = replacement(&mut state, 3400, "2026-10-30", &[(-100, "2026-10-31")]);
@@ -1080,7 +1145,12 @@ fn cur_016_1_cross_account_replay() {
         .insert(position + 1, FrozenNativeOperationV1::Entry(repeat));
     refused(
         &state,
-        &candidate(&state, plan.records.clone(), rebound(twice)),
+        &candidate(
+            &state,
+            plan.records.clone(),
+            &plan.invalidations,
+            rebound(twice),
+        ),
     );
 
     // Native history that issues the receipt to another counterpart.
@@ -1098,7 +1168,10 @@ fn cur_016_1_cross_account_replay() {
     let other = rebound(other);
     let index = replaced.accounting.as_ref().unwrap();
     assert!(AccountingAdapter::verify_correspondence(&good.commit, Some(&other), index).is_err());
-    refused(&state, &candidate(&state, plan.records.clone(), other));
+    refused(
+        &state,
+        &candidate(&state, plan.records.clone(), &plan.invalidations, other),
+    );
 
     // Domain history whose new revision or re-emission link differs.
     let mut residual = plan.records.clone();
@@ -1110,6 +1183,208 @@ fn cur_016_1_cross_account_replay() {
     let mut unlinked = plan.records.clone();
     unlinked.retain(|r| !matches!(r, AuthoritativeRecordV1::SegmentReemission(_)));
     for records in [residual, unlinked] {
-        replay_refused(&state, &candidate(&state, records, good.batch.clone()));
+        replay_refused(
+            &state,
+            &candidate(&state, records, &plan.invalidations, good.batch.clone()),
+        );
+    }
+}
+
+// Dependent records. On account A, claim K1 covers 2026-10-01 to 2026-10-31
+// and K2 covers 2026-11-05 to 2026-11-30. On C, K3 covers November. Note N1
+// targets the transfer's leg on C; note N2 targets A's old opening leg.
+const K1: u32 = 4001;
+const K2: u32 = 4002;
+const K3: u32 = 4003;
+const N1: u32 = 4011;
+const N2: u32 = 4012;
+const OLD_LEG: u32 = 701;
+const C_LEG: u32 = 1601;
+
+fn claims() -> Vec<AuthoritativeRecordV1> {
+    [
+        claim(K1, 10, "2026-10-01", "2026-10-31"),
+        claim(K2, 10, "2026-11-05", "2026-11-30"),
+        claim(K3, C, "2026-11-01", "2026-11-30"),
+    ]
+    .into_iter()
+    .map(AuthoritativeRecordV1::ReconciliationClaim)
+    .collect()
+}
+
+#[test]
+fn cur_016_claims_outside_change_stay_current() {
+    let mut state = with_transfer();
+    let request = cross_account(&mut state, 4300);
+    let state = recorded(&state, claims());
+    let plan = ready(&state, &request);
+    assert!(plan.invalidations.contains(&id(K1)));
+    assert!(!plan.invalidations.contains(&id(K2)));
+    assert!(!plan.invalidations.contains(&id(K3)));
+    let replaced = admit(&state, &planned(&state, &plan)).unwrap();
+    assert_eq!(
+        replaced.claim_status(id(K1)),
+        Some(ReconciliationStatus::Invalidated)
+    );
+    for kept in [K2, K3] {
+        assert_eq!(
+            replaced.claim_status(id(kept)),
+            Some(ReconciliationStatus::Matched)
+        );
+        assert_eq!(replaced.records[&id(kept)], state.records[&id(kept)]);
+    }
+}
+
+/// Account A without an anchor, so activity may sit in October.
+fn unanchored() -> DomainState {
+    let mut state = monetary_state();
+    for mapping in state.accounting.as_mut().unwrap().accounts.values_mut() {
+        mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
+    }
+    state
+}
+/// A standalone -25 USD purchase on A on `day`, recognition `n + 13`.
+fn purchase(state: &DomainState, n: u32, day: &str) -> DomainState {
+    let mut state = state.clone();
+    let source = dated(&mut state, n, -25, day, ObservationKind::Movement);
+    let mut request = posted(source, n + 10, EXPENSE);
+    at(&mut request, day);
+    let plan = RecognitionEngine::adopt(&state, &request).unwrap();
+    admit(&state, &planned(&state, &plan)).unwrap()
+}
+/// Recognition `original` again with fresh identities from `base`.
+fn identity_correction(
+    state: &DomainState,
+    original: u32,
+    base: u32,
+) -> currents_domain::correction::CorrectionRequestV1 {
+    let again = transfers::reemission(state, original, base);
+    currents_domain::correction::CorrectionRequestV1 {
+        active_recognition: again.original,
+        replacement: vec![again.replacement],
+        remapping: vec![],
+        reason: "Correct the posting identities only".into(),
+    }
+}
+
+#[test]
+fn cur_016_identity_correction_and_claims() {
+    use currents_domain::correction::CorrectionEngine;
+    let state = purchase(&unanchored(), 4100, "2026-10-15");
+    let bought = recognition(4113);
+    let mut named = claim(4004, EXPENSE, "2026-12-01", "2026-12-31");
+    named.decision_dependencies = vec![RecordId(bought.0)];
+    let state = recorded(
+        &state,
+        vec![
+            AuthoritativeRecordV1::ReconciliationClaim(claim(K1, 10, "2026-10-01", "2026-10-31")),
+            AuthoritativeRecordV1::ReconciliationClaim(named),
+        ],
+    );
+    let request = identity_correction(&state, 4113, 4200);
+    let plan = CorrectionEngine::correct_durable(&state, id(4300), &request).unwrap();
+    assert!(!plan.invalidations.contains(&id(K1)));
+    assert_eq!(plan.invalidations.last(), Some(&id(4004)));
+    let good = planned(&state, &plan);
+    let corrected = admit(&state, &good).unwrap();
+    // Replay rejects the correction when its result omits or adds a claim.
+    let omitted = &plan.invalidations[..plan.invalidations.len() - 1];
+    let added: Vec<_> = plan.invalidations.iter().copied().chain([id(K1)]).collect();
+    for invalidations in [omitted, &added] {
+        let records = plan.records.clone();
+        replay_refused(
+            &state,
+            &candidate(&state, records, invalidations, good.batch.clone()),
+        );
+    }
+    assert!(
+        corrected
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&bought)
+    );
+    assert_eq!(
+        corrected.claim_status(id(K1)),
+        Some(ReconciliationStatus::Matched)
+    );
+    assert_eq!(
+        corrected.claim_status(id(4004)),
+        Some(ReconciliationStatus::Invalidated)
+    );
+    assert_eq!(corrected.records[&id(4004)], state.records[&id(4004)]);
+}
+
+#[test]
+fn cur_016_organization_on_stable_leg_survives() {
+    let mut state = with_transfer();
+    let request = cross_account(&mut state, 4300);
+    let state = recorded(&state, vec![note(N1, id(C_LEG))]);
+    let plan = ready(&state, &request);
+    assert!(!plan.invalidations.contains(&id(N1)));
+    let replaced = admit(&state, &planned(&state, &plan)).unwrap();
+    assert!(!replaced.invalidated.contains(&id(N1)));
+    assert_eq!(
+        serde_json::to_vec(&replaced.records[&id(N1)]).unwrap(),
+        serde_json::to_vec(&state.records[&id(N1)]).unwrap()
+    );
+    // The leg N1 targets is in the family's new revision.
+    assert!(revision(&plan).legs.contains(&LegId(id(C_LEG).0)));
+}
+
+#[test]
+fn cur_016_organization_on_retired_leg_asks_owner() {
+    let mut state = with_transfer();
+    let request = cross_account(&mut state, 4300);
+    let state = recorded(&state, vec![note(N1, id(C_LEG)), note(N2, id(OLD_LEG))]);
+    let before = snapshot(&state);
+    assert_eq!(
+        SegmentEngine::replace(&state, &request).unwrap(),
+        SegmentPreviewV1::NeedsOrganizationDecision(vec![OrganizationQuestionV1 {
+            record: id(N2),
+            leg: LegId(id(OLD_LEG).0),
+        }])
+    );
+    assert_eq!(snapshot(&state), before);
+}
+
+#[test]
+fn cur_016_unsupported_dependents_still_refuse() {
+    use currents_domain::correction::CorrectionEngine;
+    let mut state = anchored();
+    let request = replacement(&mut state, 3400, "2026-10-30", &[(-100, "2026-10-31")]);
+    let state = purchase(&state, 4100, "2026-11-10");
+    let correction = identity_correction(&state, 4113, 4200);
+    ready(&state, &request);
+    CorrectionEngine::correct_durable(&state, id(4300), &correction).unwrap();
+
+    let AuthoritativeRecordV1::Review(mut review) = fixture_record("Review") else {
+        panic!("review fixture")
+    };
+    review.id = id(4021);
+    review.targets = vec![id(10)];
+    let AuthoritativeRecordV1::ForecastRun(mut run) = fixture_record("ForecastRun") else {
+        panic!("forecast fixture")
+    };
+    run.id = id(4022);
+    run.expanded_inputs
+        .starting_positions
+        .push(ForecastStartingPositionV1 {
+            account: account(10),
+            as_of: CivilDateV1(civil("2026-11-30")),
+            amount: SourceValue::Absent,
+            selected_basis: vec![],
+            inclusion_map: vec![],
+        });
+    for dependent in [
+        AuthoritativeRecordV1::Review(review),
+        AuthoritativeRecordV1::ForecastRun(run),
+    ] {
+        let state = recorded(&state, vec![dependent]);
+        let before = snapshot(&state);
+        assert!(SegmentEngine::replace(&state, &request).is_err());
+        assert!(CorrectionEngine::correct_durable(&state, id(4300), &correction).is_err());
+        assert_eq!(snapshot(&state), before);
     }
 }

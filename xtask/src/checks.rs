@@ -426,6 +426,11 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_1_partial_or_changed_reemission_refused",
             "cur_016_1_cross_account_residual_blocks",
             "cur_016_1_cross_account_replay",
+            "cur_016_claims_outside_change_stay_current",
+            "cur_016_identity_correction_and_claims",
+            "cur_016_organization_on_stable_leg_survives",
+            "cur_016_organization_on_retired_leg_asks_owner",
+            "cur_016_unsupported_dependents_still_refuse",
         ],
     ),
     (
@@ -439,6 +444,8 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_segment_cancel_and_retry",
             "cur_016_3_2024_backfill_after_2026_declaration",
             "cur_016_1_encrypted_cross_account_commit",
+            "cur_016_backfill_invalidates_claim_in_scope",
+            "cur_016_replay_checks_invalidations",
         ],
     ),
     (
