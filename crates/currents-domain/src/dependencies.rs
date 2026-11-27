@@ -6,6 +6,7 @@
 //! comparison version. Legs are keyed by their stable identity, so an
 //! identity-only correction, which replaces recognition and posting IDs and
 //! keeps the legs, leaves the digest unchanged.
+use crate::activity_predicate::{civil_date, within};
 use crate::catalog::{CatalogEngine, incomplete};
 use currents_types::*;
 use serde_json::json;
@@ -51,24 +52,20 @@ impl<'a> ActivityScope<'a> {
 
     /// The leg's date by the scope's basis, when it is a civil date.
     fn day(&self, leg: &FinancialLegV1) -> Option<Date> {
-        let day = match self.basis {
-            DateBasis::Effective => &leg.effective,
-            DateBasis::Posting => &leg.posting,
-        };
-        match day {
-            TemporalValue::Date { civil, .. } => Some(*civil),
-            _ => None,
-        }
+        civil_date(self.basis, &leg.effective, &leg.posting)
+    }
+
+    /// `day` falls inside the claim's interval.
+    pub(crate) fn contains(&self, day: Date) -> bool {
+        within(self.start, self.end, day)
     }
 
     /// The leg affects the claim: it is on the scope account inside the
     /// interval, or on it with a date that is not a civil date, or it
     /// allocates a named observation.
     pub(crate) fn relevant(&self, leg: &FinancialLegV1) -> bool {
-        let on_account = leg.account_id == self.account
-            && self
-                .day(leg)
-                .is_none_or(|day| self.start <= day && day <= self.end);
+        let on_account =
+            leg.account_id == self.account && self.day(leg).is_none_or(|day| self.contains(day));
         on_account
             || leg
                 .allocations
@@ -77,11 +74,8 @@ impl<'a> ActivityScope<'a> {
     }
 
     /// The leg is on the scope account with a civil date inside the interval.
-    pub(crate) fn within(&self, leg: &FinancialLegV1) -> bool {
-        leg.account_id == self.account
-            && self
-                .day(leg)
-                .is_some_and(|day| self.start <= day && day <= self.end)
+    pub(crate) fn inside(&self, leg: &FinancialLegV1) -> bool {
+        leg.account_id == self.account && self.day(leg).is_some_and(|day| self.contains(day))
     }
 
     /// The leg is on the scope account and has no civil date by the basis.

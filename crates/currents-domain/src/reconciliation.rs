@@ -225,7 +225,6 @@ fn activity(
         }
     }
     let excluded = |id: RecordId| exclusions.binary_search(&id).is_ok();
-    let within = |day: &Date| scope.start <= *day && *day <= scope.end;
 
     // Every source line with a civil date, and the source's movement in the
     // interval, exclusions included.
@@ -235,7 +234,7 @@ fn activity(
         let TemporalValue::Date { civil, .. } = temporal else {
             continue;
         };
-        if within(civil) {
+        if scope.contains(*civil) {
             movement = movement.checked_add(amount)?;
         }
         if !excluded(line.observation) {
@@ -269,7 +268,7 @@ fn activity(
         }
         // A leg without allocations, such as one an association admitted,
         // gives the comparison no row, so it is reported here.
-        if leg.allocations.is_empty() && scope.within(leg) {
+        if leg.allocations.is_empty() && scope.inside(leg) {
             unsupported.push(leg.id);
         }
         for allocation in leg.allocations.iter() {
@@ -338,7 +337,7 @@ fn activity(
         .iter()
         .filter(|s| {
             !unmatched.contains(&s.identity)
-                && matches!(&s.posting, TemporalValue::Date { civil, .. } if within(civil))
+                && matches!(&s.posting, TemporalValue::Date { civil, .. } if scope.contains(*civil))
         })
         .map(|s| EvidenceAllocationV1 {
             observation: s.identity.observation,
@@ -431,10 +430,10 @@ fn claim_id(request: &ReconciliationRequestV1) -> Result<RecordId, EngineError> 
     hash.update(b"currents/reconciliation-claim/v1\0");
     hash.update(&bytes);
     let digest: [u8; 32] = hash.finalize().into();
-    let mut id = [0; 16];
-    id.copy_from_slice(&digest[..16]);
+    let mut bytes = [0; 16];
+    bytes.copy_from_slice(&digest[..16]);
     // An RFC 9562 version 8 (custom) UUID.
-    id[6] = (id[6] & 0x0f) | 0x80;
-    id[8] = (id[8] & 0x3f) | 0x80;
-    Ok(RecordId(uuid::Uuid::from_bytes(id)))
+    Ok(RecordId(
+        uuid::Builder::from_custom_bytes(bytes).into_uuid(),
+    ))
 }
