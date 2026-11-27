@@ -504,6 +504,15 @@ const CUR_017_SUITES: &Suites = &[
             "cur_017_input_changes_invalidate",
             "cur_017_replay_rejects_claim_invalidation_elsewhere",
             "cur_017_invalidated_claim_cannot_be_confirmed",
+            "cur_017_2_circular_anchor",
+            "cur_017_balance_agreement_proposed",
+            "cur_017_balance_difference_is_partial",
+            "cur_017_4_available_posted_never_compared",
+            "cur_017_balance_boundary_and_unit",
+            "cur_017_balance_needs_anchor",
+            "cur_017_balance_kind_product_versions",
+            "cur_017_balance_claim_replay_and_applicability",
+            "cur_017_anchor_invalidates_activity_claim",
         ],
     ),
     (
@@ -574,7 +583,8 @@ fn ticket_cur_017() -> Result<Value> {
         "ticket":"CUR-017",
         "suites":ticket_suites("CUR017", CUR_017_SUITES)?,
         "offsetting_omissions_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s9/offsetting-omissions.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity claim evaluation, confirmation and applicability; no balance, holdings or relationship evaluation or command route"
+        "circular_anchor_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s9/circular-anchor.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity and Balance claim evaluation, confirmation and applicability; no holdings or relationship evaluation or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {

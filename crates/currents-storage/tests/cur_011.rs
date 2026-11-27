@@ -270,7 +270,7 @@ async fn cur_011_4() {
         for record in &mut invalid.records {
             if let AuthoritativeRecordV1::AddressedParseProduct(product) = record {
                 if invalid_version {
-                    product.schema_version = 2;
+                    product.schema_version = 3;
                 } else {
                     product.id = product.product.source_version_id;
                 }
@@ -587,6 +587,7 @@ async fn append_import_history(
         id: fixture::id(71003),
         schema_version: 1,
         product: product.clone(),
+        balance_kinds: vec![],
     };
     let second = AddressedParseProductV1 {
         id: fixture::id(71004),
@@ -595,6 +596,7 @@ async fn append_import_history(
             parser_version: "2".into(),
             ..product.clone()
         },
+        balance_kinds: vec![],
     };
     let records = vec![
         AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {

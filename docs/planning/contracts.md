@@ -89,7 +89,11 @@ Files: `crates/currents-acquisition/src/{adapter,capture,parse,identity,refresh}
 
 `AdapterCapabilitiesV1` defines endpoint allowlist, credential scopes, IDs/revision order, deletion/lifecycle, history, units/components/balance semantics, paging and freshness; unknown is explicit. `CaptureBatchV1 { connection_id, source_identity, parser_version, coverage, cursor, observations, sanitized_contract, original_capture_time }`; `ParseProductV1 { source_version_id, parser_id, parser_version, facets:Vec<MovementFacetV1> }`; `MovementFacetV1 { lineage_key, kind, amount, relationships, temporal }`. Facet lineage survives parse/provider revisions; payroll has separate net/gross/withholding/contribution facets.
 
-CUR012 adds the compatible authoritative `AddressedParseProductV1 { id:RecordId, schema_version:u32, product:ParseProductV1 }` under the `AddressedParseProduct` record kind. Only schema version 1 is supported. IDs are frozen trusted acceptance input and distinct from source/facet IDs. This is a new explicit decision/evidence reference role with same/prior-prefix closure; legacy unaddressed `ParseProductV1` remains unchanged and gains no fabricated address. The bounded in-process profile/context/batch types and rejection policy are documented in [synthetic import profiles](../formats/import-profiles.md). No provider precedence policy is introduced.
+CUR012 adds the compatible authoritative `AddressedParseProductV1 { id:RecordId, schema_version:u32, product:ParseProductV1 }` under the `AddressedParseProduct` record kind. Schema versions 1 and 2 are supported. IDs are frozen trusted acceptance input and distinct from source/facet IDs. This is a new explicit decision/evidence reference role with same/prior-prefix closure; legacy unaddressed `ParseProductV1` remains unchanged and gains no fabricated address. The bounded in-process profile/context/batch types and rejection policy are documented in [synthetic import profiles](../formats/import-profiles.md). No provider precedence policy is introduced.
+
+### CUR-017 balance kind
+
+Schema version 2 adds `balance_kinds:Vec<BalanceFacetKindV1 { facet:RecordId, kind:BalanceKindV1 }>`, where `BalanceKindV1` is `Posted`, `Available`, `Statement` or `Unknown`. A version-2 product names exactly one kind for each `Balance` facet, in ascending facet ID order, and none for any other facet. A version-1 product has no `balance_kinds` field, keeps its canonical bytes and admission rules, and reports every balance as `Unknown`; its wire form with the field is refused. Every other version is refused with `UnsupportedVersion`. Domain replay and storage admit both versions through `AddressedParseProductV1::validate`. The synthetic import profiles still emit version-1 movement products, and evidence batch admission still requires version 1. Every addressed product of one observation must report the same kind for a facet; a version-1 or unaddressed product reports `Unknown`. Reconciliation refuses an observation whose products disagree.
 
 `FileParser::parse(input:BoundedEvidence,profile:ParserProfileV1)->Result<CaptureBatchV1,EngineError>`; `EvidenceEngine::publish(state:&DomainState,batch:ValidatedEvidenceBatchV1)->Result<DecisionPlan,EngineError>`; `IdentityEngine::associate(state:&DomainState,request:AssociationRequestV1)->Result<DecisionPlan,EngineError>`. `AssociationRequestV1` specifies relationship type, legs/facets, exact allocations, survivor/corrections and reasons. `ReadOnlyAdapter` methods `describe_capabilities()->AdapterCapabilitiesV1`, `async fetch_changes(cursor:Option<String>)->Result<CaptureBatchV1,EngineError>`, `async fetch_snapshot(scope:SourceScopeV1)->Result<CaptureBatchV1,EngineError>`, `async resume_import(receipt:RecordId)->Result<CaptureBatchV1,EngineError>`; source scope is explicit accounts/time/type. No write institution methods. `RefreshCoordinator::next_attempt(state:&ConnectionState,now:OffsetDateTime)->RefreshDecision` is deterministic; 24 hours schedule opt-in,1/5/30 minutes retry then next scheduled, Retry-After, lock/auth failures suppress attempts.
 
@@ -449,8 +453,8 @@ Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
 or `Superseded`. `reasons` lists why a claim is partial: `UnknownOpening`,
-`IncompleteInterval`, `IncompatibleBalanceKinds`, `MissingDateMapping` or
-`UnexplainedResidual`. Storage checks references by role:
+`IncompleteInterval`, `IncompatibleBalanceKinds`, `MissingDateMapping`,
+`UnexplainedResidual`, or another reason a checkpoint below defines. Storage checks references by role:
 `evidence_dependencies` name evidence records, `decision_dependencies` name
 decisions, and `accounting_dependencies` name recognitions, legs,
 association revisions and accounting segments. `unit` names a declared unit,
@@ -469,10 +473,11 @@ allocation eligibility; this is not claim confirmation or service dispatch.
 ### CUR-017 activity coverage checkpoint
 
 `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`
-evaluates `Activity` requests. It refuses a request whose
+evaluates `Activity` requests, and `Balance` requests as the balance agreement
+checkpoint below describes. It refuses a request whose
 `basis.through_commit` is not the state's commit, or whose accounting index
-lags the state, with `StaleBasis`. Other kinds return `UnsupportedVersion`
-until their leaves merge. An Activity request names exactly one account and a
+lags the state, with `StaleBasis`. `Relationship` and `Holdings` requests
+return `UnsupportedVersion` until their leaves merge. An Activity request names exactly one account and a
 `cutoffs` interval with both a start and an end. Each `evidence` ID names an
 import receipt or an observation version. Evaluation refuses a named
 observation version that has a later explicit revision with `StaleBasis`.
@@ -493,7 +498,12 @@ The claim is `Proposed` only when it has no reasons. Otherwise it is
   whole interval by the request's date basis.
 - `UnknownOpening` or `UnknownClosing`: the statement reports no single
   balance at the end of the day before the interval, or at the end of its last
-  day.
+  day. The opening is also unknown when the interval starts on or before the
+  cutoff of the account's active opening anchor (C08): that history is
+  missing from the journal, and the anchor's own evidence cannot corroborate
+  it. Such a claim names the anchor's segment in `accounting_dependencies`.
+  An interval that starts after the cutoff keeps its earlier result, even
+  when its opening is the anchor's evidence.
 - `UnexplainedResidual`: the opening plus the source lines in the interval,
   excluded lines included, is not the closing. `differences` holds the
   closing minus that sum.
@@ -528,7 +538,49 @@ posting date, normalized amount and evidence allocations, the account's
 current catalog terms except its display name, and the receipt coverage the
 claim used. Recognition and posting IDs are not inputs, so an identity-only
 correction keeps the digest. Neither organization records nor the display
-name enter the digest.
+name enter the digest. When an anchor makes the opening unknown, the digest
+also covers the anchor's segment and opening terms; otherwise the digest is
+unchanged.
+
+### CUR-017 balance agreement checkpoint
+
+A `Balance` request names exactly one account and a `cutoffs` scope with no
+start and an end, the boundary. Its `evidence` names import receipts and
+observation versions that report exactly one balance facet and no movement
+facet, and it has no exclusions. The journal balance is the opening amount of
+the account's active anchor plus every live recognized leg on the account
+whose date by the request's basis is on or before the boundary. It counts as
+`Posted`. The claim is `Proposed` only when the source balance equals the
+journal balance exactly; there is no quantization. Its reasons are:
+
+- `UnknownOpening`: the account has no active anchor, or the boundary is
+  before the anchor's cutoff.
+- `CircularAnchor`: the source balance is the balance evidence the anchor's
+  opening adopted, or a later revision of that facet. It cannot corroborate
+  the anchor, even at the anchor's boundary.
+- `IncompatibleBoundary`: the source balance's as-of date is not the
+  boundary. `MissingDateMapping`: the balance or a live leg on the account has
+  no civil date.
+- `IncompatibleBalanceKinds`: the source balance is `Available` or
+  `Statement`. `UnknownBalanceKind`: it is `Unknown`, as every balance of a
+  version-1 product is.
+- `IncompatibleUnits`: the source balance is not in the account's unit.
+- `UnexplainedResidual`: the balances compare and differ. `differences` holds
+  the source balance minus the journal balance.
+
+Only a balance with no reason, or with `CircularAnchor` alone, is compared.
+A balance that compares equal is listed in `matched_allocations`. A
+difference stays visible; no entry or adjustment is proposed, and `record`
+returns `AccountingIntent::NoEffect`. The claim records comparison version 1,
+the account's unit, no exclusions, and in `accounting_dependencies` the
+anchor's segment and every live leg on the account through the boundary or
+without a civil date. Its digest covers the same inputs as an Activity
+digest, with the anchor and no coverage, under its own domain tag.
+`applicability` rechecks it the same way.
+
+Applicability adds `InvalidationReasonV1::Anchor`: the anchor that decides the
+claim changed, such as an opening adopted after an Activity claim whose
+interval now starts before it.
 
 ### CUR-017 claim lifecycle checkpoint
 
@@ -575,7 +627,7 @@ operations belong to later work.
 ```text
 ReconciliationEngine::applicability(state,claim:RecordId)->Result<ClaimApplicabilityV1,EngineError>
 ClaimApplicabilityV1 = Current | Invalidated(Vec<InvalidationReasonV1>)
-InvalidationReasonV1 = ScopeActivity | EvidenceRevision | AccountMapping | Coverage | Relationship | RetiredDependency
+InvalidationReasonV1 = ScopeActivity | EvidenceRevision | AccountMapping | Coverage | Anchor | Relationship | RetiredDependency
 ```
 
 A claim stops applying from the first commit that changes an input in its
@@ -590,11 +642,14 @@ computed at `state` differs from the claim's recorded digest, or when
   Evaluation refuses a revised observation, so the revision came after the
   claim.
 - `Coverage`: whether the named receipts report the interval complete differs
-  from the claim's own `IncompleteInterval` reason.
+  from the claim's own `IncompleteInterval` reason. Balance claims use no
+  coverage.
+- `Anchor`: the active anchor that decides the claim differs from the segment
+  the claim names (balance agreement checkpoint).
 - `AccountMapping`: the account's catalog terms, other than its display name,
   changed. A named receipt never changes, so when the interval's completeness
-  is unchanged, a digest difference left after comparing the legs and named
-  versions is in the catalog.
+  is unchanged, a digest difference left after comparing the legs, anchor and
+  named versions is in the catalog.
 - `Relationship`: reserved for relationship claims. An Activity claim compares
   no relationship.
 - `RetiredDependency`: a segment replacement or correction listed the claim
@@ -603,8 +658,9 @@ computed at `state` differs from the claim's recorded digest, or when
 Activity outside the claim's accounts or dates, an organization record and a
 display name change leave the claim `Current`. Neither the claim record nor
 its disposition changes, and the history through an earlier commit reports
-the claim's applicability at that commit. `applicability` refuses another
-claim kind or comparison version with `UnsupportedVersion`, and an accounting
+the claim's applicability at that commit. `applicability` refuses a claim
+kind other than Activity and Balance, or another comparison version, with
+`UnsupportedVersion`, and an accounting
 index that lags the state with `StaleBasis`.
 
 <a id="c10"></a>

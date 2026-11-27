@@ -127,29 +127,7 @@ struct World {
 impl World {
     fn new() -> Self {
         let journey = journey();
-        let mut state = fixture::monetary_state();
-        let mut savings = fixture::catalog();
-        savings.revision_id = id(ACCOUNT_B + 2);
-        savings.catalog.component_id = id(ACCOUNT_B + 1);
-        savings.catalog.account_id = account(ACCOUNT_B);
-        savings.ownership.account_id = account(ACCOUNT_B);
-        savings.catalog.display_name = "Synthetic savings".into();
-        let plan = CatalogEngine::set_complete(&state, &savings).unwrap();
-        fixture::apply(&mut state, &plan);
-        // Native accounts, B among them, so adoptions can post.
-        let index = state.accounting.as_mut().unwrap();
-        let mut savings = index.accounts[&account(ACCOUNT_A)].clone();
-        savings.account_id = account(ACCOUNT_B);
-        index.accounts.insert(savings.account_id, savings);
-        for mapping in index.accounts.values_mut() {
-            mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
-        }
-        let mut world = Self {
-            state,
-            lines: BTreeMap::new(),
-            evidence: vec![],
-            next: 5000,
-        };
+        let mut world = Self::base();
         world.receipt(RECEIPT, &journey["coverage"]);
         for (n, key) in [(OPENING, "opening"), (CLOSING, "closing")] {
             let balance = &journey[key];
@@ -176,6 +154,33 @@ impl World {
             world.recognize_line(name.as_str().unwrap());
         }
         world
+    }
+
+    /// Accounts A and B with no evidence and no recognitions.
+    fn base() -> Self {
+        let mut state = fixture::monetary_state();
+        let mut savings = fixture::catalog();
+        savings.revision_id = id(ACCOUNT_B + 2);
+        savings.catalog.component_id = id(ACCOUNT_B + 1);
+        savings.catalog.account_id = account(ACCOUNT_B);
+        savings.ownership.account_id = account(ACCOUNT_B);
+        savings.catalog.display_name = "Synthetic savings".into();
+        let plan = CatalogEngine::set_complete(&state, &savings).unwrap();
+        fixture::apply(&mut state, &plan);
+        // Native accounts, B among them, so adoptions can post.
+        let index = state.accounting.as_mut().unwrap();
+        let mut savings = index.accounts[&account(ACCOUNT_A)].clone();
+        savings.account_id = account(ACCOUNT_B);
+        index.accounts.insert(savings.account_id, savings);
+        for mapping in index.accounts.values_mut() {
+            mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
+        }
+        Self {
+            state,
+            lines: BTreeMap::new(),
+            evidence: vec![],
+            next: 5000,
+        }
     }
 
     /// The fixture world with every statement line recognized.
@@ -267,6 +272,7 @@ impl World {
                         temporal,
                     }],
                 },
+                balance_kinds: vec![],
             }),
         );
         line
@@ -716,9 +722,8 @@ fn cur_017_activity_refuses_other_bases() {
     let error = ReconciliationEngine::evaluate(&world.state, &request).unwrap_err();
     assert_eq!(error.class, ErrorClass::StaleBasis);
 
-    // Other claim kinds are not evaluated yet.
+    // Relationship and holdings claims are not evaluated yet.
     for kind in [
-        ReconciliationKindV1::Balance,
         ReconciliationKindV1::Relationship,
         ReconciliationKindV1::Holdings,
     ] {
@@ -1420,5 +1425,474 @@ fn cur_017_invalidated_claim_cannot_be_confirmed() {
     assert_eq!(
         lifecycle(&world.state, k.id),
         ReconciliationStatus::Proposed
+    );
+}
+
+// Balance agreement over the S9 circular-anchor journey. A's opening of
+// 1,000 USD at the end of 2026-10-31 was adopted from statement balance S1,
+// and the November debit of -40 is recognized after it.
+
+const S0: u32 = 1400;
+const S1: u32 = 1410;
+const S2: u32 = 1420;
+const OCTOBER: u32 = 1430;
+const NOVEMBER: u32 = 1431;
+const SEGMENT: u32 = 1450;
+const OPENING_ADOPTION: u32 = 1460;
+const DEBIT: u32 = 1470;
+const OPENING_EQUITY: u32 = 50;
+const POSTED: Option<BalanceKindV1> = Some(BalanceKindV1::Posted);
+
+fn circular() -> Value {
+    serde_json::from_str(include_str!(
+        "../../../fixtures/journeys/s9/circular-anchor.json"
+    ))
+    .unwrap()
+}
+
+/// The fixture's expected status and reasons for `case`.
+fn expected(case: &str) -> (ReconciliationStatus, Vec<ClaimReasonV1>) {
+    let case = &circular()["expected"][case];
+    (
+        serde_json::from_value(case["status"].clone()).unwrap(),
+        serde_json::from_value(case["reasons"].clone()).unwrap(),
+    )
+}
+
+fn outcome(claim: &ReconciliationClaimV1) -> (ReconciliationStatus, Vec<ClaimReasonV1>) {
+    (claim.status, claim.reasons.clone())
+}
+
+impl World {
+    /// Observation `n` reporting one `value` balance at the end of `day`,
+    /// parsed by product `n + 1`. A schema version 2 product reports
+    /// `kind`; `None` keeps schema version 1.
+    fn balance(
+        &mut self,
+        n: u32,
+        value: i128,
+        day: &str,
+        kind: Option<BalanceKindV1>,
+    ) -> EvidenceLineV1 {
+        let line = self.observe(n, ObservationKind::Balance, value, date(day));
+        if let Some(kind) = kind {
+            let Some(AuthoritativeRecordV1::AddressedParseProduct(product)) =
+                self.state.records.get_mut(&id(n + 1))
+            else {
+                unreachable!()
+            };
+            product.schema_version = 2;
+            product.balance_kinds = vec![BalanceFacetKindV1 {
+                facet: line.facet,
+                kind,
+            }];
+        }
+        line
+    }
+
+    /// The fixture balance `name`, reported as `kind`.
+    fn fixture_balance(&mut self, n: u32, name: &str, kind: Option<BalanceKindV1>) {
+        let balance = &circular()["balances"][name];
+        self.balance(
+            n,
+            balance["amount"].as_i64().unwrap().into(),
+            balance["as_of"].as_str().unwrap(),
+            kind,
+        );
+    }
+
+    /// The plan that adopts A's opening from the balance in observation
+    /// `n`, at the end of the fixture's cutoff.
+    fn opening(&self, n: u32) -> DecisionPlan {
+        let anchor = &circular()["anchor"];
+        let day = anchor["cutoff"].as_str().unwrap();
+        let value: i128 = anchor["amount"].as_i64().unwrap().into();
+        let binding = SourceFacetBindingV1 {
+            observation: id(n),
+            parse_product: id(n + 1),
+            facet: id(n + 2),
+            amount: amount(value),
+        };
+        let mut request = fixture::posted(binding.clone(), OPENING_ADOPTION, OPENING_EQUITY);
+        for item in &mut request.legs {
+            item.leg.effective = date(day);
+            item.leg.posting = date(day);
+        }
+        let terms = request.financial.as_mut().unwrap();
+        terms.bookkeeping_date = date(day);
+        for posting in &mut terms.postings {
+            posting.effective = date(day);
+            posting.posting = date(day);
+        }
+        terms.opening = Some(OpeningBasisV1 {
+            segment_id: id(SEGMENT),
+            component_id: id(ACCOUNT_A + 1),
+            amount: amount(value),
+            cutoff: date(day),
+            evidence: binding,
+            included_activity: vec![],
+        });
+        RecognitionEngine::adopt(&self.state, &request).unwrap()
+    }
+
+    /// The circular-anchor world: S0 and S1 reported, A's opening adopted
+    /// from S1, and the November debit recognized.
+    fn anchored() -> Self {
+        let mut world = Self::base();
+        world.fixture_balance(S0, "S0", POSTED);
+        world.fixture_balance(S1, "S1", POSTED);
+        let plan = world.opening(S1);
+        world.commit_as(&plan, DecisionKind::Interpretation);
+        let line = &circular()["lines"][0];
+        let value: i128 = line["amount"].as_i64().unwrap().into();
+        let day = line["date"].as_str().unwrap().to_string();
+        let plan = world.adoption(DEBIT, ACCOUNT_A, value, &day);
+        world.commit_as(&plan, DecisionKind::Interpretation);
+        let debit = EvidenceLineV1 {
+            observation: id(DEBIT),
+            facet: id(DEBIT + 2),
+        };
+        world.lines.insert("debit".into(), (debit, value, day));
+        world
+    }
+
+    /// A balance claim on A at the end of `day`, using observations `named`.
+    fn balance_request(&self, day: &str, named: &[u32]) -> ReconciliationRequestV1 {
+        ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Balance,
+            scope: AccountScope {
+                accounts: vec![account(ACCOUNT_A)],
+                components: vec![],
+            },
+            cutoffs: DateScope {
+                start: None,
+                end: Some(civil(day)),
+                basis: basis(circular()["basis"].as_str().unwrap()),
+            },
+            evidence: named.iter().map(|n| id(*n)).collect(),
+            exclusions: vec![],
+            basis: read_basis(&self.state),
+        }
+    }
+
+    /// An activity claim on A over the fixture's `month`, with its receipt
+    /// `n` and the records `named`.
+    fn month_request(&mut self, month: &str, n: u32, named: &[u32]) -> ReconciliationRequestV1 {
+        let journey = circular();
+        let mut coverage = journey["coverage"][month].clone();
+        coverage["basis"] = journey["basis"].clone();
+        self.receipt(n, &coverage);
+        ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Activity,
+            scope: AccountScope {
+                accounts: vec![account(ACCOUNT_A)],
+                components: vec![],
+            },
+            cutoffs: DateScope {
+                start: Some(civil(coverage["start"].as_str().unwrap())),
+                end: Some(civil(coverage["end"].as_str().unwrap())),
+                basis: basis(journey["basis"].as_str().unwrap()),
+            },
+            evidence: std::iter::once(n)
+                .chain(named.iter().copied())
+                .map(id)
+                .collect(),
+            exclusions: vec![],
+            basis: read_basis(&self.state),
+        }
+    }
+}
+
+#[test]
+fn cur_017_2_circular_anchor() {
+    let mut world = World::anchored();
+    // S1 established A's opening, so it cannot reconcile that boundary.
+    let at_anchor = world.evaluate(&world.balance_request("2026-10-31", &[S1]));
+    assert_eq!(outcome(&at_anchor), expected("balance_at_anchor_using_S1"));
+    assert!(at_anchor.differences.is_empty());
+    assert!(at_anchor.accounting_dependencies.contains(&id(SEGMENT)));
+
+    // October lies before the anchor, so its opening is unknown even though
+    // the statement reports S0 and S1 around it.
+    let october = world.month_request("october", OCTOBER, &[S0, S1]);
+    let claim = world.evaluate(&october);
+    assert_eq!(outcome(&claim), expected("october_activity"));
+    assert!(claim.differences.is_empty());
+    assert!(claim.accounting_dependencies.contains(&id(SEGMENT)));
+
+    // November starts after the anchor, so its claim keeps the activity
+    // result although S1 is its opening.
+    world.fixture_balance(S2, "S2", POSTED);
+    let november = world.month_request("november", NOVEMBER, &[S1, S2, DEBIT]);
+    let claim = world.evaluate(&november);
+    assert_eq!(outcome(&claim), expected("november_activity"));
+    assert!(!claim.accounting_dependencies.contains(&id(SEGMENT)));
+}
+
+#[test]
+fn cur_017_balance_agreement_proposed() {
+    let mut world = World::anchored();
+    world.fixture_balance(S2, "S2", POSTED);
+    let request = world.balance_request("2026-11-30", &[S2]);
+    let claim = world.evaluate(&request);
+    assert_eq!(outcome(&claim), expected("balance_at_2026-11-30_using_S2"));
+    assert!(claim.differences.is_empty());
+    let s2 = EvidenceLineV1 {
+        observation: id(S2),
+        facet: id(S2 + 2),
+    };
+    assert_eq!(claim.matched_allocations, vec![allocation(s2, 960)]);
+    assert_eq!(claim.kind, ReconciliationKindV1::Balance);
+    assert_eq!(claim.comparison_version, 1);
+    assert_eq!(claim.unit, UnitId(id(1).0));
+    assert_eq!(claim.cutoffs, request.cutoffs);
+    assert_eq!(claim.evidence_dependencies, vec![id(S2)]);
+    // The claim names the anchor's segment and the debit's leg.
+    let mut accounting = vec![id(SEGMENT), RecordId(world.leg_of("debit").0)];
+    accounting.sort();
+    assert_eq!(claim.accounting_dependencies, accounting);
+    assert_eq!(world.evaluate(&request), claim);
+}
+
+#[test]
+fn cur_017_balance_difference_is_partial() {
+    let mut world = World::anchored();
+    world.balance(S2, 950, "2026-11-30", POSTED);
+    let request = world.balance_request("2026-11-30", &[S2]);
+    let claim = world.evaluate(&request);
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::UnexplainedResidual]);
+    assert_eq!(claim.differences, vec![amount(-10)]);
+    assert!(claim.matched_allocations.is_empty());
+    // Recording the claim proposes no entry or adjustment.
+    let plan = ReconciliationEngine::record(&world.state, &request).unwrap();
+    assert_eq!(
+        plan.records,
+        vec![AuthoritativeRecordV1::ReconciliationClaim(claim)]
+    );
+    assert!(plan.invalidations.is_empty());
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    let batch = AccountingAdapter::freeze(&plan.accounting, &world.state).unwrap();
+    assert!(batch.operations.is_empty());
+}
+
+#[test]
+fn cur_017_4_available_posted_never_compared() {
+    for (kind, reason) in [
+        (
+            Some(BalanceKindV1::Available),
+            ClaimReasonV1::IncompatibleBalanceKinds,
+        ),
+        (
+            Some(BalanceKindV1::Statement),
+            ClaimReasonV1::IncompatibleBalanceKinds,
+        ),
+        (
+            Some(BalanceKindV1::Unknown),
+            ClaimReasonV1::UnknownBalanceKind,
+        ),
+        // A version-1 product reports no kind.
+        (None, ClaimReasonV1::UnknownBalanceKind),
+    ] {
+        let mut world = World::anchored();
+        world.fixture_balance(S2, "S2", kind);
+        let claim = world.evaluate(&world.balance_request("2026-11-30", &[S2]));
+        assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+        assert_eq!(claim.reasons, vec![reason], "{kind:?}");
+        assert!(claim.differences.is_empty());
+        assert!(claim.matched_allocations.is_empty());
+    }
+}
+
+#[test]
+fn cur_017_balance_boundary_and_unit() {
+    // S2 holds at the end of 2026-11-30, not 2026-11-29.
+    let mut world = World::anchored();
+    world.fixture_balance(S2, "S2", POSTED);
+    let claim = world.evaluate(&world.balance_request("2026-11-29", &[S2]));
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::IncompatibleBoundary]);
+    assert!(claim.differences.is_empty());
+
+    // S2 reports another unit.
+    let mut world = World::anchored();
+    world.fixture_balance(S2, "S2", POSTED);
+    let Some(AuthoritativeRecordV1::AddressedParseProduct(product)) =
+        world.state.records.get_mut(&id(S2 + 1))
+    else {
+        unreachable!()
+    };
+    product.product.facets[0].amount =
+        SourceValue::Known(Amount::new(960, 0, UnitId(id(2).0)).unwrap());
+    let claim = world.evaluate(&world.balance_request("2026-11-30", &[S2]));
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::IncompatibleUnits]);
+    assert!(claim.differences.is_empty());
+}
+
+#[test]
+fn cur_017_balance_needs_anchor() {
+    // Without an anchor the journal has no balance to compare.
+    let mut world = World::base();
+    world.fixture_balance(S2, "S2", POSTED);
+    let claim = world.evaluate(&world.balance_request("2026-11-30", &[S2]));
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::UnknownOpening]);
+    assert!(claim.differences.is_empty());
+    assert!(claim.accounting_dependencies.is_empty());
+
+    // Nor does it have one before the anchor.
+    let mut world = World::anchored();
+    let claim = world.evaluate(&world.balance_request("2026-09-30", &[S0]));
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::UnknownOpening]);
+    assert!(claim.differences.is_empty());
+
+    // A request needs one account, a boundary and no start, one named
+    // balance, no movement line and no exclusion.
+    world.fixture_balance(S2, "S2", POSTED);
+    let good = world.balance_request("2026-11-30", &[S2]);
+    assert!(ReconciliationEngine::evaluate(&world.state, &good).is_ok());
+    let rejects = |change: &dyn Fn(&mut ReconciliationRequestV1)| {
+        let mut request = good.clone();
+        change(&mut request);
+        assert!(ReconciliationEngine::evaluate(&world.state, &request).is_err());
+    };
+    rejects(&|r| r.cutoffs.start = Some(civil("2026-11-01")));
+    rejects(&|r| r.cutoffs.end = None);
+    rejects(&|r| r.scope.accounts.push(account(ACCOUNT_B)));
+    rejects(&|r| r.evidence.push(id(S1)));
+    rejects(&|r| r.evidence.push(id(DEBIT)));
+    rejects(&|r| r.exclusions.push(id(S2)));
+}
+
+#[test]
+fn cur_017_balance_kind_product_versions() {
+    // A version-1 product keeps its bytes and reads every balance as Unknown.
+    let text = include_str!("../../../fixtures/imports/addressed-product-v1.json");
+    let record: AuthoritativeRecordV1 = serde_json::from_str(text).unwrap();
+    let AuthoritativeRecordV1::AddressedParseProduct(v1) = &record else {
+        panic!("addressed product")
+    };
+    assert!(v1.balance_kinds.is_empty());
+    let original: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(
+        canonical(&serde_json::to_value(&record).unwrap()),
+        canonical(&original)
+    );
+    let mut wire = original.clone();
+    wire["value"]["balance_kinds"] = json!([]);
+    assert!(decode(&wire).is_err());
+
+    // A version-2 product names one kind for each balance facet.
+    let mut world = World::base();
+    let line = world.balance(S2, 960, "2026-11-30", Some(BalanceKindV1::Available));
+    let AuthoritativeRecordV1::AddressedParseProduct(v2) = world.state.records[&id(S2 + 1)].clone()
+    else {
+        unreachable!()
+    };
+    assert_eq!(v2.balance_kind(line.facet), BalanceKindV1::Available);
+    let encoded = serde_json::to_value(&v2).unwrap();
+    assert_eq!(encoded["schema_version"], json!(2));
+    assert_eq!(
+        encoded["balance_kinds"],
+        json!([{"facet": line.facet, "kind": "Available"}])
+    );
+    assert_eq!(
+        serde_json::from_value::<AddressedParseProductV1>(encoded.clone()).unwrap(),
+        v2
+    );
+    let mut missing = encoded.clone();
+    missing.as_object_mut().unwrap().remove("balance_kinds");
+    assert!(serde_json::from_value::<AddressedParseProductV1>(missing).is_err());
+
+    // A kind for no balance facet, a balance facet with no kind, a repeated
+    // kind, a kind at version 1 and version 3 are refused.
+    let invalid = |change: &dyn Fn(&mut AddressedParseProductV1), class: ErrorClass| {
+        let mut product = v2.clone();
+        change(&mut product);
+        assert_eq!(product.validate().unwrap_err().class, class);
+        assert!(serde_json::to_vec(&product).is_err());
+    };
+    invalid(
+        &|p| p.product.facets[0].kind = ObservationKind::Movement,
+        ErrorClass::InvalidReference,
+    );
+    invalid(&|p| p.balance_kinds.clear(), ErrorClass::InvalidReference);
+    invalid(
+        &|p| p.balance_kinds.push(p.balance_kinds[0].clone()),
+        ErrorClass::InvalidReference,
+    );
+    invalid(&|p| p.schema_version = 1, ErrorClass::InvalidReference);
+    invalid(&|p| p.schema_version = 3, ErrorClass::UnsupportedVersion);
+
+    // Products that disagree about a balance's kind are refused.
+    let mut reparsed = v2.clone();
+    reparsed.id = id(S2 + 5);
+    reparsed.balance_kinds[0].kind = BalanceKindV1::Posted;
+    world.state.records.insert(
+        reparsed.id,
+        AuthoritativeRecordV1::AddressedParseProduct(reparsed),
+    );
+    assert!(
+        ReconciliationEngine::evaluate(&world.state, &world.balance_request("2026-11-30", &[S2]))
+            .is_err()
+    );
+}
+
+#[test]
+fn cur_017_balance_claim_replay_and_applicability() {
+    let mut world = World::anchored();
+    world.fixture_balance(S2, "S2", POSTED);
+    // Replay derives the recorded claim again.
+    let k = world.record(&world.balance_request("2026-11-30", &[S2]));
+    assert_eq!(k.status, ReconciliationStatus::Proposed);
+    let plan = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap();
+    world.commit(&plan);
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::ConfirmedForScope
+    );
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // A line after the boundary leaves the balance unchanged.
+    let plan = world.adoption(3500, ACCOUNT_A, -25, "2026-12-02");
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+    // A backdated line before it changes the journal balance.
+    let plan = world.adoption(3600, ACCOUNT_A, -25, "2026-11-12");
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::ScopeActivity)
+    );
+}
+
+#[test]
+fn cur_017_anchor_invalidates_activity_claim() {
+    // October activity recorded before A had an anchor is proposed.
+    let mut world = World::base();
+    world.fixture_balance(S0, "S0", POSTED);
+    world.fixture_balance(S1, "S1", POSTED);
+    let october = world.month_request("october", OCTOBER, &[S0, S1]);
+    let k = world.record(&october);
+    assert_eq!(k.status, ReconciliationStatus::Proposed);
+
+    // Adopting A's opening from S1 puts October before the anchor.
+    let plan = world.opening(S1);
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::Anchor)
+    );
+    let mut again = october.clone();
+    again.basis = read_basis(&world.state);
+    assert_eq!(
+        world.evaluate(&again).reasons,
+        vec![ClaimReasonV1::UnknownOpening]
     );
 }

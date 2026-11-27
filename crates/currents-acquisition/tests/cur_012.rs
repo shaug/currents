@@ -256,7 +256,7 @@ fn cur_012_3() {
     assert_eq!(existing.records.len(), 1);
     let product = original.products[0].clone();
     let mut wire = serde_json::to_value(&product).unwrap();
-    wire["schema_version"] = serde_json::json!(2);
+    wire["schema_version"] = serde_json::json!(3);
     assert!(serde_json::from_value::<AddressedParseProductV1>(wire).is_err());
     let mut alias = product;
     alias.id = alias.product.source_version_id;

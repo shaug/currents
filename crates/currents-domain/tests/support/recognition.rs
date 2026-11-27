@@ -143,6 +143,7 @@ pub fn evidence(
                     temporal: date("2026-11-01"),
                 }],
             },
+            balance_kinds: vec![],
         }),
     );
     binding
