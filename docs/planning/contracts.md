@@ -78,9 +78,8 @@ exactly that one record and its frozen manifest, one `Reconciliation`
 decision and no invalidations. Replay derives the claim again with
 `ReconciliationEngine::record` from a request rebuilt from the claim, or the
 confirmation or dispute again with `confirm` or `dispute`, at the prior
-history, and rejects the commit when the derived record differs. A confirmation
-whose digest is no longer the digest derived at the prior history is
-rejected.
+history, and rejects the commit when the derived record differs. Replay
+rejects a confirmation whose claim no longer applies at the prior history.
 
 <a id="c07"></a>
 
@@ -373,7 +372,10 @@ The claim record is never rewritten. `DomainState::claim_invalidated` reports
 true from the commit whose result invalidated the claim, and
 `DomainState::claim_status` keeps reporting the record's own lifecycle status.
 Replay derives the plan again and rejects a segment or correction commit whose
-recorded invalidations differ.
+recorded invalidations differ. Replay rejects any other commit whose result
+lists a reconciliation claim in its invalidations. Adoption, association and
+import commits invalidate no claim when they commit; a reader sees their
+changes in the claim's dependency digest (C09).
 
 Organization records on legs that stay keep their targets. A replacement that
 retires a leg that an organization record targets returns
@@ -472,8 +474,9 @@ evaluates `Activity` requests. It refuses a request whose
 lags the state, with `StaleBasis`. Other kinds return `UnsupportedVersion`
 until their leaves merge. An Activity request names exactly one account and a
 `cutoffs` interval with both a start and an end. Each `evidence` ID names an
-import receipt or an observation version. Each exclusion names a named
-observation or a live recognized leg.
+import receipt or an observation version. Evaluation refuses a named
+observation version that has a later explicit revision with `StaleBasis`.
+Each exclusion names a named observation or a live recognized leg.
 
 The source lines are the movement facets of the named observations. A line's
 one reported date is its facet's temporal value, and the comparison uses it
@@ -509,8 +512,10 @@ The claim records the request's basis, account, `cutoffs` and sorted
 evidence and exclusions, the account's unit and comparison version 1.
 `matched_allocations` lists every compared line in the interval that matched,
 with its source amount. `accounting_dependencies` names each live leg the
-claim compared, and its recognitions: a leg on the account inside the
-interval or without a civil date, or one that allocates a named observation.
+claim compared: a leg on the account inside the interval or without a civil
+date, or one that allocates a named observation. It names no recognition, so
+an identity-only correction, which replaces a recognition and keeps its legs,
+does not invalidate the claim under the CUR-016 rules.
 `decision_dependencies` is empty. The claim ID is a version 8 UUID derived
 from the request's kind, accounts, `cutoffs`, sorted evidence and exclusions,
 and basis, so the same request at the same basis gives the same claim and
@@ -522,8 +527,8 @@ compared leg by its stable leg ID with its account, unit, effective date,
 posting date, normalized amount and evidence allocations, the account's
 current catalog terms except its display name, and the receipt coverage the
 claim used. Recognition and posting IDs are not inputs, so an identity-only
-correction keeps the digest. Evaluation records the digest; deciding when a
-claim stops applying belongs to a later CUR-017 leaf.
+correction keeps the digest. Neither organization records nor the display
+name enter the digest.
 
 ### CUR-017 claim lifecycle checkpoint
 
@@ -548,8 +553,8 @@ itself is never rewritten.
 
 - `confirm` refuses with `InvalidReference` unless the claim's lifecycle
   status is `Proposed`. It refuses with `StaleBasis` unless `digest` equals
-  the claim's recorded digest and the digest computed at `state` still equals
-  it.
+  the claim's recorded digest and the claim's applicability at `state` is
+  `Current`.
 - `dispute` accepts a `Proposed` or `PartiallySupported` claim with a
   nonblank reason, and refuses with `StaleBasis` unless `digest` equals the
   claim's recorded digest. It does not recompute the digest.
@@ -562,8 +567,45 @@ itself is never rewritten.
   earlier commit reports the earlier status.
 
 `DomainState::claim_status` still reports the record's own status, and
-`DomainState::claim_invalidated` keeps its CUR-016 meaning. Deciding when a
-claim stops applying, and routes for these operations, belong to later work.
+`DomainState::claim_invalidated` keeps its CUR-016 meaning. Routes for these
+operations belong to later work.
+
+### CUR-017 claim applicability checkpoint
+
+```text
+ReconciliationEngine::applicability(state,claim:RecordId)->Result<ClaimApplicabilityV1,EngineError>
+ClaimApplicabilityV1 = Current | Invalidated(Vec<InvalidationReasonV1>)
+InvalidationReasonV1 = ScopeActivity | EvidenceRevision | AccountMapping | Coverage | Relationship | RetiredDependency
+```
+
+A claim stops applying from the first commit that changes an input in its
+scope. `applicability` reports `Invalidated` when the dependency digest
+computed at `state` differs from the claim's recorded digest, or when
+`DomainState::claim_invalidated` reports true. Each reason names an input:
+
+- `ScopeActivity`: the live legs in the claim's scope differ from the legs it
+  names, such as a newly recognized backdated line on the account inside the
+  interval.
+- `EvidenceRevision`: a named observation has a later explicit revision.
+  Evaluation refuses a revised observation, so the revision came after the
+  claim.
+- `Coverage`: whether the named receipts report the interval complete differs
+  from the claim's own `IncompleteInterval` reason.
+- `AccountMapping`: the account's catalog terms, other than its display name,
+  changed. A named receipt never changes, so when the interval's completeness
+  is unchanged, a digest difference left after comparing the legs and named
+  versions is in the catalog.
+- `Relationship`: reserved for relationship claims. An Activity claim compares
+  no relationship.
+- `RetiredDependency`: a segment replacement or correction listed the claim
+  in its invalidations under the CUR-016 rules.
+
+Activity outside the claim's accounts or dates, an organization record and a
+display name change leave the claim `Current`. Neither the claim record nor
+its disposition changes, and the history through an earlier commit reports
+the claim's applicability at that commit. `applicability` refuses another
+claim kind or comparison version with `UnsupportedVersion`, and an accounting
+index that lags the state with `StaleBasis`.
 
 <a id="c10"></a>
 

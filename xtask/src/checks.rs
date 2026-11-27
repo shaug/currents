@@ -498,6 +498,12 @@ const CUR_017_SUITES: &Suites = &[
             "cur_017_supersession",
             "cur_017_original_confirmation_reproducible",
             "cur_017_replay_rejects_forged_confirmation",
+            "cur_017_3_backdated_posting_invalidates",
+            "cur_017_3_outside_scope_keeps_claim",
+            "cur_017_3_cosmetic_tag_keeps_claim",
+            "cur_017_input_changes_invalidate",
+            "cur_017_replay_rejects_claim_invalidation_elsewhere",
+            "cur_017_invalidated_claim_cannot_be_confirmed",
         ],
     ),
     (
@@ -505,7 +511,7 @@ const CUR_017_SUITES: &Suites = &[
         "cur_017",
         &[
             "cur_017_storage_checks_dependency_kinds",
-            "cur_017_correction_invalidates_named_recognition",
+            "cur_017_identity_correction_keeps_claims_current",
         ],
     ),
 ];
@@ -568,7 +574,7 @@ fn ticket_cur_017() -> Result<Value> {
         "ticket":"CUR-017",
         "suites":ticket_suites("CUR017", CUR_017_SUITES)?,
         "offsetting_omissions_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s9/offsetting-omissions.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity claim evaluation; no balance, holdings or relationship evaluation, confirmation or command route"
+        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity claim evaluation, confirmation and applicability; no balance, holdings or relationship evaluation or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {
