@@ -48,6 +48,46 @@ pub(crate) async fn rehydrate(
     exact(state, wanted)
 }
 
+/// The trusted prior for a synthetic host commit, rebuilt from this writer's
+/// audited history. A new command uses the live tip. A settled retry uses the
+/// prior its commit was admitted at, not the new tip, so the same plan can be
+/// derived again. C04 still requires exact persisted records and manifest.
+#[cfg(feature = "synthetic-test-fixtures")]
+pub(crate) async fn trusted_prior(
+    writer: &Writer,
+    prepared: &currents_storage::PreparedCommit,
+) -> Result<(AccountingPrefixV1, DomainState), EngineError> {
+    let invalid = EngineError::invalid;
+    if !prepared.evidence.is_empty() || prepared.result.commit.is_some() {
+        return Err(invalid());
+    }
+    let frozen_prefix = &prepared.frozen_batch.preconditions;
+    let trusted_tip = if let Some(existing) = writer
+        .command_result(prepared.result.command_id, prepared.result.digest)
+        .await?
+    {
+        let Some(AuthoritativeRecordV1::FrozenAccountingManifest(manifest)) =
+            existing.records.last()
+        else {
+            return Err(invalid());
+        };
+        let mut submitted_result = prepared.result.clone();
+        submitted_result.commit = Some(existing.seq);
+        if existing.previous_digest != frozen_prefix.domain_digest
+            || existing.seq.0.checked_sub(1) != Some(frozen_prefix.through.0)
+            || &manifest.preconditions != frozen_prefix
+            || submitted_result != existing.command_result
+        {
+            return Err(invalid());
+        }
+        manifest.preconditions.clone()
+    } else {
+        writer.audited_prefix().await?
+    };
+    let prior = rehydrate(writer, &trusted_tip).await?;
+    Ok((trusted_tip, prior))
+}
+
 /// Move a verified projection forward over the commits appended after it, with
 /// the same per-commit checks as `rehydrate`. The service uses this after its
 /// own commit so the next command does not need a full replay.

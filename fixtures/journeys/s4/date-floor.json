@@ -1,0 +1,8 @@
+{
+  "account": "B",
+  "declared_at": "2026-11-20T12:00:00Z",
+  "opening": {"cutoff": "2026-11-01", "amount": 50},
+  "replacement": {"cutoff": "2024-10-30", "amount": 146},
+  "backfill": {"effective": "2024-10-31", "booking": "2024-11-02", "amount": -96},
+  "expected": {"as_of": "2024-10-31", "balance": 50}
+}
