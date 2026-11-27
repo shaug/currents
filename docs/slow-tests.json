@@ -1,0 +1,200 @@
+{
+  "default_limit_seconds": 30,
+  "tests": [
+    {
+      "test": "currents-storage/cur_008 prefix_visibility",
+      "limit_seconds": 530,
+      "reason": "Baseline: took 264s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_025 cur_025_service_durable_revisions_and_no_recognition",
+      "limit_seconds": 510,
+      "reason": "Baseline: took 253s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_007_3",
+      "limit_seconds": 430,
+      "reason": "Baseline: took 215s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
+      "limit_seconds": 370,
+      "reason": "Baseline: took 181s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_007_1",
+      "limit_seconds": 360,
+      "reason": "Baseline: took 178s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_opening_boundary_encrypted_initial_and_remap",
+      "limit_seconds": 350,
+      "reason": "Baseline: took 171s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/currents_storage history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",
+      "limit_seconds": 310,
+      "reason": "Baseline: took 151s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_007_2",
+      "limit_seconds": 250,
+      "reason": "Baseline: took 121s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_015_initial_multidate_batch_is_atomic_and_replayable",
+      "limit_seconds": 240,
+      "reason": "Baseline: took 120s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/currents_storage history::audit_parity_tests::records_count_boundary_and_rehashed_overflow",
+      "limit_seconds": 240,
+      "reason": "Baseline: took 119s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_010 cur_010_1",
+      "limit_seconds": 220,
+      "reason": "Baseline: took 109s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_007_4",
+      "limit_seconds": 200,
+      "reason": "Baseline: took 96s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_014 cur_014_2_slice_fault",
+      "limit_seconds": 200,
+      "reason": "Baseline: took 96s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_015_multiple_corrections_never_publish_a_partial_native_prefix",
+      "limit_seconds": 150,
+      "reason": "Baseline: took 74s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-types/cur_003 cur_003_1",
+      "limit_seconds": 150,
+      "reason": "Baseline: took 73s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/currents_storage history::audit_parity_tests::observation_count_boundary_and_rehashed_overflow",
+      "limit_seconds": 150,
+      "reason": "Baseline: took 72s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice",
+      "limit_seconds": 120,
+      "reason": "Baseline: took 58s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect",
+      "limit_seconds": 120,
+      "reason": "Baseline: took 56s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "doctests",
+      "limit_seconds": 110,
+      "reason": "Baseline: took 52s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_3_real_parser_remap_preserves_raw_cancellation_retry_and_reopen",
+      "limit_seconds": 110,
+      "reason": "Baseline: took 51s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_006 cur_006_3",
+      "limit_seconds": 100,
+      "reason": "Baseline: took 47s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_3_real_service_remap_cancellation_reopen_and_tombstone",
+      "limit_seconds": 100,
+      "reason": "Baseline: took 46s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-acquisition/cur_044 cur_044_no_account_probe",
+      "limit_seconds": 90,
+      "reason": "Baseline: took 43s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-acquisition/cur_044 cur_044_1",
+      "limit_seconds": 90,
+      "reason": "Baseline: took 43s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-acquisition/cur_012 cur_012_1",
+      "limit_seconds": 90,
+      "reason": "Baseline: took 42s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_014 cur_014_1_slice_end_to_end",
+      "limit_seconds": 80,
+      "reason": "Baseline: took 37s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/currents_storage history::audit_parity_tests::record_decision_byte_boundary_and_rehashed_overflow",
+      "limit_seconds": 80,
+      "reason": "Baseline: took 36s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-ffi/cur_004 cur_004_ticket_dispatches_native_qualification",
+      "limit_seconds": 70,
+      "reason": "Baseline: took 34s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/currents_storage history::audit_parity_tests::appended_decision_byte_boundary_and_rehashed_overflow",
+      "limit_seconds": 70,
+      "reason": "Baseline: took 34s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_remap_lineage_rejection_preserves_encrypted_replay",
+      "limit_seconds": 70,
+      "reason": "Baseline: took 33s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-acquisition/cur_044 cur_044_3",
+      "limit_seconds": 70,
+      "reason": "Baseline: took 33s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_013 cur_013_1_service_pending_posted_reopen_and_no_double_money",
+      "limit_seconds": 70,
+      "reason": "Baseline: took 31s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_016 cur_016_durable_correction_rebuilds_immutable_lineage",
+      "limit_seconds": 70,
+      "reason": "Baseline: took 31s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_007 cur_015_revision_family_preserves_prefix_and_rejects_forks",
+      "limit_seconds": 60,
+      "reason": "Baseline: took 28s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_016_correction_chain cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle",
+      "limit_seconds": 60,
+      "reason": "Baseline: took 26s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-storage/cur_011 cur_011_1",
+      "limit_seconds": 50,
+      "reason": "Baseline: took 25s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_015 cur_015_1_real_service_transfer_keeps_dates_and_only_separate_fee_is_spending",
+      "limit_seconds": 40,
+      "reason": "Baseline: took 20s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_013 anchor_posting_date_service_activity_rejects_before_or_at_cutoff",
+      "limit_seconds": 40,
+      "reason": "Baseline: took 17s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-service/cur_013 cur_013_3_service_unknown_and_supported_openings_are_distinct",
+      "limit_seconds": 40,
+      "reason": "Baseline: took 16s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    }
+  ]
+}

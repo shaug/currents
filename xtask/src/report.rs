@@ -71,6 +71,7 @@ pub fn build(
         root.join("deny.toml"),
         root.join("clippy.toml"),
         root.join("docs/lint-allowlist.json"),
+        root.join("docs/slow-tests.json"),
         root.join("schemas/v1/contracts.json"),
     ];
     for flag in ["--manifest-path", "--inventory", "--workflow", "--schema"] {
