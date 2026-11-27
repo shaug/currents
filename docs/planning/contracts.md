@@ -242,9 +242,17 @@ replacement starts a chain that its adoption owns, so a later identity
 correction, reinterpretation or leg correction starts from that live tip. The
 planner refuses a facet another adoption owns, a correction of a retired
 original and a second reversal. Merges of separate adoptions use the CUR-015
-duplicate route, and associated families use CUR-015 remaps. A posted
-adoption that consumed a pending one, trade quantity legs and allocation
-remaps stay unsupported. There is no command route.
+duplicate route, and associated families use CUR-015 remaps. Trade quantity
+legs and allocation remaps stay unsupported. There is no command route.
+
+A purchase that consumed a pending adoption keeps it consumed exactly once.
+The new adoption names the same pending adoption, and the same commit
+releases the retired adoption's consumption. The planner and the chain
+audit refuse a new adoption whose pending adoption differs from the retired
+one's. Storage defines each pending consumption once: in the commit of
+the `ReplacedLegs` revision, the new adoption refers to the existing
+consumption instead of defining it again. Replay through an earlier commit
+still shows the retired adoption consuming it.
 
 ### CUR-016 segment replacement checkpoint
 

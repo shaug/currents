@@ -772,9 +772,12 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
                     replacement_adoption,
                 } => {
                     let successor = original_adoption(state, next_id)?;
+                    // The replacement takes over the pending adoption that
+                    // the retired one consumed.
                     if owner.id != *retired_adoption
                         || successor.id != *replacement_adoption
                         || next.leg_ids != successor.legs
+                        || successor.prior_pending != owner.prior_pending
                     {
                         return Err(invalid());
                     }

@@ -714,7 +714,8 @@ fn consumed(
         {
             return Err(duplicate());
         }
-        if let Some(prior) = a.prior_pending {
+        // A retired adoption released its consumption to its replacement.
+        if let Some(prior) = a.prior_pending.filter(|_| !released.contains(&a.id)) {
             if a.status != ActivityStatusV1::Posted || !consumed.insert(prior) {
                 return Err(duplicate());
             }
@@ -1037,9 +1038,11 @@ pub(crate) fn adopt_drafts<'a>(
 }
 /// Plan `request`, a posted adoption that replaces the legs of `retired`,
 /// against the same prior prefix by the rules of a new adoption. It may split
-/// a fact across its legs. The retired adoption no longer owns its facts, and
-/// every other adoption keeps its own. Returns the adoption's records, its
-/// adoption and its recognition.
+/// a fact across its legs. It names the pending adoption that `retired`
+/// consumed, if any, and takes that consumption over. The retired adoption no
+/// longer owns its facts or consumes a pending adoption, and every other
+/// adoption keeps its own. Returns the adoption's records, its adoption and
+/// its recognition.
 pub(crate) fn replace_adoption(
     state: &DomainState,
     request: &ActivityRequestV1,
@@ -1053,7 +1056,7 @@ pub(crate) fn replace_adoption(
     EngineError,
 > {
     if request.status != ActivityStatusV1::Posted
-        || request.prior_pending.is_some()
+        || request.prior_pending != retired.prior_pending
         || request
             .financial
             .as_ref()
@@ -1066,6 +1069,7 @@ pub(crate) fn replace_adoption(
     let mut all = RecognitionEngine::audit(state)?;
     for adoption in all.iter_mut().filter(|a| a.id == retired.id) {
         adoption.facets.clear();
+        adoption.prior_pending = None;
     }
     all.push(draft.adoption.clone());
     consumed(&prospective(state, &draft.records), &all)?;

@@ -443,6 +443,8 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_leg_split",
             "cur_016_leg_split_asks_organization_remap",
             "cur_016_leg_guards",
+            "cur_016_leg_pending_date_correction",
+            "cur_016_leg_pending_second_consumer_refused",
         ],
     ),
     (
@@ -470,6 +472,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal",
             "cur_016_2_reinterpreted_tip_chain",
             "cur_016_leg_correction_encrypted_commit",
+            "cur_016_leg_pending_encrypted_commit",
         ],
     ),
 ];
