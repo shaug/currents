@@ -109,6 +109,28 @@ pub(crate) fn facet_of(
     }
     Ok(((root, source.facet), value))
 }
+/// Each fact's first binding, its facet version's known amount and the
+/// total its bindings carry.
+pub(crate) type Portions<'a> =
+    BTreeMap<(RecordId, RecordId), (&'a SourceFacetBindingV1, Amount, Amount)>;
+/// Total `sources` by the fact each binds. Every binding of one fact must
+/// name the same facet version as its first.
+pub(crate) fn portions<'a>(
+    state: &DomainState,
+    sources: impl IntoIterator<Item = &'a SourceFacetBindingV1>,
+) -> Result<Portions<'a>, EngineError> {
+    let mut portions = Portions::new();
+    for source in sources {
+        let (key, value) = facet_of(state, source, false)?;
+        let zero = Amount::new(0, 0, value.unit_id)?;
+        let (first, _, total) = portions.entry(key).or_insert((source, value, zero));
+        if (first.observation, first.parse_product) != (source.observation, source.parse_product) {
+            return Err(EngineError::invalid());
+        }
+        *total = total.checked_add(&source.amount)?;
+    }
+    Ok(portions)
+}
 /// `later` is `earlier` or one of its explicit source revisions.
 pub(crate) fn revises(
     state: &DomainState,
@@ -230,8 +252,6 @@ fn validate(
         return Err(EngineError::invalid());
     }
     let mut facts = BTreeSet::new();
-    // Each split facet version: its binding, its amount and the bound total.
-    let mut portions = BTreeMap::<_, (&SourceFacetBindingV1, Amount, Amount)>::new();
     let mut adopted = Vec::new();
     for item in &request.legs {
         let leg = &item.leg;
@@ -304,18 +324,10 @@ fn validate(
                 return Err(duplicate());
             }
             if split {
-                let (key, value) = facet_of(state, source, false)?;
+                let (key, _) = facet_of(state, source, false)?;
                 if !facts.insert((key, Some(leg.id))) {
                     return Err(duplicate());
                 }
-                let zero = Amount::new(0, 0, value.unit_id)?;
-                let (first, _, total) = portions.entry(key).or_insert((source, value, zero));
-                if (first.observation, first.parse_product)
-                    != (source.observation, source.parse_product)
-                {
-                    return Err(EngineError::invalid());
-                }
-                *total = total.checked_add(&source.amount)?;
             } else if !facts.insert((fact(state, source)?, None)) {
                 return Err(duplicate());
             }
@@ -325,9 +337,11 @@ fn validate(
             });
         }
     }
-    for (_, value, total) in portions.values() {
-        if !equal(*value, *total)? {
-            return Err(EngineError::invalid());
+    if split {
+        for (_, value, total) in portions(state, adopted.iter().map(|a| &a.source))?.values() {
+            if !equal(*value, *total)? {
+                return Err(EngineError::invalid());
+            }
         }
     }
     Ok(adopted)

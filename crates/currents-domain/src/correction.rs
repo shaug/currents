@@ -90,12 +90,7 @@ impl CorrectionEngine {
         refuse_dependents(state, &chains, original.id, owner)?;
         let (records, replacing, recognition) =
             crate::recognition::replace_adoption(state, adoption, owner)?;
-        if recognition != *replacement
-            || [adoption.adoption_id, adoption.event.id]
-                .into_iter()
-                .chain(replacing.legs.iter().map(|l| RecordId(l.0)))
-                .any(|id| id == revision_id)
-        {
+        if recognition != *replacement {
             return Err(EngineError::invalid());
         }
         same_sources(state, owner, &replacing)?;
@@ -112,7 +107,9 @@ impl CorrectionEngine {
             .chain(recognition.postings.iter().map(|p| p.id))
             .collect();
         for record in &records {
-            taken.insert(record_id(record).ok_or_else(EngineError::invalid)?);
+            if !taken.insert(record_id(record).ok_or_else(EngineError::invalid)?) {
+                return Err(EngineError::invalid());
+            }
         }
         let Some(successors) = remapped(state, &questions, &request.remapping, &replacing, taken)?
         else {
@@ -501,30 +498,17 @@ fn same_sources(
     retired: &ActivityAdoptionV1,
     replacing: &ActivityAdoptionV1,
 ) -> Result<(), EngineError> {
-    let bound = |adoption: &ActivityAdoptionV1| {
-        let mut facts = BTreeMap::<_, (RecordId, currents_types::Amount)>::new();
-        for facet in &adoption.facets {
-            let source = &facet.source;
-            let (key, _) = crate::recognition::facet_of(state, source, false)?;
-            let zero = currents_types::Amount::new(0, 0, source.amount.unit_id)?;
-            let (observation, total) = facts.entry(key).or_insert((source.observation, zero));
-            if *observation != source.observation {
-                return Err(EngineError::invalid());
-            }
-            *total = total.checked_add(&source.amount)?;
-        }
-        Ok::<_, EngineError>(facts)
-    };
-    let (old, new) = (bound(retired)?, bound(replacing)?);
+    let old = crate::recognition::portions(state, retired.facets.iter().map(|f| &f.source))?;
+    let new = crate::recognition::portions(state, replacing.facets.iter().map(|f| &f.source))?;
     if !old.keys().eq(new.keys()) {
         return Err(EngineError::invalid());
     }
-    for (key, (observation, total)) in &old {
-        let (revised, now) = new[key];
-        let kept = if revised == *observation {
+    for (key, (first, _, total)) in &old {
+        let (revised, _, now) = new[key];
+        let kept = if revised.observation == first.observation {
             now.normalized()? == total.normalized()?
         } else {
-            crate::recognition::revises(state, revised, *observation)?
+            crate::recognition::revises(state, revised.observation, first.observation)?
         };
         if !kept {
             return Err(EngineError::invalid());
