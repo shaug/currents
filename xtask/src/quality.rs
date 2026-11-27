@@ -2,7 +2,7 @@
 use crate::checks::{cargo, checked, root, sha};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -264,14 +264,38 @@ directory and slows every test running beside it. Test the code directly, or add
 entry with a reason to docs/nested-cargo-tests.json; the maintainer reviews every change \
 to that file. See AGENTS.md.";
 
-/// Finds every function that calls `Command::new("cargo")` or
-/// `Command::new(env!("CARGO"))`.
-struct CargoCalls<'a> {
-    file: &'a str,
-    function: Option<String>,
-    found: BTreeSet<(String, String)>,
+/// Names every function in one file that calls `Command::new("cargo")` or
+/// `Command::new(env!("CARGO"))`, directly or through other functions in the
+/// same file.
+fn starts_cargo(syntax: &syn::File) -> BTreeSet<String> {
+    let mut calls = CargoCalls::default();
+    syn::visit::Visit::visit_file(&mut calls, syntax);
+    let CargoCalls {
+        mut found, callees, ..
+    } = calls;
+    loop {
+        let reached: Vec<_> = callees
+            .iter()
+            .filter(|(caller, called)| {
+                !found.contains(*caller) && called.iter().any(|c| found.contains(c))
+            })
+            .map(|(caller, _)| caller.clone())
+            .collect();
+        if reached.is_empty() {
+            return found;
+        }
+        found.extend(reached);
+    }
 }
-impl<'ast> syn::visit::Visit<'ast> for CargoCalls<'_> {
+
+#[derive(Default)]
+struct CargoCalls {
+    function: Option<String>,
+    found: BTreeSet<String>,
+    /// Each function's calls by plain name, such as `helper(...)`.
+    callees: BTreeMap<String, BTreeSet<String>>,
+}
+impl<'ast> syn::visit::Visit<'ast> for CargoCalls {
     fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
         let previous = self.function.replace(item.sig.ident.to_string());
         syn::visit::visit_item_fn(self, item);
@@ -296,11 +320,28 @@ impl<'ast> syn::visit::Visit<'ast> for CargoCalls<'_> {
             }
             _ => false,
         };
+        let function = self.function.clone().unwrap_or_else(|| "<module>".into());
         if is_command_new && is_cargo {
-            let function = self.function.clone().unwrap_or_else(|| "<module>".into());
-            self.found.insert((self.file.to_owned(), function));
+            self.found.insert(function);
+        } else if let syn::Expr::Path(path) = &*call.func
+            && let Some(name) = path.path.get_ident()
+        {
+            self.callees
+                .entry(function)
+                .or_default()
+                .insert(name.to_string());
         }
         syn::visit::visit_expr_call(self, call);
+    }
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        // syn leaves macro bodies unparsed; calls inside `assert!(...)`,
+        // `vec![...]` and similar macros are comma-separated expressions.
+        let parser = syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
+        if let Ok(args) = mac.parse_body_with(parser) {
+            for arg in &args {
+                syn::visit::Visit::visit_expr(self, arg);
+            }
+        }
     }
 }
 
@@ -352,13 +393,11 @@ fn nested_cargo() -> Result<Value> {
             .to_owned();
         let syntax = syn::parse_file(&read(&file)?)
             .map_err(|_| format!("nested cargo: invalid Rust syntax in {relative}"))?;
-        let mut calls = CargoCalls {
-            file: &relative,
-            function: None,
-            found: BTreeSet::new(),
-        };
-        syn::visit::Visit::visit_file(&mut calls, &syntax);
-        found.append(&mut calls.found);
+        found.extend(
+            starts_cargo(&syntax)
+                .into_iter()
+                .map(|function| (relative.clone(), function)),
+        );
     }
     let line = |(path, function): &(String, String)| format!("{path} {function}");
     let unlisted: Vec<_> = found.difference(&listed).map(line).collect();
@@ -689,8 +728,7 @@ pub fn ticket() -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::CargoCalls;
-    use std::collections::BTreeSet;
+    use super::starts_cargo;
 
     #[test]
     fn finds_functions_that_start_cargo() {
@@ -702,17 +740,27 @@ mod tests {
                 Command::new("git");
                 Command::new(std::env::current_exe().unwrap());
                 Command::new(env!("CARGO_BIN_EXE_tool"));
+                Some(other_programs);
             }
             impl Fixture { fn build(&self) { Command::new("cargo"); Command::new("cargo"); } }
+            fn helper(args: &[&str]) { Command::new("cargo").args(args); }
+            fn wrapper() { assert!(helper(&[]).is_ok()); }
+            #[test] fn through_two_helpers() { let _ = wrapper(); }
+            #[test] fn through_none() { other_programs(); }
         "#;
-        let syntax = syn::parse_file(source).unwrap();
-        let mut calls = CargoCalls {
-            file: "t.rs",
-            function: None,
-            found: BTreeSet::new(),
-        };
-        syn::visit::Visit::visit_file(&mut calls, &syntax);
-        let found: Vec<_> = calls.found.iter().map(|(_, f)| f.as_str()).collect();
-        assert_eq!(found, ["build", "nested", "plain", "qualified"]);
+        let found = starts_cargo(&syn::parse_file(source).unwrap());
+        let found: Vec<_> = found.iter().map(String::as_str).collect();
+        assert_eq!(
+            found,
+            [
+                "build",
+                "helper",
+                "nested",
+                "plain",
+                "qualified",
+                "through_two_helpers",
+                "wrapper"
+            ]
+        );
     }
 }

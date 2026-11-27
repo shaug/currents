@@ -43,7 +43,8 @@ as a `core test start_ms=... duration_ms=...` line in the core and MSRV logs.
   (`crates/currents-service/tests/support/lifecycle.rs`) instead of restarting.
 - Do not start `cargo` from a test. Each nested build competes for the shared
   target directory and slows every test running beside it. The quality gate
-  rejects any function that calls `Command::new("cargo")` without an entry in
+  rejects any function that calls `Command::new("cargo")`, directly or through
+  a helper in the same file, without an entry in
   `docs/nested-cargo-tests.json`. Ask the maintainer before you add one.
 - When a test runs past its limit, make it faster. Add or raise an entry in
   `docs/slow-tests.json` only when the test needs the time, give a specific
