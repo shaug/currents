@@ -6,16 +6,17 @@ use currents_types::*;
 /// Bounded synthetic pre-write proof for corrections.
 /// Load only an authenticated existing prefix; caller-provided projections
 /// are never inputs. No recording, staging, or destination is performed.
+/// `current` is the writer's audited prefix, read by the caller.
 #[cfg(feature = "synthetic-test-fixtures")]
-pub(crate) async fn rehydrate(
+async fn rehydrate(
     writer: &Writer,
+    current: &AccountingPrefixV1,
     wanted: &AccountingPrefixV1,
 ) -> Result<DomainState, EngineError> {
     let invalid = EngineError::invalid;
-    let current = writer.audited_prefix().await?;
     if wanted.through == CommitSeq(0)
         || wanted.through.0 > current.through.0
-        || (wanted.through == current.through && wanted != &current)
+        || (wanted.through == current.through && wanted != current)
     {
         return Err(invalid());
     }
@@ -62,6 +63,7 @@ pub(crate) async fn trusted_prior(
         return Err(invalid());
     }
     let frozen_prefix = &prepared.frozen_batch.preconditions;
+    let current = writer.audited_prefix().await?;
     let trusted_tip = if let Some(existing) = writer
         .command_result(prepared.result.command_id, prepared.result.digest)
         .await?
@@ -82,9 +84,9 @@ pub(crate) async fn trusted_prior(
         }
         manifest.preconditions.clone()
     } else {
-        writer.audited_prefix().await?
+        current.clone()
     };
-    let prior = rehydrate(writer, &trusted_tip).await?;
+    let prior = rehydrate(writer, &current, &trusted_tip).await?;
     Ok((trusted_tip, prior))
 }
 

@@ -68,42 +68,20 @@ impl crate::HistoryReader {
         if integrity != "ok" {
             return Err(crate::schema::failure());
         }
-        let tip = self.audited_tip().await?;
-        let through = tip.as_ref().map_or(CommitSeq(0), |c| c.seq);
-        let accounting = AtomicStore::from_existing_pool(self.pool.clone()).await;
-        let observed = match &accounting {
-            Ok(accounting) => accounting.read_history_leaves().await.ok(),
-            Err(_) => None,
-        };
-        let native_head = tip
-            .as_ref()
-            .map(|c| c.native_head_after.clone())
-            .or_else(|| observed.as_ref().map(|(head, _)| head.clone()))
-            .ok_or_else(crate::schema::failure)?;
-        let native_leaf_hash = observed
-            .as_ref()
-            .filter(|(head, _)| *head == native_head)
-            .map(|(_, hash)| *hash);
-        let native_audit = match &accounting {
-            Ok(accounting) => accounting.audit_history().await,
-            Err(error) => Err(error.clone()),
-        };
-        let mut problems = vec![];
-        match native_audit {
-            Ok((head, leaves))
-                if head == native_head
-                    && Some(leaves) == native_leaf_hash
-                    && observed
-                        .as_ref()
-                        .is_some_and(|(observed, _)| *observed == native_head) => {}
-            _ => problems.push(crate::schema::failure()),
-        }
+        // One verified pass over the history yields both the hashes and the
+        // tip; the closing check re-audits the tip.
+        let head: i64 = sqlx::query_scalar("SELECT coalesce(max(seq),0) FROM currents_commits")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|_| crate::schema::failure())?;
+        let through = CommitSeq(u64::try_from(head).map_err(|_| crate::schema::failure())?);
         let mut domain = Sha256::new();
         domain.update(b"currents/domain/v1\0");
         let mut postings = Sha256::new();
         postings.update(b"currents/postings/v1\0");
         let mut identities = Sha256::new();
         identities.update(b"currents/identities/v1\0");
+        let mut tip = None;
         let mut stream = self.stream_prefix(through).await?;
         while let Some(commit) = stream.next().await? {
             framed(&mut domain, &commit)?;
@@ -132,6 +110,36 @@ impl crate::HistoryReader {
                     _ => {}
                 }
             }
+            tip = Some(commit);
+        }
+        drop(stream);
+        let accounting = AtomicStore::from_existing_pool(self.pool.clone()).await;
+        let observed = match &accounting {
+            Ok(accounting) => accounting.read_history_leaves().await.ok(),
+            Err(_) => None,
+        };
+        let native_head = tip
+            .as_ref()
+            .map(|c| c.native_head_after.clone())
+            .or_else(|| observed.as_ref().map(|(head, _)| head.clone()))
+            .ok_or_else(crate::schema::failure)?;
+        let native_leaf_hash = observed
+            .as_ref()
+            .filter(|(head, _)| *head == native_head)
+            .map(|(_, hash)| *hash);
+        let native_audit = match &accounting {
+            Ok(accounting) => accounting.audit_history().await,
+            Err(error) => Err(error.clone()),
+        };
+        let mut problems = vec![];
+        match native_audit {
+            Ok((head, leaves))
+                if head == native_head
+                    && Some(leaves) == native_leaf_hash
+                    && observed
+                        .as_ref()
+                        .is_some_and(|(observed, _)| *observed == native_head) => {}
+            _ => problems.push(crate::schema::failure()),
         }
         if self.audited_tip().await? != tip {
             return Err(crate::schema::failure());
