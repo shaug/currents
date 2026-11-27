@@ -12,11 +12,6 @@
       "reason": "Baseline: took 264s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
     },
     {
-      "test": "currents-domain/cur_016 cur_016_4_commit_record_limit",
-      "limit_seconds": 530,
-      "reason": "Arrived with PR #121 after the baseline: took 264s at most in five CI runs (Linux, macOS, MSRV) on main at f928968 and on this PR, 2026-11-27."
-    },
-    {
       "test": "currents-service/cur_025 cur_025_service_durable_revisions_and_no_recognition",
       "limit_seconds": 510,
       "reason": "Baseline: took 253s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
@@ -190,6 +185,11 @@
       "test": "currents-storage/cur_011 cur_011_1",
       "limit_seconds": 50,
       "reason": "Baseline: took 25s at most in nine CI runs (Linux, macOS, MSRV) on 2026-11-26, before the time check existed."
+    },
+    {
+      "test": "currents-domain/cur_016 cur_016_4_commit_record_limit",
+      "limit_seconds": 45,
+      "reason": "PR #156 shares record lookups across a replacement's 5,000 drafts: took 22s at most in three CI runs (Linux, macOS, MSRV) on that PR, 2026-11-27, down from 196s on main at 661da76."
     },
     {
       "test": "currents-service/cur_015 cur_015_1_real_service_transfer_keeps_dates_and_only_separate_fee_is_spending",
