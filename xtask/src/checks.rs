@@ -513,6 +513,11 @@ const CUR_017_SUITES: &Suites = &[
             "cur_017_balance_kind_product_versions",
             "cur_017_balance_claim_replay_and_applicability",
             "cur_017_anchor_invalidates_activity_claim",
+            "cur_017_4_holdings_value_match_fails",
+            "cur_017_holdings_exact_match",
+            "cur_017_holdings_claim_without_journal_quantities",
+            "cur_017_relationship_settled",
+            "cur_017_relationship_residual_is_partial",
         ],
     ),
     (

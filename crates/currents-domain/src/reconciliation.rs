@@ -1,14 +1,16 @@
 //! Reconciliation claim evaluation, and the bounded comparison of
-//! caller-selected Activity lines it uses.
+//! caller-selected Activity lines it uses. The holdings comparison is in
+//! `crate::holdings`.
 use crate::activity_predicate::ActivityPredicateV1;
 use crate::catalog::incomplete;
 use crate::dependencies::{self, ClaimInputs, ClaimScope};
 use currents_types::{
     AccountId, AccountScope, AccountingIntent, Amount, AuthoritativeRecordV1, BalanceKindV1,
     ClaimDispositionV1, ClaimReasonV1, Date, DateBasis, DecisionKind, DecisionPlan, Digest,
-    DomainCommitV1, DomainState, EngineError, EvidenceAllocationV1, MovementFacetV1, NoEffectV1,
-    ObservationKind, ReconciliationClaimV1, ReconciliationDispositionV1, ReconciliationKindV1,
-    ReconciliationRequestV1, ReconciliationStatus, RecordId, SourceValue, TemporalValue,
+    DomainCommitV1, DomainState, EngineError, EvidenceAllocationV1, FacetAllocationModeV1,
+    MovementFacetV1, NoEffectV1, ObservationKind, ReconciliationClaimV1,
+    ReconciliationDispositionV1, ReconciliationKindV1, ReconciliationRequestV1,
+    ReconciliationStatus, RecordId, RelationshipKind, SourceValue, TemporalValue,
 };
 use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -118,6 +120,21 @@ pub const ACTIVITY_COMPARISON_VERSION: u32 = 1;
 /// The version of the Balance comparison a claim records.
 pub const BALANCE_COMPARISON_VERSION: u32 = 1;
 
+/// The version of the Holdings comparison a claim records.
+pub const HOLDINGS_COMPARISON_VERSION: u32 = 1;
+
+/// The version of the Relationship comparison a claim records.
+pub const RELATIONSHIP_COMPARISON_VERSION: u32 = 1;
+
+fn comparison_version(kind: ReconciliationKindV1) -> u32 {
+    match kind {
+        ReconciliationKindV1::Activity => ACTIVITY_COMPARISON_VERSION,
+        ReconciliationKindV1::Balance => BALANCE_COMPARISON_VERSION,
+        ReconciliationKindV1::Holdings => HOLDINGS_COMPARISON_VERSION,
+        ReconciliationKindV1::Relationship => RELATIONSHIP_COMPARISON_VERSION,
+    }
+}
+
 /// Whether a recorded claim still applies at a state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClaimApplicabilityV1 {
@@ -142,8 +159,7 @@ pub enum InvalidationReasonV1 {
     /// anchor a Balance claim compares with, or one an Activity interval
     /// starts on or before.
     Anchor,
-    /// A relationship the claim compared changed. Activity claims compare
-    /// none; relationship claims will.
+    /// The association a Relationship claim compared has a later revision.
     Relationship,
     /// A segment replacement or correction invalidated the claim when it
     /// committed (CUR-016).
@@ -155,7 +171,7 @@ pub struct ReconciliationEngine;
 impl ReconciliationEngine {
     /// Evaluate `request` at `state` into a claim that is `Proposed` or
     /// `PartiallySupported`. The request's basis must name the state's
-    /// commit. Only Activity and Balance claims are evaluated so far.
+    /// commit.
     pub fn evaluate(
         state: &DomainState,
         request: &ReconciliationRequestV1,
@@ -166,9 +182,8 @@ impl ReconciliationEngine {
         match request.kind {
             ReconciliationKindV1::Activity => activity(state, request),
             ReconciliationKindV1::Balance => balance(state, request),
-            ReconciliationKindV1::Relationship | ReconciliationKindV1::Holdings => {
-                Err(EngineError::version())
-            }
+            ReconciliationKindV1::Holdings => holdings(state, request),
+            ReconciliationKindV1::Relationship => relationship(state, request),
         }
     }
 
@@ -232,7 +247,8 @@ impl ReconciliationEngine {
     }
 
     /// The claim's lifecycle status at `state`. A newer claim with the same
-    /// kind, accounts, unit and interval makes it `Superseded`. Otherwise an
+    /// kind, accounts, unit and interval, and for a Relationship claim the
+    /// same association, makes it `Superseded`. Otherwise an
     /// owner's confirmation or dispute decides it, and before either the
     /// claim's own recorded status does. A claim's commit follows its basis
     /// commit, so the claim with the later basis is the newer one.
@@ -241,6 +257,7 @@ impl ReconciliationEngine {
         claim: RecordId,
     ) -> Result<ReconciliationStatus, EngineError> {
         let recorded = Self::claim(state, claim)?;
+        let association = association_root(state, recorded);
         let mut decided = None;
         for record in state.records.values() {
             match record {
@@ -250,7 +267,8 @@ impl ReconciliationEngine {
                         && other.scope == recorded.scope
                         && other.unit == recorded.unit
                         && other.cutoffs == recorded.cutoffs
-                        && other.basis.through_commit > recorded.basis.through_commit =>
+                        && other.basis.through_commit > recorded.basis.through_commit
+                        && association_root(state, other) == association =>
                 {
                     return Ok(ReconciliationStatus::Superseded);
                 }
@@ -280,21 +298,29 @@ impl ReconciliationEngine {
         claim: RecordId,
     ) -> Result<ClaimApplicabilityV1, EngineError> {
         let recorded = Self::claim(state, claim)?;
-        let version = match recorded.kind {
-            ReconciliationKindV1::Activity => ACTIVITY_COMPARISON_VERSION,
-            ReconciliationKindV1::Balance => BALANCE_COMPARISON_VERSION,
-            _ => return Err(EngineError::version()),
-        };
-        if recorded.comparison_version != version {
+        if recorded.comparison_version != comparison_version(recorded.kind) {
             return Err(EngineError::version());
         }
-        let scope = ClaimScope::new(
-            recorded.kind,
-            &recorded.scope,
-            &recorded.cutoffs,
-            &recorded.evidence_dependencies,
-        )?;
-        let mut reasons = ClaimInputs::read(state, &scope)?.changes(state, &scope, recorded)?;
+        let mut reasons = if recorded.kind == ReconciliationKindV1::Relationship {
+            let [named] = recorded.accounting_dependencies.as_slice() else {
+                return Err(EngineError::invalid());
+            };
+            let current = dependencies::association(state, *named)?;
+            let digest = dependencies::relationship_digest(&current, recorded.comparison_version)?;
+            if digest == recorded.dependency_digest {
+                vec![]
+            } else {
+                vec![InvalidationReasonV1::Relationship]
+            }
+        } else {
+            let scope = ClaimScope::new(
+                recorded.kind,
+                &recorded.scope,
+                &recorded.cutoffs,
+                &recorded.evidence_dependencies,
+            )?;
+            ClaimInputs::read(state, &scope)?.changes(state, &scope, recorded)?
+        };
         if state.claim_invalidated(claim) {
             reasons.push(InvalidationReasonV1::RetiredDependency);
         }
@@ -785,6 +811,201 @@ fn balance(
     Ok(claim)
 }
 
+/// Holdings agreement against state. The source side is the holding facets
+/// of the named observations. The journal records no security quantities
+/// until CUR-021, so the claim is always `PartiallySupported`; the typed
+/// comparison it will use is `crate::holdings::compare_holdings`.
+fn holdings(
+    state: &DomainState,
+    request: &ReconciliationRequestV1,
+) -> Result<ReconciliationClaimV1, EngineError> {
+    let evidence = sorted(&request.evidence);
+    let scope = ClaimScope::new(
+        ReconciliationKindV1::Holdings,
+        &request.scope.accounts,
+        &request.cutoffs,
+        &evidence,
+    )?;
+    if !request.exclusions.is_empty() {
+        return Err(EngineError::invalid());
+    }
+    let mut holdings = 0;
+    for id in &evidence {
+        match state.records.get(id) {
+            Some(AuthoritativeRecordV1::ImportReceipt(_)) => {}
+            Some(AuthoritativeRecordV1::ObservationVersion(_)) => {
+                if dependencies::current_version(state, *id)? != *id {
+                    return Err(dependencies::stale());
+                }
+                for (facet, _) in facets(state, *id)? {
+                    if facet.kind != ObservationKind::Holding {
+                        return Err(EngineError::invalid());
+                    }
+                    holdings += 1;
+                }
+            }
+            _ => return Err(EngineError::invalid()),
+        }
+    }
+    if holdings == 0 {
+        return Err(EngineError::invalid());
+    }
+    let inputs = ClaimInputs::read(state, &scope)?;
+    let mut claim = ReconciliationClaimV1 {
+        id: RecordId(uuid::Uuid::nil()),
+        kind: ReconciliationKindV1::Holdings,
+        comparison_version: HOLDINGS_COMPARISON_VERSION,
+        basis: request.basis.clone(),
+        scope: vec![scope.account],
+        unit: dependencies::catalog(state, scope.account)?.unit_id,
+        cutoffs: request.cutoffs.clone(),
+        dependency_digest: inputs.digest(&scope, HOLDINGS_COMPARISON_VERSION)?,
+        evidence_dependencies: evidence,
+        decision_dependencies: vec![],
+        accounting_dependencies: vec![],
+        matched_allocations: vec![],
+        differences: vec![],
+        exclusions: vec![],
+        status: ReconciliationStatus::PartiallySupported,
+        reasons: vec![ClaimReasonV1::JournalQuantityUnavailable],
+        reason: "The journal records no security quantities to compare.".into(),
+    };
+    claim.id = claim_id(&claim)?;
+    Ok(claim)
+}
+
+/// Relationship settlement: one transfer or payroll association's current
+/// revision has no residual, and its evidenced allocations support each of
+/// its legs in full, in the leg's unit. It says nothing about the rest of
+/// any account. The request names no account and no dates, and its one
+/// `evidence` ID names a revision of the association.
+fn relationship(
+    state: &DomainState,
+    request: &ReconciliationRequestV1,
+) -> Result<ReconciliationClaimV1, EngineError> {
+    let ([], None, None, [named], []) = (
+        request.scope.accounts.as_slice(),
+        request.cutoffs.start,
+        request.cutoffs.end,
+        request.evidence.as_slice(),
+        request.exclusions.as_slice(),
+    ) else {
+        return Err(EngineError::invalid());
+    };
+    let revision = dependencies::association(state, *named)?;
+    if !matches!(
+        revision.kind,
+        RelationshipKind::Transfer | RelationshipKind::Payroll
+    ) {
+        return Err(EngineError::invalid());
+    }
+    let mut reasons = Vec::new();
+    let mut differences = Vec::new();
+    for residual in &revision.residuals {
+        let residual = residual.normalized()?;
+        if residual.coefficient != 0 {
+            if !reasons.contains(&ClaimReasonV1::UnexplainedResidual) {
+                reasons.push(ClaimReasonV1::UnexplainedResidual);
+            }
+            differences.push(residual);
+        }
+    }
+    let edges: Vec<_> = revision
+        .allocations
+        .iter()
+        .map(|a| (a.leg, a.allocated, a.mode))
+        .chain(
+            revision
+                .captured_allocations
+                .iter()
+                .map(|a| (a.leg, a.allocated, a.mode)),
+        )
+        .collect();
+    let mut unit = None;
+    for id in &revision.legs {
+        let Some(AuthoritativeRecordV1::FinancialLeg(leg)) = state.records.get(&RecordId(id.0))
+        else {
+            return Err(incomplete());
+        };
+        let movement = leg.movement.normalized()?;
+        unit.get_or_insert(movement.unit_id);
+        // Additive allocations sum to the leg; a corroborating one restates
+        // it whole.
+        let mut additive = Amount::new(0, 0, movement.unit_id)?;
+        let mut corroborated = false;
+        for (_, allocated, mode) in edges.iter().filter(|(leg, ..)| leg == id) {
+            match mode {
+                FacetAllocationModeV1::Additive => additive = additive.checked_add(allocated)?,
+                FacetAllocationModeV1::Corroborating => {
+                    corroborated |= allocated.normalized()? == movement;
+                }
+            }
+        }
+        let supported = if additive.coefficient == 0 && corroborated {
+            movement
+        } else {
+            additive
+        };
+        let unallocated = movement
+            .checked_add(&supported.checked_neg()?)?
+            .normalized()?;
+        if unallocated.coefficient != 0 {
+            reasons.push(ClaimReasonV1::UnsupportedLeg(*id));
+            differences.push(unallocated);
+        }
+    }
+    let (status, reason) = if reasons.is_empty() {
+        (
+            ReconciliationStatus::Proposed,
+            "Every leg is fully allocated and the relationship has no residual.",
+        )
+    } else {
+        (
+            ReconciliationStatus::PartiallySupported,
+            "Relationship settlement is partial for the listed reasons.",
+        )
+    };
+    let mut claim = ReconciliationClaimV1 {
+        id: RecordId(uuid::Uuid::nil()),
+        kind: ReconciliationKindV1::Relationship,
+        comparison_version: RELATIONSHIP_COMPARISON_VERSION,
+        basis: request.basis.clone(),
+        scope: vec![],
+        unit: unit.ok_or_else(EngineError::invalid)?,
+        cutoffs: request.cutoffs.clone(),
+        dependency_digest: dependencies::relationship_digest(
+            &revision,
+            RELATIONSHIP_COMPARISON_VERSION,
+        )?,
+        evidence_dependencies: vec![],
+        decision_dependencies: vec![],
+        accounting_dependencies: vec![revision.id],
+        matched_allocations: vec![],
+        differences,
+        exclusions: vec![],
+        status,
+        reasons,
+        reason: reason.into(),
+    };
+    claim.id = claim_id(&claim)?;
+    Ok(claim)
+}
+
+/// The root of the association a Relationship claim compared. Other kinds
+/// compare no association.
+fn association_root(state: &DomainState, claim: &ReconciliationClaimV1) -> Option<RecordId> {
+    if claim.kind != ReconciliationKindV1::Relationship {
+        return None;
+    }
+    claim
+        .accounting_dependencies
+        .iter()
+        .find_map(|id| match state.records.get(id) {
+            Some(AuthoritativeRecordV1::AssociationRevision(r)) => Some(r.root),
+            _ => None,
+        })
+}
+
 fn sorted(ids: &[RecordId]) -> Vec<RecordId> {
     let mut ids = ids.to_vec();
     ids.sort();
@@ -834,8 +1055,13 @@ fn facets(
 }
 
 /// The request a claim records: its kind, accounts, `cutoffs`, sorted
-/// evidence and exclusions, and basis. Replay evaluates it again.
+/// evidence and exclusions, and basis. A Relationship request's evidence is
+/// the association revision the claim compared. Replay evaluates it again.
 fn request_of(claim: &ReconciliationClaimV1) -> ReconciliationRequestV1 {
+    let evidence = match claim.kind {
+        ReconciliationKindV1::Relationship => &claim.accounting_dependencies,
+        _ => &claim.evidence_dependencies,
+    };
     ReconciliationRequestV1 {
         kind: claim.kind,
         scope: AccountScope {
@@ -843,7 +1069,7 @@ fn request_of(claim: &ReconciliationClaimV1) -> ReconciliationRequestV1 {
             components: vec![],
         },
         cutoffs: claim.cutoffs.clone(),
-        evidence: claim.evidence_dependencies.clone(),
+        evidence: evidence.clone(),
         exclusions: claim.exclusions.clone(),
         basis: claim.basis.clone(),
     }

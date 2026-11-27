@@ -1,9 +1,11 @@
-//! CUR-017 reconciliation claim records, activity coverage evaluation, and
-//! recording, confirming and replaying claims, and when a claim stops
-//! applying.
+//! CUR-017 reconciliation claim records, activity, balance, holdings and
+//! relationship claim evaluation, recording, confirming and replaying
+//! claims, and when a claim stops applying.
 use currents_accounting::AccountingAdapter;
 use currents_domain::ReplayEngine;
+use currents_domain::associations::IdentityEngine;
 use currents_domain::catalog::CatalogEngine;
+use currents_domain::holdings::{HoldingDifferenceV1, HoldingPositionV1, compare_holdings};
 use currents_domain::recognition::RecognitionEngine;
 use currents_domain::reconciliation::{
     ClaimApplicabilityV1, InvalidationReasonV1, ReconciliationEngine,
@@ -17,6 +19,12 @@ use std::collections::BTreeMap;
 #[allow(dead_code)]
 mod fixture;
 use fixture::{amount, date, id};
+#[path = "support/associations.rs"]
+#[allow(dead_code)]
+mod association_fixtures;
+#[path = "support/transfers.rs"]
+#[allow(dead_code)]
+mod transfers;
 
 /// The claim golden vector from the contract fixtures.
 fn golden() -> Value {
@@ -722,7 +730,8 @@ fn cur_017_activity_refuses_other_bases() {
     let error = ReconciliationEngine::evaluate(&world.state, &request).unwrap_err();
     assert_eq!(error.class, ErrorClass::StaleBasis);
 
-    // Relationship and holdings claims are not evaluated yet.
+    // An Activity interval and evidence do not make a relationship or
+    // holdings request.
     for kind in [
         ReconciliationKindV1::Relationship,
         ReconciliationKindV1::Holdings,
@@ -730,7 +739,7 @@ fn cur_017_activity_refuses_other_bases() {
         let mut request = world.request();
         request.kind = kind;
         let error = ReconciliationEngine::evaluate(&world.state, &request).unwrap_err();
-        assert_eq!(error.class, ErrorClass::UnsupportedVersion);
+        assert_eq!(error.class, ErrorClass::InvalidReference);
     }
 }
 
@@ -1894,5 +1903,260 @@ fn cur_017_anchor_invalidates_activity_claim() {
     assert_eq!(
         world.evaluate(&again).reasons,
         vec![ClaimReasonV1::UnknownOpening]
+    );
+}
+
+// Holdings agreement. Security X has a pre-split basis B1 and a post-split
+// basis B2.
+
+const SECURITY_X: u32 = 7000;
+const PRE_SPLIT: u32 = 7010;
+const POST_SPLIT: u32 = 7020;
+
+fn x(quantity: i128) -> Amount {
+    Amount::new(quantity, 0, UnitId(id(SECURITY_X).0)).unwrap()
+}
+
+/// `quantity` X under corporate-action basis `basis` at the end of `day`.
+fn position(quantity: i128, basis: u32, day: &str) -> HoldingPositionV1 {
+    HoldingPositionV1 {
+        quantity: x(quantity),
+        basis: id(basis),
+        boundary: civil(day),
+    }
+}
+
+#[test]
+fn cur_017_4_holdings_value_match_fails() {
+    // 100 X at 10 USD and 50 X at 20 USD are both worth 1,000 USD. A
+    // position has no price, so the comparison cannot see that.
+    assert_eq!(100 * 10, 50 * 20);
+    let source = [position(100, PRE_SPLIT, "2026-11-30")];
+    let journal = [position(50, PRE_SPLIT, "2026-11-30")];
+    assert_eq!(
+        compare_holdings(&source, &journal).unwrap(),
+        vec![HoldingDifferenceV1::Quantity(x(50))]
+    );
+
+    // Equal quantities under different bases are not comparable.
+    let journal = [position(100, POST_SPLIT, "2026-11-30")];
+    assert_eq!(
+        compare_holdings(&source, &journal).unwrap(),
+        vec![HoldingDifferenceV1::IncompatibleBasis(UnitId(
+            id(SECURITY_X).0
+        ))]
+    );
+}
+
+#[test]
+fn cur_017_holdings_exact_match() {
+    let source = [position(100, PRE_SPLIT, "2026-11-30")];
+    let journal = [position(100, PRE_SPLIT, "2026-11-30")];
+    assert_eq!(compare_holdings(&source, &journal).unwrap(), vec![]);
+
+    let journal = [position(100, PRE_SPLIT, "2026-11-29")];
+    assert_eq!(
+        compare_holdings(&source, &journal).unwrap(),
+        vec![HoldingDifferenceV1::IncompatibleBoundary(UnitId(
+            id(SECURITY_X).0
+        ))]
+    );
+}
+
+#[test]
+fn cur_017_holdings_claim_without_journal_quantities() {
+    let mut world = World::base();
+    world.observe(7100, ObservationKind::Holding, 100, date("2026-11-30"));
+    let request = ReconciliationRequestV1 {
+        kind: ReconciliationKindV1::Holdings,
+        scope: AccountScope {
+            accounts: vec![account(ACCOUNT_A)],
+            components: vec![],
+        },
+        cutoffs: DateScope {
+            start: None,
+            end: Some(civil("2026-11-30")),
+            basis: DateBasis::Effective,
+        },
+        evidence: vec![id(7100)],
+        exclusions: vec![],
+        basis: read_basis(&world.state),
+    };
+    let claim = world.record(&request);
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(
+        claim.reasons,
+        vec![ClaimReasonV1::JournalQuantityUnavailable]
+    );
+    assert_eq!(claim.evidence_dependencies, vec![id(7100)]);
+    assert_eq!(
+        applicability(&world.state, claim.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // A movement is not a holding.
+    world.observe(7200, ObservationKind::Movement, 100, date("2026-11-30"));
+    let mut movement = request.clone();
+    movement.evidence = vec![id(7200)];
+    movement.basis = read_basis(&world.state);
+    assert!(ReconciliationEngine::evaluate(&world.state, &movement).is_err());
+}
+
+// Relationship settlement over the CUR-015 transfer: 1,000 USD out of A,
+// received as 600 on account 60 and 400 on account 70, and a separate fee.
+
+const TRANSFER: u32 = 3000;
+
+impl World {
+    /// The CUR-015 transfer state, with legs `keep` of its four rows.
+    fn transfer(keep: &[usize]) -> Self {
+        let (state, mut request) = association_fixtures::transfer_request();
+        let mut world = Self {
+            state,
+            lines: BTreeMap::new(),
+            evidence: vec![],
+            next: 5000,
+        };
+        let kept = |i: &usize| keep.contains(i);
+        request.legs = (0..4)
+            .filter(kept)
+            .map(|i| request.legs[i].clone())
+            .collect();
+        request.recognitions = (0..4)
+            .filter(kept)
+            .map(|i| request.recognitions[i].clone())
+            .collect();
+        let revision = &mut request.revision;
+        revision.captured_allocations = (0..4)
+            .filter(kept)
+            .map(|i| revision.captured_allocations[i].clone())
+            .collect();
+        revision.legs = request.legs.iter().map(|l| l.id).collect();
+        revision.recognitions = request.recognitions.iter().map(|r| r.id).collect();
+        // The fee leaves the residual; the transfer legs make it.
+        let residual = [-1000, 600, 400]
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| kept(i))
+            .map(|(_, v)| v)
+            .sum::<i128>();
+        revision.residuals = vec![amount(residual)];
+        request.events[0].legs = revision.legs.clone();
+        world.associate(&request);
+        world
+    }
+
+    fn associate(&mut self, request: &CompleteAssociationRequestV1) {
+        let plan = IdentityEngine::associate(&self.state, request).unwrap();
+        fixture::apply(&mut self.state, &plan);
+    }
+
+    /// A relationship claim on the association revision `named`.
+    fn relationship_request(&self, named: u32) -> ReconciliationRequestV1 {
+        ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Relationship,
+            scope: AccountScope {
+                accounts: vec![],
+                components: vec![],
+            },
+            cutoffs: DateScope {
+                start: None,
+                end: None,
+                basis: DateBasis::Effective,
+            },
+            evidence: vec![id(named)],
+            exclusions: vec![],
+            basis: read_basis(&self.state),
+        }
+    }
+
+    /// Activity on account `on` over November 2026, with no evidence.
+    fn november(&self, on: u32) -> ReconciliationRequestV1 {
+        ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Activity,
+            scope: AccountScope {
+                accounts: vec![account(on)],
+                components: vec![],
+            },
+            cutoffs: DateScope {
+                start: Some(civil("2026-11-01")),
+                end: Some(civil("2026-11-30")),
+                basis: DateBasis::Effective,
+            },
+            evidence: vec![],
+            exclusions: vec![],
+            basis: read_basis(&self.state),
+        }
+    }
+}
+
+#[test]
+fn cur_017_relationship_settled() {
+    let mut world = World::transfer(&[0, 1, 2, 3]);
+    let claim = world.record(&world.relationship_request(TRANSFER));
+    assert_eq!(claim.status, ReconciliationStatus::Proposed);
+    assert_eq!(claim.reasons, vec![]);
+    assert_eq!(claim.differences, vec![]);
+    assert_eq!(claim.accounting_dependencies, vec![id(TRANSFER)]);
+    assert_eq!(
+        applicability(&world.state, claim.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // A later revision of the association changes the relationship.
+    let (_, original) = association_fixtures::transfer_request();
+    let revised = association_fixtures::revised_transfer(&original, id(1701));
+    world.state.records.insert(
+        revised.revision.id,
+        AuthoritativeRecordV1::AssociationRevision(revised.revision.clone()),
+    );
+    assert_eq!(
+        applicability(&world.state, claim.id),
+        invalidated(InvalidationReasonV1::Relationship)
+    );
+}
+
+#[test]
+fn cur_017_relationship_residual_is_partial() {
+    // Only the 600 receipt is allocated to the transfer.
+    let mut world = World::transfer(&[0, 1, 3]);
+    let activity = world.record(&world.november(60));
+    let claim = world.record(&world.relationship_request(TRANSFER));
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::UnexplainedResidual]);
+    assert_eq!(claim.differences, vec![amount(-400)]);
+    assert_eq!(claim.accounting_dependencies, vec![id(TRANSFER)]);
+
+    // An activity request on the receiving account is unaffected.
+    assert_eq!(
+        applicability(&world.state, activity.id),
+        ClaimApplicabilityV1::Current
+    );
+    let again = world.evaluate(&world.november(60));
+    assert_eq!(
+        (
+            again.status,
+            again.reasons,
+            again.differences,
+            again.dependency_digest
+        ),
+        (
+            activity.status,
+            activity.reasons.clone(),
+            activity.differences.clone(),
+            activity.dependency_digest
+        )
+    );
+
+    // A claim on another relationship does not supersede this one.
+    let rows = transfers::cross_account_rows();
+    let capture =
+        association_fixtures::retained_relationships(&mut world.state, 6000, rows.clone());
+    let other = transfers::clearing_family(capture, &rows, 6100, &[(60, 1)]);
+    world.associate(&other);
+    world.record(&world.relationship_request(6150));
+    assert_eq!(
+        lifecycle(&world.state, claim.id),
+        ReconciliationStatus::PartiallySupported
     );
 }
