@@ -217,10 +217,14 @@ it. Ordinary adoption also keeps refusing activity at or before a replaced
 opening's cutoff.
 
 `SegmentReplacementV1` adds `transfers` and `reemissions`. A
-`TransferJoinV1 { revision, prior_revision, leg }` names a family's current
-revision, the fresh ID of its next revision and the backfilled leg that joins
-it. That leg's draft posts the anchored account against the clearing account
-the family already uses; only a joined draft may post to clearing. A
+`TransferJoinV1 { revision, prior_revision, leg, source }` names a family's
+current revision, the fresh ID of its next revision, the backfilled leg that
+joins it and that leg's captured relationship fact. The fact decides the
+family: it must be a current, posted movement with the leg's date and amount,
+from the same capture source and group as every fact the family holds, and no
+current family revision may already allocate it. That leg's draft posts the
+anchored account against the clearing account the family already uses; only
+a joined draft may post to clearing. A
 `ReemissionV1 { id, original, replacement }` issues one recognition in the
 closure again with fresh recognition and posting IDs and unchanged economics.
 The preview refuses a request whose re-emissions name a recognition twice,
@@ -232,9 +236,9 @@ A ready plan holds the drafts' records, each re-emitted `Recognition`, one new
 `AssociationRevisionV1` per joined family, the successor segment and one
 `SegmentReemissionV1 { id, schema_version, segment, original, replacement }`
 per re-emission. The new revision follows the family's current revision. It
-keeps every leg, allocation, amount and date, adds the joined leg last, names
-the re-emissions and the joined leg's recognition, retires the current
-recognitions and records the new residual. This is C07's whole-revision remap
+keeps every leg, allocation, amount and date, adds the joined leg and its
+captured allocation last, names the re-emissions and the joined leg's
+recognition, retires the current recognitions and records the new residual. This is C07's whole-revision remap
 with fresh identities. The successor's `replacement_closure` lists the old
 opening, then each original in request order. Its accounting intent is one
 `Corrections` list: the old opening's correction, then one correction per

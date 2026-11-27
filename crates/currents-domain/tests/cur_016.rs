@@ -723,16 +723,17 @@ fn reemission(state: &DomainState, original: u32, base: u32) -> ReemissionV1 {
         replacement,
     }
 }
-/// A's earlier opening of 4,300 USD at 2026-10-30 and its 2026-10-31 send of
-/// `send` USD to clearing, which joins C's transfer family.
-fn cross_account(state: &mut DomainState, send: i128) -> SegmentReplacementV1 {
-    let mut request = replacement(state, 4300, "2026-10-30", &[(send, "2026-10-31")]);
+/// A's earlier opening of `opening` USD at 2026-10-30 and its 2026-10-31
+/// send of 1,000 USD to clearing, which joins C's transfer family.
+fn cross_account(state: &mut DomainState, opening: i128) -> SegmentReplacementV1 {
+    let mut request = replacement(state, opening, "2026-10-30", &[(-1000, "2026-10-31")]);
     request.backfill[0].financial.as_mut().unwrap().postings[1].account_id = account(CLEARING);
     request.approved_accounts = vec![account(10), account(EQUITY), account(CLEARING), account(C)];
     request.transfers = vec![TransferJoinV1 {
         revision: id(3500),
         prior_revision: id(FAMILY),
         leg: LegId(id(3111).0),
+        source: transfers::row_fact(id(1501), "send-a"),
     }];
     request.reemissions = vec![reemission(state, RECEIPT, 3600)];
     request
@@ -768,7 +769,7 @@ fn revision(plan: &DecisionPlan) -> &AssociationRevisionV1 {
 #[test]
 fn cur_016_1_cross_account_backfill() {
     let mut state = with_transfer();
-    let request = cross_account(&mut state, -1000);
+    let request = cross_account(&mut state, 4300);
     let plan = ready(&state, &request);
     let joined = revision(&plan);
     assert_eq!(joined.root, id(FAMILY));
@@ -777,6 +778,12 @@ fn cur_016_1_cross_account_backfill() {
     assert_eq!(joined.retired_recognitions, [recognition(RECEIPT)]);
     assert_eq!(joined.recognitions, [recognition(3610), recognition(3113)]);
     assert_eq!(joined.residuals, [amount(0)]);
+    let edge = joined.captured_allocations.last().unwrap();
+    assert_eq!(edge.source, transfers::row_fact(id(1501), "send-a"));
+    assert_eq!(
+        (edge.leg, edge.allocated),
+        (LegId(id(3111).0), amount(-1000))
+    );
     let segment = successor(&plan);
     assert_eq!(
         segment.replacement_closure,
@@ -858,7 +865,7 @@ fn cur_016_1_post_cutoff_activity_untouched() {
     let mut state = associated(&state, &later);
     let kept = [recognition(1813), recognition(1710), recognition(1711)];
 
-    let request = cross_account(&mut state, -1000);
+    let request = cross_account(&mut state, 4300);
     let replaced = admit(&state, &planned(&state, &ready(&state, &request))).unwrap();
     let index = replaced.accounting.as_ref().unwrap();
     for id in kept {
@@ -977,7 +984,7 @@ fn cur_016_1_old_inclusion_map_moves() {
 fn cur_016_1_partial_or_changed_reemission_refused() {
     let refuse = |name: &str, change: &dyn Fn(&DomainState, &mut SegmentReplacementV1)| {
         let mut state = with_transfer();
-        let mut request = cross_account(&mut state, -1000);
+        let mut request = cross_account(&mut state, 4300);
         ready(&state, &request);
         change(&state, &mut request);
         let before = snapshot(&state);
@@ -1015,17 +1022,38 @@ fn cur_016_1_partial_or_changed_reemission_refused() {
         request.reemissions.clear();
         request.approved_accounts.retain(|a| *a != account(C));
     });
+    // The send's relationship evidence, not the request, places it in a family.
+    refuse("evidence from another transfer", &|_, request| {
+        request.transfers[0].source = transfers::row_fact(id(1501), "later-send-a");
+    });
+    refuse("the counterpart's own evidence", &|_, request| {
+        request.transfers[0].source = transfers::row_fact(id(1501), "receipt-c");
+    });
+
+    // A family that holds only C's later receipt is not the send's family,
+    // even though it uses the same clearing account.
+    let state = with_transfer();
+    let rows = transfers::cross_account_rows();
+    let unrelated = transfers::clearing_family(id(1501), &rows, 1700, &[(C, 3)]);
+    let mut state = associated(&state, &unrelated);
+    let mut request = cross_account(&mut state, 4300);
+    request.transfers[0].prior_revision = id(1750);
+    request.reemissions = vec![reemission(&state, 1710, 3700)];
+    let before = snapshot(&state);
+    let result = SegmentEngine::replace(&state, &request);
+    assert!(result.is_err(), "unrelated family: {result:?}");
+    assert_eq!(snapshot(&state), before);
 }
 
 #[test]
 fn cur_016_1_cross_account_residual_blocks() {
     let mut state = with_transfer();
-    let request = cross_account(&mut state, -990);
+    let request = cross_account(&mut state, 4290);
     let before = snapshot(&state);
     let balances_before = balances(&state);
     assert_eq!(
         SegmentEngine::replace(&state, &request).unwrap(),
-        SegmentPreviewV1::UnresolvedResidual(amount(10))
+        SegmentPreviewV1::UnresolvedResidual(amount(-10))
     );
     assert_eq!(snapshot(&state), before);
     assert_eq!(balances(&state), balances_before);
@@ -1036,7 +1064,7 @@ fn cur_016_1_cross_account_residual_blocks() {
 #[test]
 fn cur_016_1_cross_account_replay() {
     let mut state = with_transfer();
-    let request = cross_account(&mut state, -1000);
+    let request = cross_account(&mut state, 4300);
     let plan = ready(&state, &request);
     let good = planned(&state, &plan);
     let family_bytes = serde_json::to_vec(&state.records[&id(FAMILY)]).unwrap();

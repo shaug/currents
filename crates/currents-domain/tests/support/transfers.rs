@@ -134,3 +134,13 @@ pub(crate) fn clearing_family(
     }];
     request
 }
+/// The captured fact for row `record` in `capture`.
+pub(crate) fn row_fact(capture: RecordId, record: &str) -> CapturedFacetBindingV1 {
+    CapturedFacetBindingV1 {
+        capture,
+        source_record: record.into(),
+        source_revision: "original".into(),
+        facet: "principal".into(),
+        parse_revision: None,
+    }
+}

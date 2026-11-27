@@ -285,6 +285,9 @@ pub struct TransferJoinV1 {
     pub prior_revision: RecordId,
     /// The backfilled leg that the new revision adds.
     pub leg: LegId,
+    /// The relationship fact that places the leg in this family: a posted
+    /// movement in the family's own capture source and group.
+    pub source: CapturedFacetBindingV1,
 }
 /// A transfer recognition reversed once and issued again with fresh
 /// recognition and posting IDs and unchanged economics.
@@ -345,8 +348,50 @@ fn family_heads(
     }
     Ok(heads)
 }
-/// The new revision of a joined family: the backfilled leg and its
-/// recognition added, every current recognition replaced by its re-emission.
+/// The joined leg's relationship evidence decides its family. The fact is a
+/// posted movement with the leg's date and amount, from the same capture
+/// source and group as every fact the family already holds, and no current
+/// family revision allocates it.
+fn join_evidence(
+    state: &DomainState,
+    heads: &BTreeMap<RecordId, AssociationRevisionV1>,
+    head: &AssociationRevisionV1,
+    join: &TransferJoinV1,
+    leg: &FinancialLegV1,
+) -> Result<(), EngineError> {
+    let invalid = EngineError::invalid;
+    let unit = leg.movement.unit_id;
+    let fact = IdentityEngine::captured_facet(state, &join.source, unit)?;
+    if fact.status != RelationshipSourceStatusV1::Posted
+        || fact.role != RelationshipFacetRoleV1::Movement
+        || fact.effective != leg.effective
+        || fact.amount != leg.movement.normalized()?
+        || head.captured_allocations.is_empty()
+    {
+        return Err(invalid());
+    }
+    let source = |capture: RecordId| match state.records.get(&capture) {
+        Some(AuthoritativeRecordV1::RelationshipCapture(c)) => Ok(&c.source),
+        _ => Err(invalid()),
+    };
+    let joined_source = source(join.source.capture)?;
+    for edge in &head.captured_allocations {
+        let held = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
+        if source(edge.source.capture)? != joined_source || held.group != fact.group {
+            return Err(invalid());
+        }
+    }
+    for edge in heads.values().flat_map(|h| &h.captured_allocations) {
+        let held = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
+        if held.fact_key == fact.fact_key {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+/// The new revision of a joined family: the backfilled leg, its evidence and
+/// its recognition added, every current recognition replaced by its
+/// re-emission.
 fn joined_revision(
     head: &AssociationRevisionV1,
     join: &TransferJoinV1,
@@ -378,7 +423,17 @@ fn joined_revision(
         kind: head.kind,
         legs: head.legs.iter().copied().chain([join.leg]).collect(),
         allocations: head.allocations.clone(),
-        captured_allocations: head.captured_allocations.clone(),
+        captured_allocations: head
+            .captured_allocations
+            .iter()
+            .cloned()
+            .chain([CapturedFacetAllocationV1 {
+                source: join.source.clone(),
+                leg: join.leg,
+                allocated: leg.movement,
+                mode: FacetAllocationModeV1::Additive,
+            }])
+            .collect(),
         recognitions: head
             .recognitions
             .iter()
@@ -533,6 +588,7 @@ impl SegmentEngine {
                 return Err(invalid());
             }
             derived.extend(head.recognitions.iter().copied());
+            join_evidence(state, &heads, head, join, &leg.leg)?;
             joined.push((join, &leg.leg, head));
         }
         // The request names exactly the derived closure, each recognition once.
@@ -832,16 +888,22 @@ pub(crate) fn readmit(
         };
         restore(next, owner)
     };
-    // Each joined family's new revision adds the backfilled leg last.
+    // Each joined family's new revision adds the backfilled leg and its
+    // relationship evidence last.
     let mut transfers = Vec::new();
     let mut reemissions = Vec::new();
     for record in &commit.records {
         match record {
-            AuthoritativeRecordV1::AssociationRevision(r) => transfers.push(TransferJoinV1 {
-                revision: r.id,
-                prior_revision: r.prior_revision.ok_or_else(invalid)?,
-                leg: *r.legs.last().ok_or_else(invalid)?,
-            }),
+            AuthoritativeRecordV1::AssociationRevision(r) => {
+                let leg = *r.legs.last().ok_or_else(invalid)?;
+                let edge = r.captured_allocations.last().filter(|e| e.leg == leg);
+                transfers.push(TransferJoinV1 {
+                    revision: r.id,
+                    prior_revision: r.prior_revision.ok_or_else(invalid)?,
+                    leg,
+                    source: edge.ok_or_else(invalid)?.source.clone(),
+                });
+            }
             AuthoritativeRecordV1::SegmentReemission(link) => {
                 let Some(AuthoritativeRecordV1::Recognition(again)) =
                     next.records.get(&RecordId(link.replacement.0))

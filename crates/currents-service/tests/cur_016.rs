@@ -1303,6 +1303,7 @@ fn cross_account_request(state: &DomainState) -> SegmentReplacementV1 {
         revision: fixture::id(3500),
         prior_revision: fixture::id(1650),
         leg: LegId(fixture::id(3111).0),
+        source: transfers::row_fact(fixture::id(1501), "send-a"),
     }];
     let Some(AuthoritativeRecordV1::Recognition(receipt)) = state.records.get(&fixture::id(1610))
     else {
