@@ -179,7 +179,7 @@ fn civil(day: &str) -> Date {
     };
     civil
 }
-/// Claim `n`, Matched on account `on` from `start` through `end` by
+/// Claim `n`, Proposed on account `on` from `start` through `end` by
 /// effective date, with no explicit dependencies.
 fn claim(n: u32, on: u32, start: &str, end: &str) -> ReconciliationClaimV1 {
     let AuthoritativeRecordV1::ReconciliationClaim(mut claim) =
@@ -194,7 +194,7 @@ fn claim(n: u32, on: u32, start: &str, end: &str) -> ReconciliationClaimV1 {
         end: Some(civil(end)),
         basis: DateBasis::Effective,
     };
-    claim.status = ReconciliationStatus::Matched;
+    claim.status = ReconciliationStatus::Proposed;
     claim
 }
 /// Note `n` on `target`.
@@ -1234,15 +1234,9 @@ fn cur_016_claims_outside_change_stay_current() {
     assert!(!plan.invalidations.contains(&id(K2)));
     assert!(!plan.invalidations.contains(&id(K3)));
     let replaced = admit(&state, &planned(&state, &plan)).unwrap();
-    assert_eq!(
-        replaced.claim_status(id(K1)),
-        Some(ReconciliationStatus::Invalidated)
-    );
+    assert!(replaced.claim_invalidated(id(K1)));
     for kept in [K2, K3] {
-        assert_eq!(
-            replaced.claim_status(id(kept)),
-            Some(ReconciliationStatus::Matched)
-        );
+        assert!(!replaced.claim_invalidated(id(kept)));
         assert_eq!(replaced.records[&id(kept)], state.records[&id(kept)]);
     }
 }
@@ -1285,7 +1279,7 @@ fn cur_016_identity_correction_and_claims() {
     let state = purchase(&unanchored(), 4100, "2026-10-15");
     let bought = recognition(4113);
     let mut named = claim(4004, EXPENSE, "2026-12-01", "2026-12-31");
-    named.decision_dependencies = vec![RecordId(bought.0)];
+    named.accounting_dependencies = vec![RecordId(bought.0)];
     let state = recorded(
         &state,
         vec![
@@ -1317,14 +1311,8 @@ fn cur_016_identity_correction_and_claims() {
             .reversed
             .contains(&bought)
     );
-    assert_eq!(
-        corrected.claim_status(id(K1)),
-        Some(ReconciliationStatus::Matched)
-    );
-    assert_eq!(
-        corrected.claim_status(id(4004)),
-        Some(ReconciliationStatus::Invalidated)
-    );
+    assert!(!corrected.claim_invalidated(id(K1)));
+    assert!(corrected.claim_invalidated(id(4004)));
     assert_eq!(corrected.records[&id(4004)], state.records[&id(4004)]);
 }
 
@@ -1818,14 +1806,8 @@ fn cur_016_reinterpretation_invalidates_claims_in_scope() {
     assert!(plan.invalidations.contains(&id(8501)));
     assert!(!plan.invalidations.contains(&id(8502)));
     let corrected = admit(&state, &planned(&state, &plan)).unwrap();
-    assert_eq!(
-        corrected.claim_status(id(8501)),
-        Some(ReconciliationStatus::Invalidated)
-    );
-    assert_eq!(
-        corrected.claim_status(id(8502)),
-        Some(ReconciliationStatus::Matched)
-    );
+    assert!(corrected.claim_invalidated(id(8501)));
+    assert!(!corrected.claim_invalidated(id(8502)));
 }
 
 #[test]
@@ -2137,15 +2119,9 @@ fn cur_016_leg_date_correction() {
     );
     let corrected = admit(&state, &good).unwrap();
     for n in [8501, 8502, 8503] {
-        assert_eq!(
-            corrected.claim_status(id(n)),
-            Some(ReconciliationStatus::Invalidated)
-        );
+        assert!(corrected.claim_invalidated(id(n)));
     }
-    assert_eq!(
-        corrected.claim_status(id(8504)),
-        Some(ReconciliationStatus::Matched)
-    );
+    assert!(!corrected.claim_invalidated(id(8504)));
     assert_eq!(
         dated_postings(&state, CARD),
         vec![("2026-11-03".to_string(), amount(-96))]

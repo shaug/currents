@@ -695,6 +695,16 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.many(&["Account"], &v["scope"]);
             m.many(EVIDENCE, &v["evidence_dependencies"]);
             m.many(&["Decision"], &v["decision_dependencies"]);
+            m.many(
+                &[
+                    "Recognition",
+                    "FinancialLeg",
+                    "AssociationRevision",
+                    "AccountingSegment",
+                ],
+                &v["accounting_dependencies"],
+            );
+            m.reference(&["Unit"], &v["unit"], None);
             m.many(RECORDS, &v["exclusions"]);
             m.allocations(&v["matched_allocations"]);
         }

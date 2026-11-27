@@ -407,8 +407,10 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
         json!({"compiler":version.trim(),"commands":evidence,"driver":driver,"host":env::consts::OS,"arch":env::consts::ARCH}),
     )
 }
+/// The tests a ticket requires, by package and target.
+type Suites = [(&'static str, &'static str, &'static [&'static str])];
 /// Every CUR-016 test by package and target. Later CUR-016 leaves add theirs.
-const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
+const CUR_016_SUITES: &Suites = &[
     (
         "currents-domain",
         "cur_016",
@@ -476,15 +478,37 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
         ],
     ),
 ];
+/// Every CUR-017 test by package and target. Later CUR-017 leaves add theirs.
+const CUR_017_SUITES: &Suites = &[
+    (
+        "currents-domain",
+        "cur_017",
+        &["cur_017_claim_record_round_trip"],
+    ),
+    (
+        "currents-service",
+        "cur_017",
+        &[
+            "cur_017_storage_checks_dependency_kinds",
+            "cur_017_correction_invalidates_named_recognition",
+        ],
+    ),
+];
 /// A suite qualifies only when its listed tests are exactly the required ones
 /// and every one of them ran and passed. An ignored test fails the suite.
-fn cur_016_suite(target: &str, required: &[&str], list: &str, run: &str) -> Result<()> {
+fn ticket_suite(
+    ticket: &str,
+    target: &str,
+    required: &[&str],
+    list: &str,
+    run: &str,
+) -> Result<()> {
     let listed: BTreeSet<_> = list
         .lines()
         .filter_map(|line| line.strip_suffix(": test"))
         .collect();
     if listed != required.iter().copied().collect() {
-        return Err(format!("CUR016 inventory mismatch in {target}: {list}"));
+        return Err(format!("{ticket} inventory mismatch in {target}: {list}"));
     }
     if !run.contains(&format!("{} passed; 0 failed; 0 ignored;", required.len()))
         || required
@@ -492,31 +516,51 @@ fn cur_016_suite(target: &str, required: &[&str], list: &str, run: &str) -> Resu
             .any(|test| !run.contains(&format!("test {test} ... ok")))
     {
         return Err(format!(
-            "CUR016 incomplete qualification in {target}: {run}"
+            "{ticket} incomplete qualification in {target}: {run}"
         ));
     }
     Ok(())
 }
-fn ticket_cur_016() -> Result<Value> {
+/// Lists and runs each suite, and fails unless every suite qualifies.
+fn ticket_suites(ticket: &str, suites: &Suites) -> Result<Vec<Value>> {
     let mut evidence = Vec::new();
-    for (package, target, required) in CUR_016_SUITES {
+    for (package, target, required) in suites {
         let selector = ["test", "--locked", "-p", package, "--test", target];
         let list = cargo(&[&selector[..], &["--", "--list"]].concat())?;
         let run = cargo(&selector)?;
-        cur_016_suite(&format!("{package}/{target}"), required, &list, &run)?;
+        ticket_suite(
+            ticket,
+            &format!("{package}/{target}"),
+            required,
+            &list,
+            &run,
+        )?;
         evidence.push(json!({"package":package,"target":target,"assertions":required,"output_sha256":sha(run.as_bytes())}));
     }
+    Ok(evidence)
+}
+fn ticket_cur_016() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-016",
-        "suites":evidence,
+        "suites":ticket_suites("CUR016", CUR_016_SUITES)?,
         "fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s4/date-floor.json")).map_err(|e| e.to_string())?),
         "reinterpretation_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s5/reinterpretation.json")).map_err(|e| e.to_string())?),
         "scope":"synthetic correction and segment replacement through encrypted C04/C05/C06 and the feature-gated trusted-host path; no command route or production activation"
     }))
 }
+fn ticket_cur_017() -> Result<Value> {
+    Ok(json!({
+        "ticket":"CUR-017",
+        "suites":ticket_suites("CUR017", CUR_017_SUITES)?,
+        "scope":"synthetic reconciliation claim records through the encrypted writer and replay; no evaluation, confirmation or command route"
+    }))
+}
 fn ticket(name: &str) -> Result<Value> {
     if name == "CUR-016" {
         return ticket_cur_016();
+    }
+    if name == "CUR-017" {
+        return ticket_cur_017();
     }
     if name == "CUR-044" {
         return crate::financekit_gate::ticket();
@@ -1231,9 +1275,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
 }
 
 #[cfg(test)]
-mod cur_016_gate_tests {
-    use super::cur_016_suite;
-    const REQUIRED: [&str; 2] = ["cur_016_a", "cur_016_b"];
+mod ticket_gate_tests {
+    use super::{CUR_016_SUITES, CUR_017_SUITES, Suites, ticket_suite};
     fn list(names: &[&str]) -> String {
         let mut text: String = names.iter().map(|name| format!("{name}: test\n")).collect();
         text.push_str(&format!("\n{} tests, 0 benchmarks\n", names.len()));
@@ -1253,24 +1296,46 @@ mod cur_016_gate_tests {
         ));
         text
     }
+    /// Each suite passes only when its listed tests are exactly the required
+    /// ones and every one passes.
+    fn requires_full_inventory(ticket: &str, suites: &Suites) {
+        for (_, target, required) in suites {
+            let check = |listed: &[&str], results: &[(&str, &str)]| {
+                ticket_suite(ticket, target, required, &list(listed), &run(results))
+            };
+            let passing: Vec<_> = required.iter().map(|test| (*test, "ok")).collect();
+            assert_eq!(check(required, &passing), Ok(()));
+            let last = required.len() - 1;
+            // A listed test renamed, or missing from the target.
+            let renamed = format!("{}_renamed", required[last]);
+            let mut renamed_list = required.to_vec();
+            renamed_list[last] = &renamed;
+            let mut renamed_run = passing.clone();
+            renamed_run[last].0 = &renamed;
+            assert!(check(&renamed_list, &renamed_run).is_err());
+            assert!(check(&required[..last], &passing[..last]).is_err());
+            // An extra test that the inventory does not list.
+            let extra = format!("{}_extra", required[last]);
+            let mut extra_list = required.to_vec();
+            extra_list.push(&extra);
+            let mut extra_run = passing.clone();
+            extra_run.push((&extra, "ok"));
+            assert!(check(&extra_list, &extra_run).is_err());
+            // A listed test that is ignored or fails.
+            for outcome in ["ignored", "FAILED"] {
+                let mut results = passing.clone();
+                results[last].1 = outcome;
+                assert!(check(required, &results).is_err());
+            }
+        }
+    }
     #[test]
     fn cur_016_gate_requires_full_inventory() {
-        let check = |listed: &[&str], results: &[(&str, &str)]| {
-            cur_016_suite("synthetic", &REQUIRED, &list(listed), &run(results))
-        };
-        let passing = [("cur_016_a", "ok"), ("cur_016_b", "ok")];
-        assert_eq!(check(&REQUIRED, &passing), Ok(()));
-        // A listed test renamed, or missing from the target.
-        let renamed = ["cur_016_a", "cur_016_b_renamed"];
-        let renamed_run = [("cur_016_a", "ok"), ("cur_016_b_renamed", "ok")];
-        assert!(check(&renamed, &renamed_run).is_err());
-        assert!(check(&["cur_016_a"], &passing[..1]).is_err());
-        // An extra test that the inventory does not list.
-        let extra = ["cur_016_a", "cur_016_b", "cur_016_c"];
-        assert!(check(&extra, &[passing[0], passing[1], ("cur_016_c", "ok")]).is_err());
-        // A listed test that is ignored or fails.
-        assert!(check(&REQUIRED, &[passing[0], ("cur_016_b", "ignored")]).is_err());
-        assert!(check(&REQUIRED, &[passing[0], ("cur_016_b", "FAILED")]).is_err());
+        requires_full_inventory("CUR016", CUR_016_SUITES);
+    }
+    #[test]
+    fn cur_017_gate_requires_full_inventory() {
+        requires_full_inventory("CUR017", CUR_017_SUITES);
     }
 }
 

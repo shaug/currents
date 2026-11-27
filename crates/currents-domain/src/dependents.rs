@@ -130,6 +130,7 @@ impl Change {
             .evidence_dependencies
             .iter()
             .chain(&claim.decision_dependencies)
+            .chain(&claim.accounting_dependencies)
             .chain(&claim.exclusions)
             .chain(
                 claim
@@ -200,7 +201,7 @@ pub(crate) fn assess(state: &DomainState, change: &Change) -> Result<Dependents,
                 if *key != claim.id {
                     return Err(EngineError::invalid());
                 }
-                if state.claim_status(claim.id) != Some(ReconciliationStatus::Invalidated)
+                if !state.claim_invalidated(claim.id)
                     && (change.named(claim) || change.in_scope(claim)?)
                 {
                     claims.push(claim.id);

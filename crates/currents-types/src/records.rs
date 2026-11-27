@@ -109,12 +109,21 @@ choices!(RecognitionKind {
     Replacement,
     Quantity
 });
+// A claim's lifecycle (technical design section 6).
 choices!(ReconciliationStatus {
-    Unassessed,
-    Matched,
-    Partial,
-    Unmatched,
-    Invalidated
+    Proposed,
+    PartiallySupported,
+    ConfirmedForScope,
+    Disputed,
+    Superseded
+});
+// Why a claim is only partially supported (technical design section 6).
+choices!(ClaimReasonV1 {
+    UnknownOpening,
+    IncompleteInterval,
+    IncompatibleBalanceKinds,
+    MissingDateMapping,
+    UnexplainedResidual
 });
 choices!(AuthorityKind {
     Owner,
@@ -362,7 +371,9 @@ dto!(SegmentReemissionV1 {
     replacement: RecognitionId
 });
 dto!(AccountingSegmentV1 { id:RecordId, component:RecordId, prior_segment:Option<RecordId>, opening:RecognitionId, included_activity:Vec<RecognitionId>, replacement_closure:Vec<RecognitionId>, approved_accounts:Vec<AccountId>, residual_disposition:SourceValue<String> });
-dto!(ReconciliationClaimV1 { id:RecordId, comparison_type:String, scope:Vec<AccountId>, cutoffs:DateScope, evidence_dependencies:Vec<RecordId>, decision_dependencies:Vec<RecordId>, dependency_digest:Digest, matched_allocations:Vec<EvidenceAllocationV1>, differences:Vec<Amount>, exclusions:Vec<RecordId>, status:ReconciliationStatus, reason:String });
+// `accounting_dependencies` names the recognitions, legs, association
+// revisions and segments the claim compared.
+dto!(ReconciliationClaimV1 { id:RecordId, kind:ReconciliationKindV1, comparison_version:u32, basis:ReadBasis, scope:Vec<AccountId>, unit:UnitId, cutoffs:DateScope, evidence_dependencies:Vec<RecordId>, decision_dependencies:Vec<RecordId>, accounting_dependencies:Vec<RecordId>, dependency_digest:Digest, matched_allocations:Vec<EvidenceAllocationV1>, differences:Vec<Amount>, exclusions:Vec<RecordId>, status:ReconciliationStatus, reasons:Vec<ClaimReasonV1>, reason:String });
 dto!(OrganizationRecordV1 { id:RecordId, version:u32, kind:OrganizationKind, targets:Vec<RecordId>, parent:Option<RecordId>, text:String, allocations:Vec<EvidenceAllocationV1>, supersedes:Option<RecordId> });
 dto!(RuleV1 { id:RecordId, version:u32, operation_kinds:Vec<DecisionKind>, accounts:Vec<AccountId>, conditions:Vec<ReportedFieldV1>, grant_id:GrantId, revoked:bool });
 dto!(ReviewRecordV1 { id:RecordId, targets:Vec<RecordId>, disposition:ReviewDisposition, reason:String });
@@ -407,16 +418,16 @@ pub struct DomainState {
     pub invalidated: BTreeSet<RecordId>,
 }
 impl DomainState {
-    /// A claim's status at this prefix: `Invalidated` from the commit whose
-    /// result invalidated it, otherwise the status its record holds.
+    /// The lifecycle status a claim's record holds at this prefix.
     pub fn claim_status(&self, id: RecordId) -> Option<ReconciliationStatus> {
-        let Some(AuthoritativeRecordV1::ReconciliationClaim(claim)) = self.records.get(&id) else {
-            return None;
-        };
-        if self.invalidated.contains(&id) {
-            return Some(ReconciliationStatus::Invalidated);
+        match self.records.get(&id) {
+            Some(AuthoritativeRecordV1::ReconciliationClaim(claim)) => Some(claim.status),
+            _ => None,
         }
-        Some(claim.status)
+    }
+    /// A claim is invalidated from the commit whose result lists it.
+    pub fn claim_invalidated(&self, id: RecordId) -> bool {
+        self.claim_status(id).is_some() && self.invalidated.contains(&id)
     }
 }
 impl Schema for Health {

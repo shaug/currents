@@ -7959,9 +7959,93 @@
             "value": {
               "additionalProperties": false,
               "properties": {
-                "comparison_type": {
-                  "maxLength": 1048576,
-                  "type": "string"
+                "accounting_dependencies": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "basis": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "dataset_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "effective_scope": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "enum": [
+                            "Effective",
+                            "Posting"
+                          ],
+                          "type": "string"
+                        },
+                        "end": {
+                          "format": "date",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "start": {
+                          "format": "date",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end",
+                        "basis"
+                      ],
+                      "type": "object"
+                    },
+                    "evaluation_instant": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "query_semantics_version": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "selection_policy_version": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "through_commit": {
+                      "maxLength": 20,
+                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                      "type": "string"
+                    },
+                    "unit_catalog_version": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "dataset_id",
+                    "through_commit",
+                    "effective_scope",
+                    "evaluation_instant",
+                    "query_semantics_version",
+                    "selection_policy_version",
+                    "unit_catalog_version"
+                  ],
+                  "type": "object"
+                },
+                "comparison_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "cutoffs": {
                   "additionalProperties": false,
@@ -8056,6 +8140,15 @@
                   "format": "uuid",
                   "type": "string"
                 },
+                "kind": {
+                  "enum": [
+                    "Balance",
+                    "Activity",
+                    "Relationship",
+                    "Holdings"
+                  ],
+                  "type": "string"
+                },
                 "matched_allocations": {
                   "items": {
                     "additionalProperties": false,
@@ -8108,6 +8201,20 @@
                   "maxLength": 1048576,
                   "type": "string"
                 },
+                "reasons": {
+                  "items": {
+                    "enum": [
+                      "UnknownOpening",
+                      "IncompleteInterval",
+                      "IncompatibleBalanceKinds",
+                      "MissingDateMapping",
+                      "UnexplainedResidual"
+                    ],
+                    "type": "string"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
                 "scope": {
                   "items": {
                     "format": "uuid",
@@ -8118,27 +8225,36 @@
                 },
                 "status": {
                   "enum": [
-                    "Unassessed",
-                    "Matched",
-                    "Partial",
-                    "Unmatched",
-                    "Invalidated"
+                    "Proposed",
+                    "PartiallySupported",
+                    "ConfirmedForScope",
+                    "Disputed",
+                    "Superseded"
                   ],
+                  "type": "string"
+                },
+                "unit": {
+                  "format": "uuid",
                   "type": "string"
                 }
               },
               "required": [
                 "id",
-                "comparison_type",
+                "kind",
+                "comparison_version",
+                "basis",
                 "scope",
+                "unit",
                 "cutoffs",
                 "evidence_dependencies",
                 "decision_dependencies",
+                "accounting_dependencies",
                 "dependency_digest",
                 "matched_allocations",
                 "differences",
                 "exclusions",
                 "status",
+                "reasons",
                 "reason"
               ],
               "type": "object"
@@ -41867,9 +41983,93 @@
                   "value": {
                     "additionalProperties": false,
                     "properties": {
-                      "comparison_type": {
-                        "maxLength": 1048576,
-                        "type": "string"
+                      "accounting_dependencies": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "basis": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dataset_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "effective_scope": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "enum": [
+                                  "Effective",
+                                  "Posting"
+                                ],
+                                "type": "string"
+                              },
+                              "end": {
+                                "format": "date",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "start": {
+                                "format": "date",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "start",
+                              "end",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          "evaluation_instant": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "query_semantics_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "selection_policy_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "through_commit": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          },
+                          "unit_catalog_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "dataset_id",
+                          "through_commit",
+                          "effective_scope",
+                          "evaluation_instant",
+                          "query_semantics_version",
+                          "selection_policy_version",
+                          "unit_catalog_version"
+                        ],
+                        "type": "object"
+                      },
+                      "comparison_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
                       },
                       "cutoffs": {
                         "additionalProperties": false,
@@ -41964,6 +42164,15 @@
                         "format": "uuid",
                         "type": "string"
                       },
+                      "kind": {
+                        "enum": [
+                          "Balance",
+                          "Activity",
+                          "Relationship",
+                          "Holdings"
+                        ],
+                        "type": "string"
+                      },
                       "matched_allocations": {
                         "items": {
                           "additionalProperties": false,
@@ -42016,6 +42225,20 @@
                         "maxLength": 1048576,
                         "type": "string"
                       },
+                      "reasons": {
+                        "items": {
+                          "enum": [
+                            "UnknownOpening",
+                            "IncompleteInterval",
+                            "IncompatibleBalanceKinds",
+                            "MissingDateMapping",
+                            "UnexplainedResidual"
+                          ],
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
                       "scope": {
                         "items": {
                           "format": "uuid",
@@ -42026,27 +42249,36 @@
                       },
                       "status": {
                         "enum": [
-                          "Unassessed",
-                          "Matched",
-                          "Partial",
-                          "Unmatched",
-                          "Invalidated"
+                          "Proposed",
+                          "PartiallySupported",
+                          "ConfirmedForScope",
+                          "Disputed",
+                          "Superseded"
                         ],
+                        "type": "string"
+                      },
+                      "unit": {
+                        "format": "uuid",
                         "type": "string"
                       }
                     },
                     "required": [
                       "id",
-                      "comparison_type",
+                      "kind",
+                      "comparison_version",
+                      "basis",
                       "scope",
+                      "unit",
                       "cutoffs",
                       "evidence_dependencies",
                       "decision_dependencies",
+                      "accounting_dependencies",
                       "dependency_digest",
                       "matched_allocations",
                       "differences",
                       "exclusions",
                       "status",
+                      "reasons",
                       "reason"
                     ],
                     "type": "object"
@@ -55484,9 +55716,93 @@
                   "value": {
                     "additionalProperties": false,
                     "properties": {
-                      "comparison_type": {
-                        "maxLength": 1048576,
-                        "type": "string"
+                      "accounting_dependencies": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "basis": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dataset_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "effective_scope": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "enum": [
+                                  "Effective",
+                                  "Posting"
+                                ],
+                                "type": "string"
+                              },
+                              "end": {
+                                "format": "date",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "start": {
+                                "format": "date",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "start",
+                              "end",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          "evaluation_instant": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "query_semantics_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "selection_policy_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "through_commit": {
+                            "maxLength": 20,
+                            "pattern": "^(0|[1-9][0-9]{0,19})$",
+                            "type": "string"
+                          },
+                          "unit_catalog_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "dataset_id",
+                          "through_commit",
+                          "effective_scope",
+                          "evaluation_instant",
+                          "query_semantics_version",
+                          "selection_policy_version",
+                          "unit_catalog_version"
+                        ],
+                        "type": "object"
+                      },
+                      "comparison_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
                       },
                       "cutoffs": {
                         "additionalProperties": false,
@@ -55581,6 +55897,15 @@
                         "format": "uuid",
                         "type": "string"
                       },
+                      "kind": {
+                        "enum": [
+                          "Balance",
+                          "Activity",
+                          "Relationship",
+                          "Holdings"
+                        ],
+                        "type": "string"
+                      },
                       "matched_allocations": {
                         "items": {
                           "additionalProperties": false,
@@ -55633,6 +55958,20 @@
                         "maxLength": 1048576,
                         "type": "string"
                       },
+                      "reasons": {
+                        "items": {
+                          "enum": [
+                            "UnknownOpening",
+                            "IncompleteInterval",
+                            "IncompatibleBalanceKinds",
+                            "MissingDateMapping",
+                            "UnexplainedResidual"
+                          ],
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
                       "scope": {
                         "items": {
                           "format": "uuid",
@@ -55643,27 +55982,36 @@
                       },
                       "status": {
                         "enum": [
-                          "Unassessed",
-                          "Matched",
-                          "Partial",
-                          "Unmatched",
-                          "Invalidated"
+                          "Proposed",
+                          "PartiallySupported",
+                          "ConfirmedForScope",
+                          "Disputed",
+                          "Superseded"
                         ],
+                        "type": "string"
+                      },
+                      "unit": {
+                        "format": "uuid",
                         "type": "string"
                       }
                     },
                     "required": [
                       "id",
-                      "comparison_type",
+                      "kind",
+                      "comparison_version",
+                      "basis",
                       "scope",
+                      "unit",
                       "cutoffs",
                       "evidence_dependencies",
                       "decision_dependencies",
+                      "accounting_dependencies",
                       "dependency_digest",
                       "matched_allocations",
                       "differences",
                       "exclusions",
                       "status",
+                      "reasons",
                       "reason"
                     ],
                     "type": "object"
@@ -66922,9 +67270,93 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
-                          "comparison_type": {
-                            "maxLength": 1048576,
-                            "type": "string"
+                          "accounting_dependencies": {
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "basis": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "dataset_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "effective_scope": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "basis": {
+                                    "enum": [
+                                      "Effective",
+                                      "Posting"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "end": {
+                                    "format": "date",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "start": {
+                                    "format": "date",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "start",
+                                  "end",
+                                  "basis"
+                                ],
+                                "type": "object"
+                              },
+                              "evaluation_instant": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "query_semantics_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "selection_policy_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "through_commit": {
+                                "maxLength": 20,
+                                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                "type": "string"
+                              },
+                              "unit_catalog_version": {
+                                "maximum": 4294967295,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "dataset_id",
+                              "through_commit",
+                              "effective_scope",
+                              "evaluation_instant",
+                              "query_semantics_version",
+                              "selection_policy_version",
+                              "unit_catalog_version"
+                            ],
+                            "type": "object"
+                          },
+                          "comparison_version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
                           },
                           "cutoffs": {
                             "additionalProperties": false,
@@ -67019,6 +67451,15 @@
                             "format": "uuid",
                             "type": "string"
                           },
+                          "kind": {
+                            "enum": [
+                              "Balance",
+                              "Activity",
+                              "Relationship",
+                              "Holdings"
+                            ],
+                            "type": "string"
+                          },
                           "matched_allocations": {
                             "items": {
                               "additionalProperties": false,
@@ -67071,6 +67512,20 @@
                             "maxLength": 1048576,
                             "type": "string"
                           },
+                          "reasons": {
+                            "items": {
+                              "enum": [
+                                "UnknownOpening",
+                                "IncompleteInterval",
+                                "IncompatibleBalanceKinds",
+                                "MissingDateMapping",
+                                "UnexplainedResidual"
+                              ],
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
                           "scope": {
                             "items": {
                               "format": "uuid",
@@ -67081,27 +67536,36 @@
                           },
                           "status": {
                             "enum": [
-                              "Unassessed",
-                              "Matched",
-                              "Partial",
-                              "Unmatched",
-                              "Invalidated"
+                              "Proposed",
+                              "PartiallySupported",
+                              "ConfirmedForScope",
+                              "Disputed",
+                              "Superseded"
                             ],
+                            "type": "string"
+                          },
+                          "unit": {
+                            "format": "uuid",
                             "type": "string"
                           }
                         },
                         "required": [
                           "id",
-                          "comparison_type",
+                          "kind",
+                          "comparison_version",
+                          "basis",
                           "scope",
+                          "unit",
                           "cutoffs",
                           "evidence_dependencies",
                           "decision_dependencies",
+                          "accounting_dependencies",
                           "dependency_digest",
                           "matched_allocations",
                           "differences",
                           "exclusions",
                           "status",
+                          "reasons",
                           "reason"
                         ],
                         "type": "object"
