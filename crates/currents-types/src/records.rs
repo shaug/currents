@@ -141,6 +141,15 @@ pub enum ClaimReasonV1 {
     MissingDateMapping,
     UnexplainedResidual,
     UnknownClosing,
+    /// The source balance is the evidence the account's opening adopted, so
+    /// it cannot corroborate that opening.
+    CircularAnchor,
+    /// The source balance reports no balance kind.
+    UnknownBalanceKind,
+    /// The source balance is not in the account's unit.
+    IncompatibleUnits,
+    /// The source balance's as-of date is not the claim's boundary.
+    IncompatibleBoundary,
     /// A source line that no recognized leg allocates.
     MissingAllocation(EvidenceLineV1),
     /// A recognized leg in scope allocates a line the source does not report.
@@ -158,7 +167,7 @@ impl Schema for ClaimReasonV1 {
         let variant = |name: &str, value: serde_json::Value| serde_json::json!({"type":"object","additionalProperties":false,"required":[name],"properties":{name:value}});
         let line = |name: &str| variant(name, EvidenceLineV1::schema());
         serde_json::json!({"oneOf":[
-            {"type":"string","enum":["UnknownOpening","IncompleteInterval","IncompatibleBalanceKinds","MissingDateMapping","UnexplainedResidual","UnknownClosing"]},
+            {"type":"string","enum":["UnknownOpening","IncompleteInterval","IncompatibleBalanceKinds","MissingDateMapping","UnexplainedResidual","UnknownClosing","CircularAnchor","UnknownBalanceKind","IncompatibleUnits","IncompatibleBoundary"]},
             line("MissingAllocation"),
             line("UnexpectedAllocation"),
             line("RepeatedIdentity"),
@@ -253,21 +262,42 @@ dto!(ReportedFieldV1 { name:String, value:SourceValue<String> });
 dto!(ObservationVersionV1 { id:RecordId, source:SourceIdentityV1, original_ids:Vec<String>, sanitized_representation:String, reported_fields:Vec<ReportedFieldV1>, temporal:TemporalValue, semantic_kind:ObservationKind, prior_version:Option<RecordId>, tombstone_of:Option<RecordId>, content_digest:Digest });
 dto!(MovementFacetV1 { lineage_key:RecordId, kind:ObservationKind, amount:SourceValue<Amount>, relationships:Vec<RecordId>, temporal:TemporalValue });
 dto!(ParseProductV1 { source_version_id:RecordId, parser_id:String, parser_version:String, facets:Vec<MovementFacetV1> });
+// What a source-reported balance measures (technical design section 6).
+// Only balances of the same kind compare.
+choices!(BalanceKindV1 {
+    Posted,
+    Available,
+    Statement,
+    Unknown
+});
+dto!(BalanceFacetKindV1 {
+    facet: RecordId,
+    kind: BalanceKindV1
+});
 /// Addressable immutable product. Legacy unaddressed products remain unchanged.
+/// Schema version 2 adds `balance_kinds`: one kind for each balance facet, in
+/// facet ID order. A version-1 product has none, and its bytes are unchanged.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AddressedParseProductV1 {
     pub id: RecordId,
     pub schema_version: u32,
     pub product: ParseProductV1,
+    pub balance_kinds: Vec<BalanceFacetKindV1>,
 }
 dto!(AddressedParseProductWireV1 {
     id: RecordId,
     schema_version: u32,
     product: ParseProductV1
 });
+dto!(AddressedParseProductWireV2 {
+    id: RecordId,
+    schema_version: u32,
+    product: ParseProductV1,
+    balance_kinds: Vec<BalanceFacetKindV1>
+});
 impl AddressedParseProductV1 {
     pub fn validate(&self) -> Result<(), EngineError> {
-        if self.schema_version != 1 {
+        if !matches!(self.schema_version, 1 | 2) {
             return Err(EngineError::version());
         }
         if self.id.0.is_nil()
@@ -280,37 +310,87 @@ impl AddressedParseProductV1 {
         {
             return Err(EngineError::invalid());
         }
+        let mut balances: Vec<RecordId> = self
+            .product
+            .facets
+            .iter()
+            .filter(|facet| facet.kind == ObservationKind::Balance)
+            .map(|facet| facet.lineage_key)
+            .collect();
+        balances.sort();
+        let named: Vec<RecordId> = self.balance_kinds.iter().map(|k| k.facet).collect();
+        let kinds_valid = if self.schema_version == 1 {
+            named.is_empty()
+        } else {
+            named == balances && named.windows(2).all(|pair| pair[0] < pair[1])
+        };
+        if !kinds_valid {
+            return Err(EngineError::invalid());
+        }
         Ok(())
+    }
+    /// The kind of balance `facet` reports. A version-1 product reports no
+    /// kind, so its balances read as `Unknown`.
+    pub fn balance_kind(&self, facet: RecordId) -> BalanceKindV1 {
+        self.balance_kinds
+            .iter()
+            .find(|k| k.facet == facet)
+            .map_or(BalanceKindV1::Unknown, |k| k.kind)
     }
 }
 impl serde::Serialize for AddressedParseProductV1 {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.validate().map_err(serde::ser::Error::custom)?;
-        AddressedParseProductWireV1 {
+        if self.schema_version == 1 {
+            return AddressedParseProductWireV1 {
+                id: self.id,
+                schema_version: self.schema_version,
+                product: self.product.clone(),
+            }
+            .serialize(serializer);
+        }
+        AddressedParseProductWireV2 {
             id: self.id,
             schema_version: self.schema_version,
             product: self.product.clone(),
+            balance_kinds: self.balance_kinds.clone(),
         }
         .serialize(serializer)
     }
 }
 impl<'de> serde::Deserialize<'de> for AddressedParseProductV1 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let wire = AddressedParseProductWireV1::deserialize(deserializer)?;
-        let product = Self {
-            id: wire.id,
-            schema_version: wire.schema_version,
-            product: wire.product,
+        use serde::de::Error;
+        // The version decides the shape: only version 1 omits `balance_kinds`.
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let product = if value.get("schema_version") == Some(&serde_json::json!(1)) {
+            let wire = AddressedParseProductWireV1::deserialize(value).map_err(D::Error::custom)?;
+            Self {
+                id: wire.id,
+                schema_version: wire.schema_version,
+                product: wire.product,
+                balance_kinds: vec![],
+            }
+        } else {
+            let wire = AddressedParseProductWireV2::deserialize(value).map_err(D::Error::custom)?;
+            Self {
+                id: wire.id,
+                schema_version: wire.schema_version,
+                product: wire.product,
+                balance_kinds: wire.balance_kinds,
+            }
         };
-        product.validate().map_err(serde::de::Error::custom)?;
+        product.validate().map_err(D::Error::custom)?;
         Ok(product)
     }
 }
 impl Schema for AddressedParseProductV1 {
     fn schema() -> serde_json::Value {
-        let mut schema = AddressedParseProductWireV1::schema();
-        schema["properties"]["schema_version"] = serde_json::json!({"const":1});
-        schema
+        let mut first = AddressedParseProductWireV1::schema();
+        first["properties"]["schema_version"] = serde_json::json!({"const":1});
+        let mut second = AddressedParseProductWireV2::schema();
+        second["properties"]["schema_version"] = serde_json::json!({"const":2});
+        serde_json::json!({"oneOf":[first, second]})
     }
 }
 dto!(EvidenceAllocationV1 {

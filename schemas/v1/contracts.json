@@ -5778,285 +5778,598 @@
               "const": "AddressedParseProduct"
             },
             "value": {
-              "additionalProperties": false,
-              "properties": {
-                "id": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "product": {
+              "oneOf": [
+                {
                   "additionalProperties": false,
                   "properties": {
-                    "facets": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "amount": {
-                            "oneOf": [
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "state": {
-                                    "const": "Missing"
-                                  }
-                                },
-                                "required": [
-                                  "state"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "state": {
-                                    "const": "Unknown"
-                                  }
-                                },
-                                "required": [
-                                  "state"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "state": {
-                                    "const": "Null"
-                                  }
-                                },
-                                "required": [
-                                  "state"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "state": {
-                                    "const": "Absent"
-                                  }
-                                },
-                                "required": [
-                                  "state"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "state": {
-                                    "const": "Deleted"
-                                  }
-                                },
-                                "required": [
-                                  "state"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "state": {
-                                    "const": "Known"
-                                  },
-                                  "value": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "product": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "facets": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "amount": {
+                                "oneOf": [
+                                  {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "coefficient": {
-                                        "maxLength": 40,
-                                        "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "coefficient": {
+                                            "maxLength": 40,
+                                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "type": "string"
+                                          },
+                                          "scale": {
+                                            "maximum": 18,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "unit_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "coefficient",
+                                          "scale",
+                                          "unit_id"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "enum": [
+                                  "Movement",
+                                  "Balance",
+                                  "Holding",
+                                  "Valuation",
+                                  "Identity",
+                                  "Tombstone"
+                                ],
+                                "type": "string"
+                              },
+                              "lineage_key": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "relationships": {
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "temporal": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "civil": {
+                                        "format": "date",
                                         "type": "string"
                                       },
-                                      "scale": {
-                                        "maximum": 18,
-                                        "minimum": 0,
-                                        "type": "integer"
+                                      "kind": {
+                                        "const": "Date"
                                       },
-                                      "unit_id": {
-                                        "format": "uuid",
+                                      "original_text": {
                                         "type": "string"
                                       }
                                     },
                                     "required": [
-                                      "coefficient",
-                                      "scale",
-                                      "unit_id"
+                                      "kind",
+                                      "civil",
+                                      "original_text"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "Instant"
+                                      },
+                                      "original_offset": {
+                                        "anyOf": [
+                                          {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "original_text": {
+                                        "type": "string"
+                                      },
+                                      "original_zone": {
+                                        "anyOf": [
+                                          {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "precision": {
+                                        "enum": [
+                                          "Second",
+                                          "Millisecond",
+                                          "Microsecond",
+                                          "Nanosecond",
+                                          "Unknown"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "utc": {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "utc",
+                                      "original_offset",
+                                      "original_zone",
+                                      "precision",
+                                      "original_text"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "Unknown"
+                                      },
+                                      "original_text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "original_text"
                                     ],
                                     "type": "object"
                                   }
-                                },
-                                "required": [
-                                  "state",
-                                  "value"
-                                ],
-                                "type": "object"
+                                ]
                               }
-                            ]
-                          },
-                          "kind": {
-                            "enum": [
-                              "Movement",
-                              "Balance",
-                              "Holding",
-                              "Valuation",
-                              "Identity",
-                              "Tombstone"
+                            },
+                            "required": [
+                              "lineage_key",
+                              "kind",
+                              "amount",
+                              "relationships",
+                              "temporal"
                             ],
-                            "type": "string"
+                            "type": "object"
                           },
-                          "lineage_key": {
+                          "maxItems": 16384,
+                          "type": "array"
+                        },
+                        "parser_id": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "parser_version": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "source_version_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "source_version_id",
+                        "parser_id",
+                        "parser_version",
+                        "facets"
+                      ],
+                      "type": "object"
+                    },
+                    "schema_version": {
+                      "const": 1
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "schema_version",
+                    "product"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "balance_kinds": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "facet": {
                             "format": "uuid",
                             "type": "string"
                           },
-                          "relationships": {
-                            "items": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "maxItems": 16384,
-                            "type": "array"
-                          },
-                          "temporal": {
-                            "oneOf": [
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "civil": {
-                                    "format": "date",
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "const": "Date"
-                                  },
-                                  "original_text": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "civil",
-                                  "original_text"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "Instant"
-                                  },
-                                  "original_offset": {
-                                    "anyOf": [
-                                      {
-                                        "maxLength": 1048576,
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  },
-                                  "original_text": {
-                                    "type": "string"
-                                  },
-                                  "original_zone": {
-                                    "anyOf": [
-                                      {
-                                        "maxLength": 1048576,
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  },
-                                  "precision": {
-                                    "enum": [
-                                      "Second",
-                                      "Millisecond",
-                                      "Microsecond",
-                                      "Nanosecond",
-                                      "Unknown"
-                                    ],
-                                    "type": "string"
-                                  },
-                                  "utc": {
-                                    "format": "date-time",
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "utc",
-                                  "original_offset",
-                                  "original_zone",
-                                  "precision",
-                                  "original_text"
-                                ],
-                                "type": "object"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "kind": {
-                                    "const": "Unknown"
-                                  },
-                                  "original_text": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "original_text"
-                                ],
-                                "type": "object"
-                              }
-                            ]
+                          "kind": {
+                            "enum": [
+                              "Posted",
+                              "Available",
+                              "Statement",
+                              "Unknown"
+                            ],
+                            "type": "string"
                           }
                         },
                         "required": [
-                          "lineage_key",
-                          "kind",
-                          "amount",
-                          "relationships",
-                          "temporal"
+                          "facet",
+                          "kind"
                         ],
                         "type": "object"
                       },
                       "maxItems": 16384,
                       "type": "array"
                     },
-                    "parser_id": {
-                      "maxLength": 1048576,
-                      "type": "string"
-                    },
-                    "parser_version": {
-                      "maxLength": 1048576,
-                      "type": "string"
-                    },
-                    "source_version_id": {
+                    "id": {
                       "format": "uuid",
                       "type": "string"
+                    },
+                    "product": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "facets": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "amount": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "coefficient": {
+                                            "maxLength": 40,
+                                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "type": "string"
+                                          },
+                                          "scale": {
+                                            "maximum": 18,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "unit_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "coefficient",
+                                          "scale",
+                                          "unit_id"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "enum": [
+                                  "Movement",
+                                  "Balance",
+                                  "Holding",
+                                  "Valuation",
+                                  "Identity",
+                                  "Tombstone"
+                                ],
+                                "type": "string"
+                              },
+                              "lineage_key": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "relationships": {
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "temporal": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "civil": {
+                                        "format": "date",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "Date"
+                                      },
+                                      "original_text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "civil",
+                                      "original_text"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "Instant"
+                                      },
+                                      "original_offset": {
+                                        "anyOf": [
+                                          {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "original_text": {
+                                        "type": "string"
+                                      },
+                                      "original_zone": {
+                                        "anyOf": [
+                                          {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "precision": {
+                                        "enum": [
+                                          "Second",
+                                          "Millisecond",
+                                          "Microsecond",
+                                          "Nanosecond",
+                                          "Unknown"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "utc": {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "utc",
+                                      "original_offset",
+                                      "original_zone",
+                                      "precision",
+                                      "original_text"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "Unknown"
+                                      },
+                                      "original_text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "original_text"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "lineage_key",
+                              "kind",
+                              "amount",
+                              "relationships",
+                              "temporal"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 16384,
+                          "type": "array"
+                        },
+                        "parser_id": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "parser_version": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "source_version_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "source_version_id",
+                        "parser_id",
+                        "parser_version",
+                        "facets"
+                      ],
+                      "type": "object"
+                    },
+                    "schema_version": {
+                      "const": 2
                     }
                   },
                   "required": [
-                    "source_version_id",
-                    "parser_id",
-                    "parser_version",
-                    "facets"
+                    "id",
+                    "schema_version",
+                    "product",
+                    "balance_kinds"
                   ],
                   "type": "object"
-                },
-                "schema_version": {
-                  "const": 1
                 }
-              },
-              "required": [
-                "id",
-                "schema_version",
-                "product"
-              ],
-              "type": "object"
+              ]
             }
           },
           "required": [
@@ -8211,7 +8524,11 @@
                           "IncompatibleBalanceKinds",
                           "MissingDateMapping",
                           "UnexplainedResidual",
-                          "UnknownClosing"
+                          "UnknownClosing",
+                          "CircularAnchor",
+                          "UnknownBalanceKind",
+                          "IncompatibleUnits",
+                          "IncompatibleBoundary"
                         ],
                         "type": "string"
                       },
@@ -39912,285 +40229,598 @@
                     "const": "AddressedParseProduct"
                   },
                   "value": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "id": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "product": {
+                    "oneOf": [
+                      {
                         "additionalProperties": false,
                         "properties": {
-                          "facets": {
-                            "items": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "amount": {
-                                  "oneOf": [
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Missing"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Unknown"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Null"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Absent"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Deleted"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Known"
-                                        },
-                                        "value": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "product": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facets": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "oneOf": [
+                                        {
                                           "additionalProperties": false,
                                           "properties": {
-                                            "coefficient": {
-                                              "maxLength": 40,
-                                              "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "state": {
+                                              "const": "Missing"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Unknown"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Null"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Absent"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Deleted"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Known"
+                                            },
+                                            "value": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "coefficient": {
+                                                  "maxLength": 40,
+                                                  "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                                  "type": "string"
+                                                },
+                                                "scale": {
+                                                  "maximum": 18,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                },
+                                                "unit_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "coefficient",
+                                                "scale",
+                                                "unit_id"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "kind": {
+                                      "enum": [
+                                        "Movement",
+                                        "Balance",
+                                        "Holding",
+                                        "Valuation",
+                                        "Identity",
+                                        "Tombstone"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "lineage_key": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "relationships": {
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "temporal": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "civil": {
+                                              "format": "date",
                                               "type": "string"
                                             },
-                                            "scale": {
-                                              "maximum": 18,
-                                              "minimum": 0,
-                                              "type": "integer"
+                                            "kind": {
+                                              "const": "Date"
                                             },
-                                            "unit_id": {
-                                              "format": "uuid",
+                                            "original_text": {
                                               "type": "string"
                                             }
                                           },
                                           "required": [
-                                            "coefficient",
-                                            "scale",
-                                            "unit_id"
+                                            "kind",
+                                            "civil",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Instant"
+                                            },
+                                            "original_offset": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            },
+                                            "original_zone": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "precision": {
+                                              "enum": [
+                                                "Second",
+                                                "Millisecond",
+                                                "Microsecond",
+                                                "Nanosecond",
+                                                "Unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "format": "date-time",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "utc",
+                                            "original_offset",
+                                            "original_zone",
+                                            "precision",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Unknown"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "original_text"
                                           ],
                                           "type": "object"
                                         }
-                                      },
-                                      "required": [
-                                        "state",
-                                        "value"
-                                      ],
-                                      "type": "object"
+                                      ]
                                     }
-                                  ]
-                                },
-                                "kind": {
-                                  "enum": [
-                                    "Movement",
-                                    "Balance",
-                                    "Holding",
-                                    "Valuation",
-                                    "Identity",
-                                    "Tombstone"
+                                  },
+                                  "required": [
+                                    "lineage_key",
+                                    "kind",
+                                    "amount",
+                                    "relationships",
+                                    "temporal"
                                   ],
-                                  "type": "string"
+                                  "type": "object"
                                 },
-                                "lineage_key": {
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "parser_id": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "parser_version": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "source_version_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source_version_id",
+                              "parser_id",
+                              "parser_version",
+                              "facets"
+                            ],
+                            "type": "object"
+                          },
+                          "schema_version": {
+                            "const": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "schema_version",
+                          "product"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "balance_kinds": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "facet": {
                                   "format": "uuid",
                                   "type": "string"
                                 },
-                                "relationships": {
-                                  "items": {
-                                    "format": "uuid",
-                                    "type": "string"
-                                  },
-                                  "maxItems": 16384,
-                                  "type": "array"
-                                },
-                                "temporal": {
-                                  "oneOf": [
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "civil": {
-                                          "format": "date",
-                                          "type": "string"
-                                        },
-                                        "kind": {
-                                          "const": "Date"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "civil",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Instant"
-                                        },
-                                        "original_offset": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        },
-                                        "original_zone": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "precision": {
-                                          "enum": [
-                                            "Second",
-                                            "Millisecond",
-                                            "Microsecond",
-                                            "Nanosecond",
-                                            "Unknown"
-                                          ],
-                                          "type": "string"
-                                        },
-                                        "utc": {
-                                          "format": "date-time",
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "utc",
-                                        "original_offset",
-                                        "original_zone",
-                                        "precision",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Unknown"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    }
-                                  ]
+                                "kind": {
+                                  "enum": [
+                                    "Posted",
+                                    "Available",
+                                    "Statement",
+                                    "Unknown"
+                                  ],
+                                  "type": "string"
                                 }
                               },
                               "required": [
-                                "lineage_key",
-                                "kind",
-                                "amount",
-                                "relationships",
-                                "temporal"
+                                "facet",
+                                "kind"
                               ],
                               "type": "object"
                             },
                             "maxItems": 16384,
                             "type": "array"
                           },
-                          "parser_id": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "parser_version": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "source_version_id": {
+                          "id": {
                             "format": "uuid",
                             "type": "string"
+                          },
+                          "product": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facets": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Missing"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Unknown"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Null"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Absent"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Deleted"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Known"
+                                            },
+                                            "value": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "coefficient": {
+                                                  "maxLength": 40,
+                                                  "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                                  "type": "string"
+                                                },
+                                                "scale": {
+                                                  "maximum": 18,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                },
+                                                "unit_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "coefficient",
+                                                "scale",
+                                                "unit_id"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "kind": {
+                                      "enum": [
+                                        "Movement",
+                                        "Balance",
+                                        "Holding",
+                                        "Valuation",
+                                        "Identity",
+                                        "Tombstone"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "lineage_key": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "relationships": {
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "temporal": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "civil": {
+                                              "format": "date",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "Date"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "civil",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Instant"
+                                            },
+                                            "original_offset": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            },
+                                            "original_zone": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "precision": {
+                                              "enum": [
+                                                "Second",
+                                                "Millisecond",
+                                                "Microsecond",
+                                                "Nanosecond",
+                                                "Unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "format": "date-time",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "utc",
+                                            "original_offset",
+                                            "original_zone",
+                                            "precision",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Unknown"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "lineage_key",
+                                    "kind",
+                                    "amount",
+                                    "relationships",
+                                    "temporal"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "parser_id": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "parser_version": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "source_version_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source_version_id",
+                              "parser_id",
+                              "parser_version",
+                              "facets"
+                            ],
+                            "type": "object"
+                          },
+                          "schema_version": {
+                            "const": 2
                           }
                         },
                         "required": [
-                          "source_version_id",
-                          "parser_id",
-                          "parser_version",
-                          "facets"
+                          "id",
+                          "schema_version",
+                          "product",
+                          "balance_kinds"
                         ],
                         "type": "object"
-                      },
-                      "schema_version": {
-                        "const": 1
                       }
-                    },
-                    "required": [
-                      "id",
-                      "schema_version",
-                      "product"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -42345,7 +42975,11 @@
                                 "IncompatibleBalanceKinds",
                                 "MissingDateMapping",
                                 "UnexplainedResidual",
-                                "UnknownClosing"
+                                "UnknownClosing",
+                                "CircularAnchor",
+                                "UnknownBalanceKind",
+                                "IncompatibleUnits",
+                                "IncompatibleBoundary"
                               ],
                               "type": "string"
                             },
@@ -53820,285 +54454,598 @@
                     "const": "AddressedParseProduct"
                   },
                   "value": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "id": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "product": {
+                    "oneOf": [
+                      {
                         "additionalProperties": false,
                         "properties": {
-                          "facets": {
-                            "items": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "amount": {
-                                  "oneOf": [
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Missing"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Unknown"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Null"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Absent"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Deleted"
-                                        }
-                                      },
-                                      "required": [
-                                        "state"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "state": {
-                                          "const": "Known"
-                                        },
-                                        "value": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "product": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facets": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "oneOf": [
+                                        {
                                           "additionalProperties": false,
                                           "properties": {
-                                            "coefficient": {
-                                              "maxLength": 40,
-                                              "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "state": {
+                                              "const": "Missing"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Unknown"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Null"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Absent"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Deleted"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Known"
+                                            },
+                                            "value": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "coefficient": {
+                                                  "maxLength": 40,
+                                                  "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                                  "type": "string"
+                                                },
+                                                "scale": {
+                                                  "maximum": 18,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                },
+                                                "unit_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "coefficient",
+                                                "scale",
+                                                "unit_id"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "kind": {
+                                      "enum": [
+                                        "Movement",
+                                        "Balance",
+                                        "Holding",
+                                        "Valuation",
+                                        "Identity",
+                                        "Tombstone"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "lineage_key": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "relationships": {
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "temporal": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "civil": {
+                                              "format": "date",
                                               "type": "string"
                                             },
-                                            "scale": {
-                                              "maximum": 18,
-                                              "minimum": 0,
-                                              "type": "integer"
+                                            "kind": {
+                                              "const": "Date"
                                             },
-                                            "unit_id": {
-                                              "format": "uuid",
+                                            "original_text": {
                                               "type": "string"
                                             }
                                           },
                                           "required": [
-                                            "coefficient",
-                                            "scale",
-                                            "unit_id"
+                                            "kind",
+                                            "civil",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Instant"
+                                            },
+                                            "original_offset": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            },
+                                            "original_zone": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "precision": {
+                                              "enum": [
+                                                "Second",
+                                                "Millisecond",
+                                                "Microsecond",
+                                                "Nanosecond",
+                                                "Unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "format": "date-time",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "utc",
+                                            "original_offset",
+                                            "original_zone",
+                                            "precision",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Unknown"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "original_text"
                                           ],
                                           "type": "object"
                                         }
-                                      },
-                                      "required": [
-                                        "state",
-                                        "value"
-                                      ],
-                                      "type": "object"
+                                      ]
                                     }
-                                  ]
-                                },
-                                "kind": {
-                                  "enum": [
-                                    "Movement",
-                                    "Balance",
-                                    "Holding",
-                                    "Valuation",
-                                    "Identity",
-                                    "Tombstone"
+                                  },
+                                  "required": [
+                                    "lineage_key",
+                                    "kind",
+                                    "amount",
+                                    "relationships",
+                                    "temporal"
                                   ],
-                                  "type": "string"
+                                  "type": "object"
                                 },
-                                "lineage_key": {
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "parser_id": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "parser_version": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "source_version_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source_version_id",
+                              "parser_id",
+                              "parser_version",
+                              "facets"
+                            ],
+                            "type": "object"
+                          },
+                          "schema_version": {
+                            "const": 1
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "schema_version",
+                          "product"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "balance_kinds": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "facet": {
                                   "format": "uuid",
                                   "type": "string"
                                 },
-                                "relationships": {
-                                  "items": {
-                                    "format": "uuid",
-                                    "type": "string"
-                                  },
-                                  "maxItems": 16384,
-                                  "type": "array"
-                                },
-                                "temporal": {
-                                  "oneOf": [
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "civil": {
-                                          "format": "date",
-                                          "type": "string"
-                                        },
-                                        "kind": {
-                                          "const": "Date"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "civil",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Instant"
-                                        },
-                                        "original_offset": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        },
-                                        "original_zone": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "precision": {
-                                          "enum": [
-                                            "Second",
-                                            "Millisecond",
-                                            "Microsecond",
-                                            "Nanosecond",
-                                            "Unknown"
-                                          ],
-                                          "type": "string"
-                                        },
-                                        "utc": {
-                                          "format": "date-time",
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "utc",
-                                        "original_offset",
-                                        "original_zone",
-                                        "precision",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Unknown"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    }
-                                  ]
+                                "kind": {
+                                  "enum": [
+                                    "Posted",
+                                    "Available",
+                                    "Statement",
+                                    "Unknown"
+                                  ],
+                                  "type": "string"
                                 }
                               },
                               "required": [
-                                "lineage_key",
-                                "kind",
-                                "amount",
-                                "relationships",
-                                "temporal"
+                                "facet",
+                                "kind"
                               ],
                               "type": "object"
                             },
                             "maxItems": 16384,
                             "type": "array"
                           },
-                          "parser_id": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "parser_version": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "source_version_id": {
+                          "id": {
                             "format": "uuid",
                             "type": "string"
+                          },
+                          "product": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facets": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Missing"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Unknown"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Null"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Absent"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Deleted"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Known"
+                                            },
+                                            "value": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "coefficient": {
+                                                  "maxLength": 40,
+                                                  "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                                  "type": "string"
+                                                },
+                                                "scale": {
+                                                  "maximum": 18,
+                                                  "minimum": 0,
+                                                  "type": "integer"
+                                                },
+                                                "unit_id": {
+                                                  "format": "uuid",
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "coefficient",
+                                                "scale",
+                                                "unit_id"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "kind": {
+                                      "enum": [
+                                        "Movement",
+                                        "Balance",
+                                        "Holding",
+                                        "Valuation",
+                                        "Identity",
+                                        "Tombstone"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "lineage_key": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "relationships": {
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "temporal": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "civil": {
+                                              "format": "date",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "Date"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "civil",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Instant"
+                                            },
+                                            "original_offset": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            },
+                                            "original_zone": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "precision": {
+                                              "enum": [
+                                                "Second",
+                                                "Millisecond",
+                                                "Microsecond",
+                                                "Nanosecond",
+                                                "Unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "format": "date-time",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "utc",
+                                            "original_offset",
+                                            "original_zone",
+                                            "precision",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Unknown"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "lineage_key",
+                                    "kind",
+                                    "amount",
+                                    "relationships",
+                                    "temporal"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 16384,
+                                "type": "array"
+                              },
+                              "parser_id": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "parser_version": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "source_version_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source_version_id",
+                              "parser_id",
+                              "parser_version",
+                              "facets"
+                            ],
+                            "type": "object"
+                          },
+                          "schema_version": {
+                            "const": 2
                           }
                         },
                         "required": [
-                          "source_version_id",
-                          "parser_id",
-                          "parser_version",
-                          "facets"
+                          "id",
+                          "schema_version",
+                          "product",
+                          "balance_kinds"
                         ],
                         "type": "object"
-                      },
-                      "schema_version": {
-                        "const": 1
                       }
-                    },
-                    "required": [
-                      "id",
-                      "schema_version",
-                      "product"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -56253,7 +57200,11 @@
                                 "IncompatibleBalanceKinds",
                                 "MissingDateMapping",
                                 "UnexplainedResidual",
-                                "UnknownClosing"
+                                "UnknownClosing",
+                                "CircularAnchor",
+                                "UnknownBalanceKind",
+                                "IncompatibleUnits",
+                                "IncompatibleBoundary"
                               ],
                               "type": "string"
                             },
@@ -67982,7 +68933,11 @@
                                     "IncompatibleBalanceKinds",
                                     "MissingDateMapping",
                                     "UnexplainedResidual",
-                                    "UnknownClosing"
+                                    "UnknownClosing",
+                                    "CircularAnchor",
+                                    "UnknownBalanceKind",
+                                    "IncompatibleUnits",
+                                    "IncompatibleBoundary"
                                   ],
                                   "type": "string"
                                 },

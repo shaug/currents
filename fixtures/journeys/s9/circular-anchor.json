@@ -1,0 +1,24 @@
+{
+  "account": "A",
+  "unit": "USD",
+  "basis": "Posting",
+  "balances": {
+    "S0": {"as_of": "2026-09-30", "amount": 1000, "kind": "Posted"},
+    "S1": {"as_of": "2026-10-31", "amount": 1000, "kind": "Posted"},
+    "S2": {"as_of": "2026-11-30", "amount": 960, "kind": "Posted"}
+  },
+  "anchor": {"balance": "S1", "cutoff": "2026-10-31", "amount": 1000},
+  "coverage": {
+    "october": {"start": "2026-10-01", "end": "2026-10-31", "status": "Complete"},
+    "november": {"start": "2026-11-01", "end": "2026-11-30", "status": "Complete"}
+  },
+  "lines": [
+    {"name": "debit", "date": "2026-11-05", "amount": -40}
+  ],
+  "expected": {
+    "balance_at_anchor_using_S1": {"status": "PartiallySupported", "reasons": ["CircularAnchor"]},
+    "october_activity": {"status": "PartiallySupported", "reasons": ["UnknownOpening"]},
+    "november_activity": {"status": "Proposed", "reasons": []},
+    "balance_at_2026-11-30_using_S2": {"status": "Proposed", "reasons": [], "differences": []}
+  }
+}

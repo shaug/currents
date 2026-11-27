@@ -306,6 +306,7 @@ impl FileParser {
                         temporal,
                     }],
                 },
+                balance_kinds: vec![],
             });
             contents.push(EvidenceContentV1 {
                 digest: row_digest,

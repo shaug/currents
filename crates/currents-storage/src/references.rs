@@ -559,19 +559,7 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             });
         }
         AuthoritativeRecordV1::AddressedParseProduct(product) => {
-            if product.schema_version != 1 {
-                return Err(EngineError::version());
-            }
-            if product.id.0.is_nil()
-                || product.id == product.product.source_version_id
-                || product
-                    .product
-                    .facets
-                    .iter()
-                    .any(|facet| facet.lineage_key == product.id)
-            {
-                return Err(EngineError::invalid());
-            }
+            product.validate()?;
             let v = &v["product"];
             m.reference(&["ObservationVersion"], &v["source_version_id"], None);
             for facet in v["facets"].as_array().ok_or_else(EngineError::invalid)? {

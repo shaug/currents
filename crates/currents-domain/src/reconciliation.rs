@@ -2,12 +2,12 @@
 //! caller-selected Activity lines it uses.
 use crate::activity_predicate::ActivityPredicateV1;
 use crate::catalog::incomplete;
-use crate::dependencies::{self, ActivityInputs, ActivityScope};
+use crate::dependencies::{self, ClaimInputs, ClaimScope};
 use currents_types::{
-    AccountId, AccountScope, AccountingIntent, Amount, AuthoritativeRecordV1, ClaimDispositionV1,
-    ClaimReasonV1, Date, DateBasis, DecisionKind, DecisionPlan, Digest, DomainCommitV1,
-    DomainState, EngineError, EvidenceAllocationV1, MovementFacetV1, NoEffectV1, ObservationKind,
-    ReconciliationClaimV1, ReconciliationDispositionV1, ReconciliationKindV1,
+    AccountId, AccountScope, AccountingIntent, Amount, AuthoritativeRecordV1, BalanceKindV1,
+    ClaimDispositionV1, ClaimReasonV1, Date, DateBasis, DecisionKind, DecisionPlan, Digest,
+    DomainCommitV1, DomainState, EngineError, EvidenceAllocationV1, MovementFacetV1, NoEffectV1,
+    ObservationKind, ReconciliationClaimV1, ReconciliationDispositionV1, ReconciliationKindV1,
     ReconciliationRequestV1, ReconciliationStatus, RecordId, SourceValue, TemporalValue,
 };
 use sha2::{Digest as _, Sha256};
@@ -115,6 +115,9 @@ pub fn compare_activity_allocations(
 /// The version of the Activity comparison a claim records.
 pub const ACTIVITY_COMPARISON_VERSION: u32 = 1;
 
+/// The version of the Balance comparison a claim records.
+pub const BALANCE_COMPARISON_VERSION: u32 = 1;
+
 /// Whether a recorded claim still applies at a state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClaimApplicabilityV1 {
@@ -135,6 +138,10 @@ pub enum InvalidationReasonV1 {
     AccountMapping,
     /// Whether the named receipts report the interval complete changed.
     Coverage,
+    /// The account's opening anchor that decides the claim changed: the
+    /// anchor a Balance claim compares with, or one an Activity interval
+    /// starts on or before.
+    Anchor,
     /// A relationship the claim compared changed. Activity claims compare
     /// none; relationship claims will.
     Relationship,
@@ -148,7 +155,7 @@ pub struct ReconciliationEngine;
 impl ReconciliationEngine {
     /// Evaluate `request` at `state` into a claim that is `Proposed` or
     /// `PartiallySupported`. The request's basis must name the state's
-    /// commit. Only Activity claims are evaluated so far.
+    /// commit. Only Activity and Balance claims are evaluated so far.
     pub fn evaluate(
         state: &DomainState,
         request: &ReconciliationRequestV1,
@@ -158,9 +165,10 @@ impl ReconciliationEngine {
         }
         match request.kind {
             ReconciliationKindV1::Activity => activity(state, request),
-            ReconciliationKindV1::Balance
-            | ReconciliationKindV1::Relationship
-            | ReconciliationKindV1::Holdings => Err(EngineError::version()),
+            ReconciliationKindV1::Balance => balance(state, request),
+            ReconciliationKindV1::Relationship | ReconciliationKindV1::Holdings => {
+                Err(EngineError::version())
+            }
         }
     }
 
@@ -272,19 +280,21 @@ impl ReconciliationEngine {
         claim: RecordId,
     ) -> Result<ClaimApplicabilityV1, EngineError> {
         let recorded = Self::claim(state, claim)?;
-        let mut reasons = match recorded.kind {
-            ReconciliationKindV1::Activity
-                if recorded.comparison_version == ACTIVITY_COMPARISON_VERSION =>
-            {
-                let scope = ActivityScope::new(
-                    &recorded.scope,
-                    &recorded.cutoffs,
-                    &recorded.evidence_dependencies,
-                )?;
-                ActivityInputs::read(state, &scope)?.changes(state, &scope, recorded)?
-            }
+        let version = match recorded.kind {
+            ReconciliationKindV1::Activity => ACTIVITY_COMPARISON_VERSION,
+            ReconciliationKindV1::Balance => BALANCE_COMPARISON_VERSION,
             _ => return Err(EngineError::version()),
         };
+        if recorded.comparison_version != version {
+            return Err(EngineError::version());
+        }
+        let scope = ClaimScope::new(
+            recorded.kind,
+            &recorded.scope,
+            &recorded.cutoffs,
+            &recorded.evidence_dependencies,
+        )?;
+        let mut reasons = ClaimInputs::read(state, &scope)?.changes(state, &scope, recorded)?;
         if state.claim_invalidated(claim) {
             reasons.push(InvalidationReasonV1::RetiredDependency);
         }
@@ -372,7 +382,15 @@ fn disposition(
 /// A named statement: its movement lines and its reported balances.
 struct Statement<'a> {
     lines: Vec<(EvidenceLineIdV1, Amount, &'a TemporalValue)>,
-    balances: Vec<(Amount, &'a TemporalValue)>,
+    balances: Vec<SourceBalance<'a>>,
+}
+
+/// One reported balance: its line, amount, as-of date and kind.
+struct SourceBalance<'a> {
+    line: EvidenceLineIdV1,
+    amount: Amount,
+    temporal: &'a TemporalValue,
+    kind: BalanceKindV1,
 }
 
 impl<'a> Statement<'a> {
@@ -390,7 +408,7 @@ impl<'a> Statement<'a> {
                     if dependencies::current_version(state, *id)? != *id {
                         return Err(dependencies::stale());
                     }
-                    for facet in facets(state, *id)? {
+                    for (facet, kind) in facets(state, *id)? {
                         let SourceValue::Known(amount) = facet.amount else {
                             return Err(incomplete());
                         };
@@ -402,9 +420,12 @@ impl<'a> Statement<'a> {
                             ObservationKind::Movement => {
                                 statement.lines.push((line, amount, &facet.temporal))
                             }
-                            ObservationKind::Balance => {
-                                statement.balances.push((amount, &facet.temporal))
-                            }
+                            ObservationKind::Balance => statement.balances.push(SourceBalance {
+                                line,
+                                amount,
+                                temporal: &facet.temporal,
+                                kind,
+                            }),
                             _ => return Err(EngineError::invalid()),
                         }
                     }
@@ -419,7 +440,10 @@ impl<'a> Statement<'a> {
     /// reports exactly one amount there.
     fn balance(&self, day: Option<Date>) -> Result<Option<Amount>, EngineError> {
         let mut found: Option<Amount> = None;
-        for (amount, temporal) in &self.balances {
+        for SourceBalance {
+            amount, temporal, ..
+        } in &self.balances
+        {
             let TemporalValue::Date { civil, .. } = temporal else {
                 continue;
             };
@@ -437,21 +461,31 @@ impl<'a> Statement<'a> {
 
     fn unmapped(&self) -> bool {
         let civil = |t: &TemporalValue| matches!(t, TemporalValue::Date { .. });
-        self.lines.iter().any(|(_, _, t)| !civil(t)) || self.balances.iter().any(|(_, t)| !civil(t))
+        self.lines.iter().any(|(_, _, t)| !civil(t))
+            || self.balances.iter().any(|b| !civil(b.temporal))
     }
 }
 
 /// Activity coverage: every source line in a complete interval is allocated
 /// exactly once to a recognized leg, every recognized leg in scope is
 /// supported or excluded, and the source opening plus its lines in the
-/// interval equals its closing.
+/// interval equals its closing. An interval that starts on or before the
+/// account's anchor reaches into history the journal does not hold, so its
+/// opening is unknown whatever the source reports there.
 fn activity(
     state: &DomainState,
     request: &ReconciliationRequestV1,
 ) -> Result<ReconciliationClaimV1, EngineError> {
     let evidence = sorted(&request.evidence);
     let exclusions = sorted(&request.exclusions);
-    let scope = ActivityScope::new(&request.scope.accounts, &request.cutoffs, &evidence)?;
+    let scope = ClaimScope::new(
+        ReconciliationKindV1::Activity,
+        &request.scope.accounts,
+        &request.cutoffs,
+        &evidence,
+    )?;
+    let start = scope.start.ok_or_else(EngineError::invalid)?;
+    let inputs = ClaimInputs::read(state, &scope)?;
     let unit = dependencies::catalog(state, scope.account)?.unit_id;
     let legs = dependencies::live_legs(state)?;
     let statement = Statement::read(state, &evidence)?;
@@ -490,7 +524,8 @@ fn activity(
     let mut allocations = Vec::new();
     // The claim names legs, not recognitions: an identity-only correction
     // replaces a recognition and keeps its legs, so the claim still applies.
-    let mut accounting = BTreeSet::new();
+    // It also names the segment of an anchor that decides it.
+    let mut accounting: BTreeSet<_> = inputs.anchor.iter().map(|a| a.segment).collect();
     let mut unmapped = statement.unmapped();
     let mut unsupported = Vec::new();
     for &leg in &legs {
@@ -533,7 +568,10 @@ fn activity(
     }
     // A reported balance holds at the end of its day: the opening is the
     // day before the interval and the closing its last day.
-    let opening = statement.balance(scope.start.previous_day())?;
+    let opening = match inputs.anchor {
+        Some(_) => None,
+        None => statement.balance(start.previous_day())?,
+    };
     let closing = statement.balance(Some(scope.end))?;
     if opening.is_none() {
         reasons.push(ClaimReasonV1::UnknownOpening);
@@ -555,7 +593,7 @@ fn activity(
     for difference in compare_activity_allocations(
         &[scope.account],
         scope.basis,
-        scope.start,
+        start,
         scope.end,
         &sources,
         &allocations,
@@ -603,14 +641,142 @@ fn activity(
         scope: vec![scope.account],
         unit,
         cutoffs: request.cutoffs.clone(),
-        dependency_digest: ActivityInputs::read(state, &scope)?
-            .digest(&scope, ACTIVITY_COMPARISON_VERSION)?,
+        dependency_digest: inputs.digest(&scope, ACTIVITY_COMPARISON_VERSION)?,
         evidence_dependencies: evidence,
         decision_dependencies: vec![],
         accounting_dependencies: accounting.into_iter().collect(),
         matched_allocations,
         differences,
         exclusions,
+        status,
+        reasons,
+        reason: reason.into(),
+    };
+    claim.id = claim_id(&claim)?;
+    Ok(claim)
+}
+
+/// Balance agreement: one source-reported balance and the account's
+/// anchored journal balance agree exactly at the same boundary, unit and
+/// kind. The journal balance is the active anchor's opening plus the live
+/// recognized legs on the account through the boundary, and it counts as
+/// `Posted`. A balance of another kind, unit or as-of date is never
+/// compared, and the balance the anchor adopted cannot corroborate it.
+fn balance(
+    state: &DomainState,
+    request: &ReconciliationRequestV1,
+) -> Result<ReconciliationClaimV1, EngineError> {
+    let evidence = sorted(&request.evidence);
+    let scope = ClaimScope::new(
+        ReconciliationKindV1::Balance,
+        &request.scope.accounts,
+        &request.cutoffs,
+        &evidence,
+    )?;
+    let statement = Statement::read(state, &evidence)?;
+    let ([source], []) = (statement.balances.as_slice(), statement.lines.as_slice()) else {
+        return Err(EngineError::invalid());
+    };
+    if !request.exclusions.is_empty() {
+        return Err(EngineError::invalid());
+    }
+    let unit = dependencies::catalog(state, scope.account)?.unit_id;
+    let inputs = ClaimInputs::read(state, &scope)?;
+
+    let mut reasons = Vec::new();
+    let mut reason = |reason: ClaimReasonV1| {
+        if !reasons.contains(&reason) {
+            reasons.push(reason);
+        }
+    };
+    // The journal holds no balance before its anchor.
+    let anchor = inputs.anchor.as_ref().filter(|a| a.cutoff <= scope.end);
+    if anchor.is_none() {
+        reason(ClaimReasonV1::UnknownOpening);
+    }
+    if let Some(anchor) = &inputs.anchor
+        && anchor.adopted(state, source.line)?
+    {
+        reason(ClaimReasonV1::CircularAnchor);
+    }
+    match source.temporal {
+        TemporalValue::Date { civil, .. } if *civil == scope.end => {}
+        TemporalValue::Date { .. } => reason(ClaimReasonV1::IncompatibleBoundary),
+        _ => reason(ClaimReasonV1::MissingDateMapping),
+    }
+    match source.kind {
+        BalanceKindV1::Posted => {}
+        BalanceKindV1::Unknown => reason(ClaimReasonV1::UnknownBalanceKind),
+        BalanceKindV1::Available | BalanceKindV1::Statement => {
+            reason(ClaimReasonV1::IncompatibleBalanceKinds)
+        }
+    }
+    if source.amount.unit_id != unit {
+        reason(ClaimReasonV1::IncompatibleUnits);
+    }
+
+    // The claim names the anchor's segment and every leg it read.
+    let mut accounting: BTreeSet<_> = inputs.anchor.iter().map(|a| a.segment).collect();
+    let mut journal = anchor.map(|a| a.opening.amount);
+    for leg in dependencies::live_legs(state)? {
+        if scope.relevant(leg) {
+            accounting.insert(RecordId(leg.id.0));
+        }
+        if scope.unmapped(leg) {
+            reason(ClaimReasonV1::MissingDateMapping);
+        } else if scope.inside(leg) {
+            journal = journal.map(|j| j.checked_add(&leg.movement)).transpose()?;
+        }
+    }
+
+    // Only a comparable balance yields a difference; the anchor's own
+    // evidence compares but stays partial.
+    let mut differences = Vec::new();
+    let mut matched_allocations = Vec::new();
+    let comparable = reasons.iter().all(|r| *r == ClaimReasonV1::CircularAnchor);
+    if let (true, Some(journal)) = (comparable, journal) {
+        let difference = source
+            .amount
+            .checked_add(&journal.checked_neg()?)?
+            .normalized()?;
+        if difference.coefficient != 0 {
+            reasons.push(ClaimReasonV1::UnexplainedResidual);
+            differences.push(difference);
+        } else {
+            matched_allocations.push(EvidenceAllocationV1 {
+                observation: source.line.observation,
+                facet: source.line.facet,
+                amount: source.amount,
+            });
+        }
+    }
+
+    let (status, reason) = if reasons.is_empty() {
+        (
+            ReconciliationStatus::Proposed,
+            "The source balance equals the anchored journal balance.",
+        )
+    } else {
+        (
+            ReconciliationStatus::PartiallySupported,
+            "Balance agreement is partial for the listed reasons.",
+        )
+    };
+    let mut claim = ReconciliationClaimV1 {
+        id: RecordId(uuid::Uuid::nil()),
+        kind: ReconciliationKindV1::Balance,
+        comparison_version: BALANCE_COMPARISON_VERSION,
+        basis: request.basis.clone(),
+        scope: vec![scope.account],
+        unit,
+        cutoffs: request.cutoffs.clone(),
+        dependency_digest: inputs.digest(&scope, BALANCE_COMPARISON_VERSION)?,
+        evidence_dependencies: evidence,
+        decision_dependencies: vec![],
+        accounting_dependencies: accounting.into_iter().collect(),
+        matched_allocations,
+        differences,
+        exclusions: vec![],
         status,
         reasons,
         reason: reason.into(),
@@ -627,27 +793,35 @@ fn sorted(ids: &[RecordId]) -> Vec<RecordId> {
 }
 
 /// The facets that parse products report for `observation`, one per lineage
-/// key. Products that disagree about one facet are refused.
+/// key, each with the balance kind the products report. A version-1 or
+/// unaddressed product reports every kind as `Unknown`. Products that
+/// disagree about one facet or its kind are refused, so a facet's kind never
+/// changes once a product reports it.
 fn facets(
     state: &DomainState,
     observation: RecordId,
-) -> Result<Vec<&MovementFacetV1>, EngineError> {
-    let mut facets = BTreeMap::<RecordId, &MovementFacetV1>::new();
+) -> Result<Vec<(&MovementFacetV1, BalanceKindV1)>, EngineError> {
+    let mut facets = BTreeMap::<RecordId, (&MovementFacetV1, BalanceKindV1)>::new();
     for record in state.records.values() {
-        let product = match record {
+        let (product, addressed) = match record {
             AuthoritativeRecordV1::AddressedParseProduct(p)
                 if p.product.source_version_id == observation =>
             {
                 p.validate()?;
-                &p.product
+                (&p.product, Some(p))
             }
-            AuthoritativeRecordV1::ParseProduct(p) if p.source_version_id == observation => p,
+            AuthoritativeRecordV1::ParseProduct(p) if p.source_version_id == observation => {
+                (p, None)
+            }
             _ => continue,
         };
         for facet in &product.facets {
+            let kind = addressed.map_or(BalanceKindV1::Unknown, |p| {
+                p.balance_kind(facet.lineage_key)
+            });
             if facets
-                .insert(facet.lineage_key, facet)
-                .is_some_and(|old| old != facet)
+                .insert(facet.lineage_key, (facet, kind))
+                .is_some_and(|old| old != (facet, kind))
             {
                 return Err(EngineError::invalid());
             }
