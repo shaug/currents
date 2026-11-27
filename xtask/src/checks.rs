@@ -407,7 +407,108 @@ fn core(msrv: bool, manifest: Option<&Path>) -> Result<Value> {
         json!({"compiler":version.trim(),"commands":evidence,"driver":driver,"host":env::consts::OS,"arch":env::consts::ARCH}),
     )
 }
+/// Every CUR-016 test by package and target. Later CUR-016 leaves add theirs.
+const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
+    (
+        "currents-domain",
+        "cur_016",
+        &[
+            "cur_016_1_replacement_proves_old_boundary",
+            "cur_016_1_unresolved_residual_blocks_without_plug",
+            "cur_016_anchor_correction_at_same_boundary",
+            "cur_016_2_overlapping_active_segments_rejected",
+            "cur_016_replacement_rejects_bad_drafts",
+            "cur_016_replay_readmits_only_the_exact_plan",
+            "cur_016_replacement_refuses_cross_account_and_dependents",
+            "cur_016_1_cross_account_backfill",
+            "cur_016_1_post_cutoff_activity_untouched",
+            "cur_016_1_old_inclusion_map_moves",
+            "cur_016_1_partial_or_changed_reemission_refused",
+            "cur_016_1_cross_account_residual_blocks",
+            "cur_016_1_cross_account_replay",
+            "cur_016_claims_outside_change_stay_current",
+            "cur_016_identity_correction_and_claims",
+            "cur_016_organization_on_stable_leg_survives",
+            "cur_016_organization_on_retired_leg_asks_owner",
+            "cur_016_unsupported_dependents_still_refuse",
+            "cur_016_reinterpret_deposit_as_income",
+            "cur_016_reinterpret_split_purchase",
+            "cur_016_reinterpret_refuses_leg_changes",
+            "cur_016_reinterpretation_invalidates_claims_in_scope",
+            "cur_016_reinterpretation_keeps_organization",
+            "cur_016_4_20001_operations_fail_visibly",
+            "cur_016_4_commit_record_limit",
+        ],
+    ),
+    (
+        "currents-service",
+        "cur_016",
+        &[
+            "cur_016_2_replayed_retirement_blocks_correction",
+            "cur_016_durable_correction_rebuilds_immutable_lineage",
+            "cur_016_segment_commit_reopens_and_rebuilds",
+            "cur_016_segment_commit_rejects_stale_or_altered_plans",
+            "cur_016_segment_cancel_and_retry",
+            "cur_016_3_2024_backfill_after_2026_declaration",
+            "cur_016_1_encrypted_cross_account_commit",
+            "cur_016_backfill_invalidates_claim_in_scope",
+            "cur_016_replay_checks_invalidations",
+            "cur_016_reinterpretation_encrypted_commit",
+            "cur_016_4_1200_operation_replacement_is_atomic",
+        ],
+    ),
+    (
+        "currents-service",
+        "cur_016_correction_chain",
+        &[
+            "cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle",
+            "cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal",
+            "cur_016_2_reinterpreted_tip_chain",
+        ],
+    ),
+];
+/// A suite qualifies only when its listed tests are exactly the required ones
+/// and every one of them ran and passed. An ignored test fails the suite.
+fn cur_016_suite(target: &str, required: &[&str], list: &str, run: &str) -> Result<()> {
+    let listed: BTreeSet<_> = list
+        .lines()
+        .filter_map(|line| line.strip_suffix(": test"))
+        .collect();
+    if listed != required.iter().copied().collect() {
+        return Err(format!("CUR016 inventory mismatch in {target}: {list}"));
+    }
+    if !run.contains(&format!("{} passed; 0 failed; 0 ignored;", required.len()))
+        || required
+            .iter()
+            .any(|test| !run.contains(&format!("test {test} ... ok")))
+    {
+        return Err(format!(
+            "CUR016 incomplete qualification in {target}: {run}"
+        ));
+    }
+    Ok(())
+}
+fn ticket_cur_016() -> Result<Value> {
+    let mut evidence = Vec::new();
+    for (package, target, required) in CUR_016_SUITES {
+        let selector = ["test", "--locked", "-p", package, "--test", target];
+        let list = cargo(&[&selector[..], &["--", "--list"]].concat())?;
+        let run = cargo(&selector)?;
+        cur_016_suite(&format!("{package}/{target}"), required, &list, &run)?;
+        evidence.push(json!({"package":package,"target":target,"assertions":required,"output_sha256":sha(run.as_bytes())}));
+    }
+    Ok(json!({
+        "ticket":"CUR-016",
+        "suites":evidence,
+        "fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s4/date-floor.json")).map_err(|e| e.to_string())?),
+        "reinterpretation_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s5/reinterpretation.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic correction and segment replacement through encrypted C04/C05/C06 and the feature-gated trusted-host path; no command route or production activation"
+    }))
+}
 fn ticket(name: &str) -> Result<Value> {
+    if name == "CUR-016" {
+        return ticket_cur_016();
+    }
     if name == "CUR-044" {
         return crate::financekit_gate::ticket();
     }
@@ -1118,6 +1219,50 @@ pub fn run(args: Vec<String>) -> Result<()> {
         serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
     );
     result.map(|_| ())
+}
+
+#[cfg(test)]
+mod cur_016_gate_tests {
+    use super::cur_016_suite;
+    const REQUIRED: [&str; 2] = ["cur_016_a", "cur_016_b"];
+    fn list(names: &[&str]) -> String {
+        let mut text: String = names.iter().map(|name| format!("{name}: test\n")).collect();
+        text.push_str(&format!("\n{} tests, 0 benchmarks\n", names.len()));
+        text
+    }
+    fn run(results: &[(&str, &str)]) -> String {
+        let count = |outcome| results.iter().filter(|(_, r)| *r == outcome).count();
+        let mut text: String = results
+            .iter()
+            .map(|(name, outcome)| format!("test {name} ... {outcome}\n"))
+            .collect();
+        text.push_str(&format!(
+            "\ntest result: ok. {} passed; {} failed; {} ignored; 0 measured; 0 filtered out\n",
+            count("ok"),
+            count("FAILED"),
+            count("ignored")
+        ));
+        text
+    }
+    #[test]
+    fn cur_016_gate_requires_full_inventory() {
+        let check = |listed: &[&str], results: &[(&str, &str)]| {
+            cur_016_suite("synthetic", &REQUIRED, &list(listed), &run(results))
+        };
+        let passing = [("cur_016_a", "ok"), ("cur_016_b", "ok")];
+        assert_eq!(check(&REQUIRED, &passing), Ok(()));
+        // A listed test renamed, or missing from the target.
+        let renamed = ["cur_016_a", "cur_016_b_renamed"];
+        let renamed_run = [("cur_016_a", "ok"), ("cur_016_b_renamed", "ok")];
+        assert!(check(&renamed, &renamed_run).is_err());
+        assert!(check(&["cur_016_a"], &passing[..1]).is_err());
+        // An extra test that the inventory does not list.
+        let extra = ["cur_016_a", "cur_016_b", "cur_016_c"];
+        assert!(check(&extra, &[passing[0], passing[1], ("cur_016_c", "ok")]).is_err());
+        // A listed test that is ignored or fails.
+        assert!(check(&REQUIRED, &[passing[0], ("cur_016_b", "ignored")]).is_err());
+        assert!(check(&REQUIRED, &[passing[0], ("cur_016_b", "FAILED")]).is_err());
+    }
 }
 
 #[cfg(test)]

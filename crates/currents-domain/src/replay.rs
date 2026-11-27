@@ -74,12 +74,18 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::RelationshipCapture(v) => Some(v.id),
                 AuthoritativeRecordV1::RelationshipParseRevision(v) => Some(v.id),
                 AuthoritativeRecordV1::RecognitionCorrectionRevision(v) => {
-                    if v.schema_version != 1 {
+                    if v.schema_version != v.remap_disposition.schema_version() {
                         return Err(EngineError::version());
                     }
                     Some(v.id)
                 }
                 AuthoritativeRecordV1::AccountingSegment(v) => Some(v.id),
+                AuthoritativeRecordV1::SegmentReemission(v) => {
+                    if v.schema_version != 1 {
+                        return Err(EngineError::version());
+                    }
+                    Some(v.id)
+                }
                 // These owners have not delivered semantic validation yet. Full
                 // structural closure alone must never certify financial trust.
                 AuthoritativeRecordV1::Association(_)
@@ -116,6 +122,9 @@ impl ReplayEngine {
         state.dataset_policies = projection.dataset_policies;
         state.through = commit.seq;
         state.domain_digest = commit.digest;
+        state
+            .invalidated
+            .extend(commit.command_result.effects.invalidations.iter().copied());
         Ok(())
     }
 }

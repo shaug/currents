@@ -521,6 +521,59 @@ impl AccountingAdapter {
         {
             return Err(EngineError::invalid());
         }
+        // A successor segment reverses its prior opening first, then emits its
+        // new opening and each backfill in plan order. Each transfer
+        // recognition in its closure is then reversed once and issued again.
+        let mut successors = commit.records.iter().filter_map(|r| match r {
+            AuthoritativeRecordV1::AccountingSegment(s) if s.prior_segment.is_some() => Some(s),
+            _ => None,
+        });
+        let successor = successors.next();
+        if let Some(segment) = successor {
+            let Some((retired, closure)) = segment.replacement_closure.split_first() else {
+                return Err(EngineError::invalid());
+            };
+            let reemitted: Vec<_> = commit
+                .records
+                .iter()
+                .filter_map(|r| match r {
+                    AuthoritativeRecordV1::SegmentReemission(link) => {
+                        Some((link.original, link.replacement))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if !reemitted.iter().map(|(original, _)| original).eq(closure) {
+                return Err(EngineError::invalid());
+            }
+            let expected = std::iter::once((*retired, true))
+                .chain(std::iter::once((segment.opening, false)))
+                .chain(segment.included_activity.iter().map(|id| (*id, false)))
+                .chain(
+                    reemitted
+                        .iter()
+                        .flat_map(|(original, again)| [(*original, true), (*again, false)]),
+                )
+                .map(Some);
+            let actual = batch
+                .into_iter()
+                .flat_map(|b| &b.operations)
+                .map(|op| match op {
+                    FrozenNativeOperationV1::Entry(e) => {
+                        Some((e.recognition_id, e.reverses.is_some()))
+                    }
+                    _ => None,
+                });
+            if successors.next().is_some() || !actual.eq(expected) {
+                return Err(EngineError::invalid());
+            }
+        } else if commit
+            .records
+            .iter()
+            .any(|r| matches!(r, AuthoritativeRecordV1::SegmentReemission(_)))
+        {
+            return Err(EngineError::invalid());
+        }
         let associations: Vec<_> = commit
             .records
             .iter()
@@ -536,6 +589,8 @@ impl AccountingAdapter {
                     return Err(EngineError::invalid());
                 }
             }
+            // A segment replacement also reverses the opening it retires.
+            expected.extend(successor.iter().flat_map(|s| &s.replacement_closure));
             let mut actual = BTreeSet::new();
             for entry in batch
                 .into_iter()

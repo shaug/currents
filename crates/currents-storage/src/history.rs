@@ -7,7 +7,6 @@ use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use std::collections::BTreeMap;
 
 const MAX_COMMIT: usize = 64 * 1_048_576;
-const MAX_ITEMS: usize = 20_000;
 const MAX_OBSERVATIONS: usize = 10_000;
 // Shared with the private schema query-plan regression so it explains the reader SQL.
 pub(crate) const ITEM_REFERENCE_COUNT: &str =
@@ -19,14 +18,15 @@ pub(crate) const ITEM_CONTENT_COUNT: &str =
     "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
 pub(crate) const ITEM_CONTENTS: &str =
     "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
-// The broad command-effect family has 30 slots. Only values are bound; the
+// The broad command-effect family has 31 slots. Only values are bound; the
 // SQLite worker handles the same indexed per-kind existence checks together.
-const WIDE_COMMAND_EFFECT_KINDS: usize = 30;
+const WIDE_COMMAND_EFFECT_KINDS: usize = 31;
 const WIDE_COMMAND_EFFECT_MATCHES: &str = r#"
 WITH permitted(kind) AS (VALUES
     (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
     (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
-    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?)
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
+    (?)
 )
 SELECT count(*) FROM permitted AS p WHERE EXISTS(
     SELECT 1 FROM currents_definitions AS d
@@ -94,7 +94,7 @@ fn item_counts_within_limits(
     records: &[AuthoritativeRecordV1],
     decisions: &[DecisionEnvelopeV1],
 ) -> bool {
-    records.len().saturating_add(decisions.len()) <= MAX_ITEMS
+    records.len().saturating_add(decisions.len()) <= MAX_COMMIT_ITEMS
         && records
             .iter()
             .filter(|r| matches!(r, AuthoritativeRecordV1::ObservationVersion(_)))

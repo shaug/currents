@@ -50,6 +50,7 @@ const RECORDS: &[&str] = &[
     "Recognition",
     "RecognitionCorrectionRevision",
     "AccountingSegment",
+    "SegmentReemission",
     "ReconciliationClaim",
     "Organization",
     "Rule",
@@ -598,8 +599,14 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             }
         }
         AuthoritativeRecordV1::RecognitionCorrectionRevision(r) => {
-            if r.schema_version != 1 {
+            if r.schema_version != r.remap_disposition.schema_version() {
                 return Err(EngineError::version());
+            }
+            if let RecognitionCorrectionRemapV1::ReinterpretedStableLegs(_) = &r.remap_disposition {
+                let new = &v["remap_disposition"]["ReinterpretedStableLegs"];
+                m.policy(&new["governing_policy"]);
+                m.reference(&["Account"], &new["unresolved_account"], None);
+                m.many(&["Account"], &new["changed_accounts"]);
             }
             if r.prior_recognition == r.replacement_recognition || r.reason.trim().is_empty() {
                 return Err(EngineError::invalid());
@@ -620,6 +627,18 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.many(&["Recognition"], &v["included_activity"]);
             m.many(&["Recognition"], &v["replacement_closure"]);
             m.many(&["Account"], &v["approved_accounts"]);
+        }
+        AuthoritativeRecordV1::SegmentReemission(r) => {
+            if r.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if r.original == r.replacement {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["AccountingSegment"], &v["segment"], None);
+            m.reference(&["Recognition"], &v["original"], None);
+            m.reference(&["Recognition"], &v["replacement"], None);
+            m.define("SegmentReemissionOriginal", &v["original"], 0, false);
         }
         AuthoritativeRecordV1::ReconciliationClaim(_) => {
             m.many(&["Account"], &v["scope"]);

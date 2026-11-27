@@ -10,6 +10,14 @@ pub(crate) fn validate_transition(
     next: &DomainState,
     commit: &DomainCommitV1,
 ) -> Result<(), EngineError> {
+    // A successor segment owns its whole commit: the plan derived again from
+    // the prior prefix must match every record.
+    if let Some(successor) = commit.records.iter().find_map(|record| match record {
+        AuthoritativeRecordV1::AccountingSegment(s) if s.prior_segment.is_some() => Some(s),
+        _ => None,
+    }) {
+        return crate::segments::readmit(prior, next, commit, successor);
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {
@@ -55,16 +63,23 @@ pub(crate) fn validate_transition(
                 {
                     return Err(EngineError::invalid());
                 }
-                Some(crate::correction::CorrectionEngine::correct_durable(
+                // A reinterpretation is derived again under the governing
+                // policy and unresolved account its revision records.
+                let plan = crate::correction::CorrectionEngine::readmit(
                     prior,
-                    revision.id,
+                    revision,
                     &CorrectionV1 {
                         active_recognition: revision.prior_recognition,
                         replacement: vec![replacement.clone()],
                         remapping: vec![],
                         reason: revision.reason.clone(),
                     },
-                )?)
+                )?;
+                // The commit records exactly the invalidations derived again.
+                if commit.command_result.effects.invalidations != plan.invalidations {
+                    return Err(EngineError::invalid());
+                }
+                Some(plan)
             }
             AuthoritativeRecordV1::ActivityAdoption(adoption) => {
                 Some(RecognitionEngine::adopt(prior, &restore(next, adoption)?)?)
@@ -173,7 +188,8 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::RelationshipParseRevision(_)
             | AuthoritativeRecordV1::AssociationRevision(_)
             | AuthoritativeRecordV1::PendingExpiry(_)
-            | AuthoritativeRecordV1::AccountingSegment(_) => true,
+            | AuthoritativeRecordV1::AccountingSegment(_)
+            | AuthoritativeRecordV1::SegmentReemission(_) => true,
             AuthoritativeRecordV1::FinancialLeg(l) => !l.allocations.is_empty(),
             AuthoritativeRecordV1::Recognition(r) => {
                 !r.evidence_allocations.is_empty() || !r.leg_ids.is_empty()

@@ -344,6 +344,38 @@ impl IdentityEngine {
         })
     }
 }
+/// The current revision of each association family, by root.
+pub(crate) fn current_heads(
+    state: &DomainState,
+) -> Result<BTreeMap<RecordId, AssociationRevisionV1>, EngineError> {
+    let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
+    for record in state.records.values() {
+        if let AuthoritativeRecordV1::AssociationRevision(r) = record {
+            families.entry(r.root).or_default().push(r.clone());
+        }
+    }
+    let mut heads = BTreeMap::new();
+    for (root, revisions) in families {
+        let head = IdentityEngine::revision_chain(&revisions, root)?
+            .pop()
+            .ok_or_else(EngineError::invalid)?;
+        heads.insert(root, head);
+    }
+    Ok(heads)
+}
+/// The captured facts these current family revisions allocate. Only current
+/// heads own capacity; prior snapshots never consume it a second time.
+pub(crate) fn held_facts<'a>(
+    state: &DomainState,
+    heads: impl IntoIterator<Item = &'a AssociationRevisionV1>,
+) -> Result<BTreeSet<String>, EngineError> {
+    let mut held = BTreeSet::new();
+    for edge in heads.into_iter().flat_map(|h| &h.captured_allocations) {
+        let fact = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
+        held.insert(fact.fact_key);
+    }
+    Ok(held)
+}
 impl IdentityEngine {
     pub fn associate(
         state: &DomainState,
@@ -363,18 +395,23 @@ impl IdentityEngine {
     /// this final audit must not reinterpret old evidence using the latest parser.
     pub fn audit(state: &DomainState) -> Result<(), EngineError> {
         let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
+        let mut reemissions = Vec::new();
         for (id, record) in &state.records {
-            if let AuthoritativeRecordV1::AssociationRevision(revision) = record {
-                if *id != revision.id {
-                    return Err(conflict());
+            match record {
+                AuthoritativeRecordV1::AssociationRevision(revision) => {
+                    if *id != revision.id {
+                        return Err(conflict());
+                    }
+                    families
+                        .entry(revision.root)
+                        .or_default()
+                        .push(revision.clone());
                 }
-                families
-                    .entry(revision.root)
-                    .or_default()
-                    .push(revision.clone());
+                AuthoritativeRecordV1::SegmentReemission(link) => reemissions.push(link),
+                _ => {}
             }
         }
-        if families.is_empty() {
+        if families.is_empty() && reemissions.is_empty() {
             return Ok(());
         }
         let index = state.accounting.as_ref().ok_or_else(conflict)?;
@@ -382,6 +419,30 @@ impl IdentityEngine {
             || index.prefix.domain_digest != state.domain_digest
         {
             return Err(conflict());
+        }
+        // A segment replacement reversed each original and issued it again.
+        // One family revision retires the original and names the re-emission,
+        // which the family accepts as current only with identical economics.
+        for link in reemissions {
+            let (
+                Some(AuthoritativeRecordV1::Recognition(original)),
+                Some(AuthoritativeRecordV1::Recognition(again)),
+            ) = (
+                state.records.get(&RecordId(link.original.0)),
+                state.records.get(&RecordId(link.replacement.0)),
+            )
+            else {
+                return Err(conflict());
+            };
+            if !index.reversed.contains(&original.id)
+                || !crate::correction::same_economics(original, again)
+                || !families.values().flatten().any(|revision| {
+                    revision.retired_recognitions.contains(&original.id)
+                        && revision.recognitions.contains(&again.id)
+                })
+            {
+                return Err(conflict());
+            }
         }
         let mut facts = BTreeMap::new();
         let mut active = BTreeSet::new();

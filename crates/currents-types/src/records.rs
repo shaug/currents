@@ -1,6 +1,6 @@
 //! Foundational record shapes. Domain validation and replay belong to their owners.
 use crate::{schema::Schema, *};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 choices!(UnitKind {
     Currency,
     Security,
@@ -287,15 +287,55 @@ dto!(RecognitionCorrectionRevisionV1 {
     reason: String,
     remap_disposition: RecognitionCorrectionRemapV1
 });
+/// What a correction does to its recognition's interpretation. The legs stay
+/// in both cases. A version-1 revision keeps the interpretation and changes
+/// identities only; a version-2 revision records a new interpretation.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RecognitionCorrectionRemapV1 {
     UnchangedStableLegs,
+    ReinterpretedStableLegs(StableLegsReinterpretationV1),
+}
+impl RecognitionCorrectionRemapV1 {
+    /// The revision schema version this disposition requires.
+    pub fn schema_version(&self) -> u32 {
+        match self {
+            Self::UnchangedStableLegs => 1,
+            Self::ReinterpretedStableLegs(_) => 2,
+        }
+    }
 }
 impl Schema for RecognitionCorrectionRemapV1 {
     fn schema() -> serde_json::Value {
-        serde_json::json!({"enum": ["UnchangedStableLegs"]})
+        serde_json::json!({"oneOf": [
+            {"const": "UnchangedStableLegs"},
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ReinterpretedStableLegs"],
+                "properties": {
+                    "ReinterpretedStableLegs": StableLegsReinterpretationV1::schema()
+                }
+            }
+        ]})
     }
 }
+// The new interpretation of a recognition whose legs stay: the exact
+// governing policy, the unresolved-equity account it names, if any, and every
+// account whose balance the correction moves on some date.
+dto!(StableLegsReinterpretationV1 {
+    governing_policy: PolicyReferenceV1,
+    unresolved_account: Option<AccountId>,
+    changed_accounts: Vec<AccountId>
+});
+// One transfer recognition that a segment replacement reversed and issued
+// again with fresh recognition and posting IDs and unchanged economics.
+dto!(SegmentReemissionV1 {
+    id: RecordId,
+    schema_version: u32,
+    segment: RecordId,
+    original: RecognitionId,
+    replacement: RecognitionId
+});
 dto!(AccountingSegmentV1 { id:RecordId, component:RecordId, prior_segment:Option<RecordId>, opening:RecognitionId, included_activity:Vec<RecognitionId>, replacement_closure:Vec<RecognitionId>, approved_accounts:Vec<AccountId>, residual_disposition:SourceValue<String> });
 dto!(ReconciliationClaimV1 { id:RecordId, comparison_type:String, scope:Vec<AccountId>, cutoffs:DateScope, evidence_dependencies:Vec<RecordId>, decision_dependencies:Vec<RecordId>, dependency_digest:Digest, matched_allocations:Vec<EvidenceAllocationV1>, differences:Vec<Amount>, exclusions:Vec<RecordId>, status:ReconciliationStatus, reason:String });
 dto!(OrganizationRecordV1 { id:RecordId, version:u32, kind:OrganizationKind, targets:Vec<RecordId>, parent:Option<RecordId>, text:String, allocations:Vec<EvidenceAllocationV1>, supersedes:Option<RecordId> });
@@ -305,7 +345,7 @@ dto!(ScenarioV1 { id:RecordId, version:u32, basis:ReadBasis, commitments:Vec<Com
 dto!(ForecastPointV1 { account_id:AccountId, at:TemporalValue, amount:SourceValue<Amount>, uncertainty:Vec<String> });
 dto!(DecisionEnvelopeV1 { id:RecordId, commit:CommitSeq, item_position:u32, decision_type:DecisionKind, schema_version:u32, actor:RecordId, authority:AuthorityKind, grant_id:Option<GrantId>, command_id:CommandId, command_digest:Digest, references:Vec<RecordId>, recorded_time:RecordedInstant, adopted_result:Vec<RecordId>, policy:PolicyReferenceV1, corrections:Vec<RecordId>, supersedes:Vec<RecordId> });
 tagged!(AuthoritativeRecordV1 {
- DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1)
+ DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), SegmentReemission(SegmentReemissionV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1)
 });
 choices!(CommandState {
     Committed,
@@ -336,6 +376,21 @@ pub struct DomainState {
     pub accounting: Option<AccountingIndexV1>,
     pub records: BTreeMap<RecordId, AuthoritativeRecordV1>,
     pub through: CommitSeq,
+    /// Every record a committed result invalidated through this prefix.
+    pub invalidated: BTreeSet<RecordId>,
+}
+impl DomainState {
+    /// A claim's status at this prefix: `Invalidated` from the commit whose
+    /// result invalidated it, otherwise the status its record holds.
+    pub fn claim_status(&self, id: RecordId) -> Option<ReconciliationStatus> {
+        let Some(AuthoritativeRecordV1::ReconciliationClaim(claim)) = self.records.get(&id) else {
+            return None;
+        };
+        if self.invalidated.contains(&id) {
+            return Some(ReconciliationStatus::Invalidated);
+        }
+        Some(claim.status)
+    }
 }
 impl Schema for Health {
     fn schema() -> serde_json::Value {

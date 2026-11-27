@@ -285,18 +285,35 @@ fn component(state: &DomainState, account: AccountId) -> Result<&AccountComponen
     }
     Ok(c)
 }
+/// Which opening and boundary rules apply to one adoption's money.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Admission {
+    /// A new adoption: initial-opening and activity-boundary rules apply.
+    Ordinary,
+    /// A segment replacement draft. The replacement checks its own window.
+    Replacement,
+    /// Retained history, re-validated against its own prefix.
+    Audit,
+}
 fn monetary(
     state: &DomainState,
     request: &ActivityRequestV1,
-    admission: bool,
+    mode: Admission,
 ) -> Result<Option<RecognitionV1>, EngineError> {
     let Some(terms) = &request.financial else {
         return Ok(None);
     };
-    crate::segments::initial(state, request, admission)?;
-    if admission {
-        crate::segments::activity_boundary(state, request)?;
+    match mode {
+        Admission::Ordinary => {
+            crate::segments::initial(state, request, true)?;
+            crate::segments::activity_boundary(state, request)?;
+        }
+        Admission::Audit => {
+            crate::segments::initial(state, request, false)?;
+        }
+        Admission::Replacement => {}
     }
+    let admission = mode != Admission::Audit;
     let index = state.accounting.as_ref().ok_or_else(incomplete)?;
     if index.prefix.through != state.through || !index.calendar_declared {
         return Err(incomplete());
@@ -385,6 +402,9 @@ fn monetary(
                 }
                 ControlRoleV1::OpeningEquity if terms.opening.is_some() => {}
                 ControlRoleV1::OpeningEquity => return Err(EngineError::invalid()),
+                ControlRoleV1::Clearing
+                    if terms.opening.is_none()
+                        && clearing_allowed(state, terms.recognition_id, mode) => {}
                 // Complete associations own quantified clearing/payroll terms;
                 // enabling catalog roles does not relax the old activity route.
                 ControlRoleV1::Clearing | ControlRoleV1::TaxPrepayment => {
@@ -454,6 +474,68 @@ fn monetary(
         bookkeeping_date: terms.bookkeeping_date.clone(),
         date_policy: terms.date_policy.clone(),
     }))
+}
+/// The recognition that `request` adopts again, by the rules of a new
+/// adoption when `admission` holds, otherwise by the rules for retained
+/// history. A correction uses it to check a new interpretation of legs that
+/// are already adopted, so their evidence ownership is not checked again.
+pub(crate) fn readopt(
+    state: &DomainState,
+    request: &ActivityRequestV1,
+    admission: bool,
+) -> Result<Option<RecognitionV1>, EngineError> {
+    validate(state, request, admission)?;
+    let mode = if admission {
+        Admission::Ordinary
+    } else {
+        Admission::Audit
+    };
+    monetary(state, request, mode)
+}
+/// The external postings are the legs exactly: one posting per leg, with its
+/// account, amount, effective date and posting date.
+pub(crate) fn postings_are_legs(
+    state: &DomainState,
+    legs: &[AdoptedLegV1],
+    postings: &[PostingV1],
+) -> Result<bool, EngineError> {
+    let mut unmatched = Vec::new();
+    for item in legs {
+        let leg = &item.leg;
+        let movement = leg.movement.normalized()?;
+        unmatched.push((leg.account_id, movement, &leg.effective, &leg.posting));
+    }
+    for posting in postings {
+        let c = component(state, posting.account_id)?;
+        if CatalogEngine::current(state, c.id)?.origin != AccountOriginV1::External {
+            continue;
+        }
+        let amount = posting.amount.normalized()?;
+        let key = (
+            posting.account_id,
+            amount,
+            &posting.effective,
+            &posting.posting,
+        );
+        let Some(at) = unmatched.iter().position(|leg| *leg == key) else {
+            return Ok(false);
+        };
+        unmatched.swap_remove(at);
+    }
+    Ok(unmatched.is_empty())
+}
+/// A backfilled transfer leg posts to clearing. Only a segment replacement,
+/// which joins that leg to a transfer family, may add one. Retained history
+/// keeps it only while an association revision names its recognition.
+fn clearing_allowed(state: &DomainState, recognition: RecognitionId, mode: Admission) -> bool {
+    match mode {
+        Admission::Ordinary => false,
+        Admission::Replacement => true,
+        Admission::Audit => state.records.values().any(|r| {
+            matches!(r, AuthoritativeRecordV1::AssociationRevision(a)
+                if a.recognitions.contains(&recognition))
+        }),
+    }
 }
 pub(crate) fn restore(
     state: &DomainState,
@@ -532,6 +614,16 @@ fn consumed(
     let mut owners = BTreeMap::<(RecordId, RecordId), Vec<&ActivityAdoptionV1>>::new();
     let mut legs = BTreeSet::new();
     let mut recognitions = BTreeSet::new();
+    // A replaced opening no longer owns its inclusion map; the replacement
+    // moved each of those facts to a backfill or to the new opening.
+    let retired: BTreeSet<RecordId> = state
+        .records
+        .values()
+        .filter_map(|r| match r {
+            AuthoritativeRecordV1::AccountingSegment(s) => s.prior_segment,
+            _ => None,
+        })
+        .collect();
     for a in adoptions {
         for leg in &a.legs {
             if !legs.insert(*leg) {
@@ -569,12 +661,12 @@ fn consumed(
                 return Err(EngineError::invalid());
             }
         }
-        for source in a
-            .facets
-            .iter()
-            .map(|f| &f.source)
-            .chain(a.opening.iter().flat_map(|o| o.included_activity.iter()))
-        {
+        for source in a.facets.iter().map(|f| &f.source).chain(
+            a.opening
+                .iter()
+                .filter(|o| !retired.contains(&o.segment_id))
+                .flat_map(|o| o.included_activity.iter()),
+        ) {
             owners.entry(fact(state, source)?).or_default().push(a);
         }
     }
@@ -615,9 +707,32 @@ impl RecognitionEngine {
         state: &DomainState,
         request: &ActivityRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
+        let draft = Self::draft(state, request, Admission::Ordinary)?;
+        let mut all = Self::audit(state)?;
+        all.push(draft.adoption);
+        consumed(&prospective(state, &draft.records), &all)?;
+        Ok(DecisionPlan {
+            records: draft.records,
+            invalidations: vec![request.event.id],
+            accounting: match draft.recognition {
+                Some(r) => AccountingIntent::Recognition(r),
+                None => AccountingIntent::NoEffect(NoEffectV1 {
+                    reason: "Explicit pending exposure; no native money".into(),
+                }),
+            },
+        })
+    }
+    fn draft(
+        state: &DomainState,
+        request: &ActivityRequestV1,
+        mode: Admission,
+    ) -> Result<Draft, EngineError> {
         let facets = validate(state, request, true)?;
-        let recognition = monetary(state, request, true)?;
-        let segment = crate::segments::initial(state, request, true)?;
+        let recognition = monetary(state, request, mode)?;
+        let segment = match mode {
+            Admission::Ordinary => crate::segments::initial(state, request, true)?,
+            _ => None,
+        };
         let ids = [request.adoption_id, request.event.id]
             .into_iter()
             .chain(request.event.legs.iter().map(|id| RecordId(id.0)))
@@ -629,7 +744,6 @@ impl RecognitionEngine {
                 return Err(duplicate());
             }
         }
-        let existing = Self::audit(state)?;
         // Older delivered recognitions may precede ActivityAdoption. Their legs
         // and explicit allocations remain owned; the new route cannot bypass them.
         for record in state.records.values() {
@@ -685,29 +799,13 @@ impl RecognitionEngine {
         if let Some(segment) = segment {
             records.push(AuthoritativeRecordV1::AccountingSegment(segment));
         }
-        let accounting = match recognition {
-            Some(r) => {
-                records.push(AuthoritativeRecordV1::Recognition(r.clone()));
-                AccountingIntent::Recognition(r)
-            }
-            None => AccountingIntent::NoEffect(NoEffectV1 {
-                reason: "Explicit pending exposure; no native money".into(),
-            }),
-        };
-        // Check prospective immutable ownership without mutating the caller state.
-        let mut prospective = state.clone();
-        for record in &records {
-            if let AuthoritativeRecordV1::FinancialLeg(l) = record {
-                prospective.records.insert(RecordId(l.id.0), record.clone());
-            }
+        if let Some(r) = &recognition {
+            records.push(AuthoritativeRecordV1::Recognition(r.clone()));
         }
-        let mut all = existing;
-        all.push(adoption);
-        consumed(&prospective, &all)?;
-        Ok(DecisionPlan {
+        Ok(Draft {
+            adoption,
             records,
-            invalidations: vec![request.event.id],
-            accounting,
+            recognition,
         })
     }
     pub fn audit(state: &DomainState) -> Result<Vec<ActivityAdoptionV1>, EngineError> {
@@ -741,7 +839,7 @@ impl RecognitionEngine {
             {
                 return Err(EngineError::invalid());
             }
-            if let Some(r) = monetary(state, &request, false)? {
+            if let Some(r) = monetary(state, &request, Admission::Audit)? {
                 if lineage_owners.get(&r.lineage).map(Vec::as_slice) != Some([r.id].as_slice()) {
                     return Err(duplicate());
                 }
@@ -765,4 +863,72 @@ impl RecognitionEngine {
             .filter(|a| a.status == ActivityStatusV1::Pending && !consumed.contains(&a.id))
             .collect())
     }
+}
+/// One adoption's records. Its evidence ownership is checked separately,
+/// against every other adoption.
+struct Draft {
+    adoption: ActivityAdoptionV1,
+    records: Vec<AuthoritativeRecordV1>,
+    recognition: Option<RecognitionV1>,
+}
+/// Check prospective immutable ownership without mutating the caller state.
+fn prospective(state: &DomainState, records: &[AuthoritativeRecordV1]) -> DomainState {
+    let mut prospective = state.clone();
+    for record in records {
+        if let AuthoritativeRecordV1::FinancialLeg(l) = record {
+            prospective.records.insert(RecordId(l.id.0), record.clone());
+        }
+    }
+    prospective
+}
+/// Plan the posted drafts of one segment replacement against the same prior
+/// prefix. Identities and evidence ownership are checked across the drafts
+/// and against retained history; the replacement checks dates and accounts.
+/// The `retired` opening adoption no longer owns its inclusion map. The
+/// `added` identities the replacement adds beyond its drafts must differ from
+/// every draft identity and from each other.
+pub(crate) fn adopt_drafts<'a>(
+    state: &DomainState,
+    requests: impl IntoIterator<Item = &'a ActivityRequestV1>,
+    retired: RecordId,
+    added: &[RecordId],
+) -> Result<Vec<(Vec<AuthoritativeRecordV1>, RecognitionV1)>, EngineError> {
+    let mut all = RecognitionEngine::audit(state)?;
+    for adoption in &mut all {
+        if let Some(opening) = adoption.opening.as_mut().filter(|_| adoption.id == retired) {
+            opening.included_activity.clear();
+        }
+    }
+    let mut records = Vec::new();
+    let mut ids = BTreeSet::new();
+    let mut planned = Vec::new();
+    for request in requests {
+        let draft = RecognitionEngine::draft(state, request, Admission::Replacement)?;
+        let Some(recognition) = draft.recognition else {
+            return Err(EngineError::invalid());
+        };
+        let segment = request.financial.iter().flat_map(|f| &f.opening);
+        let fresh = [request.adoption_id, request.event.id, recognition.lineage]
+            .into_iter()
+            .chain([RecordId(recognition.id.0)])
+            .chain(request.event.legs.iter().map(|id| RecordId(id.0)))
+            .chain(recognition.postings.iter().map(|p| p.id))
+            .chain(segment.map(|opening| opening.segment_id));
+        for id in fresh {
+            if !ids.insert(id) {
+                return Err(duplicate());
+            }
+        }
+        if request.prior_pending.is_some() {
+            return Err(EngineError::invalid());
+        }
+        records.extend(draft.records.iter().cloned());
+        all.push(draft.adoption);
+        planned.push((draft.records, recognition));
+    }
+    if added.iter().any(|id| !ids.insert(*id)) {
+        return Err(duplicate());
+    }
+    consumed(&prospective(state, &records), &all)?;
+    Ok(planned)
 }
