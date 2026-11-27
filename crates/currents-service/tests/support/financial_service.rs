@@ -453,3 +453,42 @@ pub(super) fn legacy_binding(n: u32) -> SourceFacetBindingV1 {
         amount: fixture::amount(-96),
     }
 }
+/// Publishes `rows` as a retained relationship capture, receipt `n`.
+pub(super) async fn publish_relationship_rows(
+    f: &mut Fixture,
+    n: u32,
+    rows: Vec<RelationshipSourceRowV1>,
+) {
+    let context = ImportContextV1 {
+        receipt_id: fixture::id(n),
+        source: SourceIdentityV1 {
+            source: "synthetic".into(),
+            connection_id: fixture::id(900),
+            device_id: None,
+        },
+        captured_at: serde_json::from_str("\"2026-11-01T00:00:00Z\"").unwrap(),
+        received_at: serde_json::from_str("\"2026-11-02T00:00:00Z\"").unwrap(),
+        coverage: vec![],
+        row_ids: vec![],
+    };
+    let capture = currents_acquisition::identity::RelationshipSourceParser::capture(
+        currents_acquisition::capture::BoundedEvidence::new(
+            "relationship.json",
+            serde_json::to_vec(&rows).unwrap(),
+            context,
+        )
+        .unwrap(),
+        fixture::id(n + 1),
+    )
+    .unwrap();
+    let evidence = ImportEvidence::new_relationship(capture).unwrap();
+    let import = evidence.request();
+    refresh_financial(f, Some(evidence)).await;
+    submit(
+        f,
+        12000 + u128::from(n),
+        currents_protocol::OperationV1::PublishImport(import),
+    )
+    .await;
+    refresh_financial(f, None).await;
+}

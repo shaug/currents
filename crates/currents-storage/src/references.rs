@@ -50,6 +50,7 @@ const RECORDS: &[&str] = &[
     "Recognition",
     "RecognitionCorrectionRevision",
     "AccountingSegment",
+    "SegmentReemission",
     "ReconciliationClaim",
     "Organization",
     "Rule",
@@ -620,6 +621,18 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.many(&["Recognition"], &v["included_activity"]);
             m.many(&["Recognition"], &v["replacement_closure"]);
             m.many(&["Account"], &v["approved_accounts"]);
+        }
+        AuthoritativeRecordV1::SegmentReemission(r) => {
+            if r.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if r.original == r.replacement {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["AccountingSegment"], &v["segment"], None);
+            m.reference(&["Recognition"], &v["original"], None);
+            m.reference(&["Recognition"], &v["replacement"], None);
+            m.define("SegmentReemissionOriginal", &v["original"], 0, false);
         }
         AuthoritativeRecordV1::ReconciliationClaim(_) => {
             m.many(&["Account"], &v["scope"]);

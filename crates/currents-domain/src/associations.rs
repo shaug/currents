@@ -363,18 +363,23 @@ impl IdentityEngine {
     /// this final audit must not reinterpret old evidence using the latest parser.
     pub fn audit(state: &DomainState) -> Result<(), EngineError> {
         let mut families = BTreeMap::<RecordId, Vec<AssociationRevisionV1>>::new();
+        let mut reemissions = Vec::new();
         for (id, record) in &state.records {
-            if let AuthoritativeRecordV1::AssociationRevision(revision) = record {
-                if *id != revision.id {
-                    return Err(conflict());
+            match record {
+                AuthoritativeRecordV1::AssociationRevision(revision) => {
+                    if *id != revision.id {
+                        return Err(conflict());
+                    }
+                    families
+                        .entry(revision.root)
+                        .or_default()
+                        .push(revision.clone());
                 }
-                families
-                    .entry(revision.root)
-                    .or_default()
-                    .push(revision.clone());
+                AuthoritativeRecordV1::SegmentReemission(link) => reemissions.push(link),
+                _ => {}
             }
         }
-        if families.is_empty() {
+        if families.is_empty() && reemissions.is_empty() {
             return Ok(());
         }
         let index = state.accounting.as_ref().ok_or_else(conflict)?;
@@ -382,6 +387,30 @@ impl IdentityEngine {
             || index.prefix.domain_digest != state.domain_digest
         {
             return Err(conflict());
+        }
+        // A segment replacement reversed each original and issued it again.
+        // One family revision retires the original and names the re-emission,
+        // which the family accepts as current only with identical economics.
+        for link in reemissions {
+            let (
+                Some(AuthoritativeRecordV1::Recognition(original)),
+                Some(AuthoritativeRecordV1::Recognition(again)),
+            ) = (
+                state.records.get(&RecordId(link.original.0)),
+                state.records.get(&RecordId(link.replacement.0)),
+            )
+            else {
+                return Err(conflict());
+            };
+            if !index.reversed.contains(&original.id)
+                || !crate::segments::same_economics(original, again)
+                || !families.values().flatten().any(|revision| {
+                    revision.retired_recognitions.contains(&original.id)
+                        && revision.recognitions.contains(&again.id)
+                })
+            {
+                return Err(conflict());
+            }
         }
         let mut facts = BTreeMap::new();
         let mut active = BTreeSet::new();

@@ -135,6 +135,9 @@ impl CorrectionEngine {
                     || s.included_activity.iter().any(in_family)
                     || s.replacement_closure.iter().any(in_family)
             }
+            AuthoritativeRecordV1::SegmentReemission(r) => {
+                in_family(&r.original) || in_family(&r.replacement)
+            }
             _ => false,
         }) {
             return Err(EngineError::version());

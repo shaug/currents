@@ -6,7 +6,9 @@ use currents_domain::{
     associations::IdentityEngine,
     catalog::CatalogEngine,
     recognition::RecognitionEngine,
-    segments::{SegmentEngine, SegmentPreviewV1, SegmentReplacementV1},
+    segments::{
+        ReemissionV1, SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
+    },
 };
 use currents_types::*;
 use sha2::{Digest as _, Sha256};
@@ -15,6 +17,11 @@ use std::collections::{BTreeMap, BTreeSet};
 #[allow(dead_code)]
 mod fixture;
 use fixture::*;
+#[path = "support/associations.rs"]
+#[allow(dead_code)]
+mod association_fixtures;
+#[path = "support/transfers.rs"]
+mod transfers;
 
 const OLD_SEGMENT: u32 = 707;
 const OLD_OPENING: u32 = 703;
@@ -128,6 +135,22 @@ fn balances(state: &DomainState) -> BTreeMap<AccountId, Amount> {
     }
     totals
 }
+/// A batch with changed operations, its counts and digests bound again so
+/// only the operations themselves differ.
+fn rebound(mut batch: AccountingBatchV1) -> AccountingBatchV1 {
+    let count = CommitSeq(batch.operations.len() as u64);
+    batch.result_expectations = AccountingExpectationsV1 {
+        native_operation_count: count,
+        financial_entry_count: count,
+    };
+    batch.decision_digest = AccountingAdapter::prebinding_digest(&batch).unwrap();
+    for op in &mut batch.operations {
+        if let FrozenNativeOperationV1::Entry(e) = op {
+            e.generated_document = batch.decision_digest;
+        }
+    }
+    batch
+}
 fn refused(state: &DomainState, c: &Candidate) {
     let before = snapshot(state);
     assert!(admit(state, c).is_err());
@@ -141,13 +164,22 @@ fn replay_refused(state: &DomainState, c: &Candidate) {
 }
 
 fn anchored() -> DomainState {
+    anchored_with(&[])
+}
+/// Account A anchored as above, its opening including the movement facts
+/// `(evidence, amount, date)`.
+fn anchored_with(included: &[(u32, i128, &str)]) -> DomainState {
     let mut state = monetary_state();
     for mapping in state.accounting.as_mut().unwrap().accounts.values_mut() {
         mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
     }
     let mut opening = supported_opening(&mut state);
+    let facts = included
+        .iter()
+        .map(|&(n, value, day)| dated(&mut state, n, value, day, ObservationKind::Movement))
+        .collect();
     let terms = opening.financial.as_mut().unwrap();
-    terms.opening.as_mut().unwrap().included_activity.clear();
+    terms.opening.as_mut().unwrap().included_activity = facts;
     let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
     let state = admit(&state, &planned(&state, &plan)).unwrap();
     assert_eq!(balances(&state)[&account(10)], amount(3300));
@@ -229,6 +261,8 @@ fn replacement_from(
         opening: draft,
         backfill,
         approved_accounts,
+        transfers: vec![],
+        reemissions: vec![],
     }
 }
 fn replacement(
@@ -492,18 +526,8 @@ fn cur_016_replay_readmits_only_the_exact_plan() {
 
     // Native operations that differ from the plan derived again. The adapter
     // itself refuses each one, and so does the whole replay.
-    let native = |mut batch: AccountingBatchV1| {
-        let count = CommitSeq(batch.operations.len() as u64);
-        batch.result_expectations = AccountingExpectationsV1 {
-            native_operation_count: count,
-            financial_entry_count: count,
-        };
-        batch.decision_digest = AccountingAdapter::prebinding_digest(&batch).unwrap();
-        for op in &mut batch.operations {
-            if let FrozenNativeOperationV1::Entry(e) = op {
-                e.generated_document = batch.decision_digest;
-            }
-        }
+    let native = |batch: AccountingBatchV1| {
+        let batch = rebound(batch);
         assert!(
             AccountingAdapter::verify_correspondence(&good.commit, Some(&batch), index).is_err()
         );
@@ -623,5 +647,455 @@ fn cur_016_replacement_refuses_cross_account_and_dependents() {
         let before = snapshot(&state);
         assert!(SegmentEngine::replace(&state, &request).is_err());
         assert_eq!(snapshot(&state), before);
+    }
+}
+
+// Cross-account closures. Account C (id 60) is external, account 80 is the
+// clearing account and account 70 is a second external account. A sent 1,000
+// USD to C on 2026-10-31; C's receipt on 2026-11-02 is recognized in transfer
+// family 1650 with clearing open, because association admission refuses A's
+// leg at or before A's cutoff.
+const C: u32 = 60;
+const OTHER: u32 = 70;
+const CLEARING: u32 = 80;
+const FAMILY: u32 = 1650;
+const RECEIPT: u32 = 1610;
+
+fn declare(state: &mut DomainState, n: u32, role: Option<ControlRoleV1>) {
+    let mut request = catalog();
+    request.revision_id = id(n + 2);
+    request.catalog.component_id = id(n + 1);
+    request.catalog.account_id = account(n);
+    request.ownership.account_id = account(n);
+    if let Some(role) = role {
+        request.origin = AccountOriginV1::Internal(InternalAccountV1 {
+            role,
+            created_at: date("2026-01-01"),
+        });
+    }
+    let plan = CatalogEngine::set_complete(state, &request).unwrap();
+    apply(state, &plan);
+    state.accounting.as_mut().unwrap().accounts.insert(
+        account(n),
+        NativeAccountMappingV1 {
+            account_id: account(n),
+            unit_id: UnitId(id(1).0),
+            account_class: AccountClass::Asset,
+            path: format!("Currents:A{}", id(n).0.simple()),
+        },
+    );
+}
+fn associated(state: &DomainState, request: &CompleteAssociationRequestV1) -> DomainState {
+    let plan = IdentityEngine::associate(state, request).unwrap();
+    admit(state, &planned(state, &plan)).unwrap()
+}
+fn with_transfer() -> DomainState {
+    let mut state = anchored();
+    for (n, role) in [
+        (C, None),
+        (OTHER, None),
+        (CLEARING, Some(ControlRoleV1::Clearing)),
+    ] {
+        declare(&mut state, n, role);
+    }
+    let rows = transfers::cross_account_rows();
+    let capture = association_fixtures::retained_relationships(&mut state, 1500, rows.clone());
+    let both = transfers::clearing_family(capture, &rows, 1600, &[(10, 0), (C, 1)]);
+    assert!(IdentityEngine::associate(&state, &both).is_err());
+    associated(
+        &state,
+        &transfers::clearing_family(capture, &rows, 1600, &[(C, 1)]),
+    )
+}
+/// `original` again with fresh identities from `base`.
+fn reemission(state: &DomainState, original: u32, base: u32) -> ReemissionV1 {
+    let Some(AuthoritativeRecordV1::Recognition(r)) = state.records.get(&id(original)) else {
+        panic!("recognition {original} missing")
+    };
+    let mut replacement = r.clone();
+    replacement.id = recognition(base + 10);
+    for (posting, n) in replacement.postings.iter_mut().zip(base + 11..) {
+        posting.id = id(n);
+    }
+    ReemissionV1 {
+        id: id(base),
+        original: recognition(original),
+        replacement,
+    }
+}
+/// A's earlier opening of 4,300 USD at 2026-10-30 and its 2026-10-31 send of
+/// `send` USD to clearing, which joins C's transfer family.
+fn cross_account(state: &mut DomainState, send: i128) -> SegmentReplacementV1 {
+    let mut request = replacement(state, 4300, "2026-10-30", &[(send, "2026-10-31")]);
+    request.backfill[0].financial.as_mut().unwrap().postings[1].account_id = account(CLEARING);
+    request.approved_accounts = vec![account(10), account(EQUITY), account(CLEARING), account(C)];
+    request.transfers = vec![TransferJoinV1 {
+        revision: id(3500),
+        prior_revision: id(FAMILY),
+        leg: LegId(id(3111).0),
+    }];
+    request.reemissions = vec![reemission(state, RECEIPT, 3600)];
+    request
+}
+/// Native postings on account `n` by value date, from active recognitions.
+fn dated_postings(state: &DomainState, n: u32) -> Vec<(String, Amount)> {
+    let index = state.accounting.as_ref().unwrap();
+    let mut postings: Vec<_> = index
+        .recognitions
+        .iter()
+        .filter(|(id, _)| !index.reversed.contains(id))
+        .flat_map(|(_, entries)| entries)
+        .flat_map(|e| {
+            e.postings
+                .iter()
+                .filter(|p| p.original.account_id == account(n))
+                .map(|p| (e.value_date.clone(), p.original.amount))
+        })
+        .collect();
+    postings.sort_by(|a, b| a.0.cmp(&b.0));
+    postings
+}
+fn revision(plan: &DecisionPlan) -> &AssociationRevisionV1 {
+    let mut revisions = plan.records.iter().filter_map(|r| match r {
+        AuthoritativeRecordV1::AssociationRevision(v) => Some(v),
+        _ => None,
+    });
+    let revision = revisions.next().unwrap();
+    assert!(revisions.next().is_none());
+    revision
+}
+
+#[test]
+fn cur_016_1_cross_account_backfill() {
+    let mut state = with_transfer();
+    let request = cross_account(&mut state, -1000);
+    let plan = ready(&state, &request);
+    let joined = revision(&plan);
+    assert_eq!(joined.root, id(FAMILY));
+    assert_eq!(joined.prior_revision, Some(id(FAMILY)));
+    assert_eq!(joined.legs, [LegId(id(1601).0), LegId(id(3111).0)]);
+    assert_eq!(joined.retired_recognitions, [recognition(RECEIPT)]);
+    assert_eq!(joined.recognitions, [recognition(3610), recognition(3113)]);
+    assert_eq!(joined.residuals, [amount(0)]);
+    let segment = successor(&plan);
+    assert_eq!(
+        segment.replacement_closure,
+        [recognition(OLD_OPENING), recognition(RECEIPT)]
+    );
+    assert!(segment.approved_accounts.contains(&account(C)));
+
+    // The receipt is reversed once and issued again, after the replacement.
+    let batch = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    let entries: Vec<_> = batch
+        .operations
+        .iter()
+        .map(|op| match op {
+            FrozenNativeOperationV1::Entry(e) => (e.recognition_id, e.reverses.is_some()),
+            other => panic!("unexpected native operation {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            (recognition(OLD_OPENING), true),
+            (recognition(3013), false),
+            (recognition(3113), false),
+            (recognition(RECEIPT), true),
+            (recognition(3610), false),
+        ]
+    );
+    let replaced = admit(&state, &planned(&state, &plan)).unwrap();
+    let index = replaced.accounting.as_ref().unwrap();
+    let [original] =
+        state.accounting.as_ref().unwrap().recognitions[&recognition(RECEIPT)].as_slice()
+    else {
+        panic!("one native receipt entry")
+    };
+    let [again] = index.recognitions[&recognition(3610)].as_slice() else {
+        panic!("one native re-emission")
+    };
+    assert_eq!(
+        (&again.booking_date, &again.value_date),
+        (&original.booking_date, &original.value_date)
+    );
+    let economics = |e: &FrozenEntryV1| {
+        e.postings
+            .iter()
+            .map(|p| {
+                let mut posting = p.original.clone();
+                posting.id = id(0);
+                (posting, p.native_coefficient.clone(), p.path.clone())
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(economics(again), economics(original));
+    assert_eq!(dated_postings(&replaced, C), dated_postings(&state, C));
+    assert_eq!(balances(&replaced)[&account(10)], amount(3300));
+    assert_eq!(balances(&state)[&account(CLEARING)], amount(-1000));
+    assert_eq!(balances(&replaced)[&account(CLEARING)], amount(0));
+}
+
+#[test]
+fn cur_016_1_post_cutoff_activity_untouched() {
+    let mut state = with_transfer();
+    let source = dated(
+        &mut state,
+        1800,
+        -50,
+        "2026-11-03",
+        ObservationKind::Movement,
+    );
+    let mut purchase = posted(source, 1810, EXPENSE);
+    at(&mut purchase, "2026-11-03");
+    let plan = RecognitionEngine::adopt(&state, &purchase).unwrap();
+    let state = admit(&state, &planned(&state, &plan)).unwrap();
+    let later = transfers::clearing_family(
+        id(1501),
+        &transfers::cross_account_rows(),
+        1700,
+        &[(10, 2), (C, 3)],
+    );
+    let mut state = associated(&state, &later);
+    let kept = [recognition(1813), recognition(1710), recognition(1711)];
+
+    let request = cross_account(&mut state, -1000);
+    let replaced = admit(&state, &planned(&state, &ready(&state, &request))).unwrap();
+    let index = replaced.accounting.as_ref().unwrap();
+    for id in kept {
+        assert!(index.recognitions.contains_key(&id) && !index.reversed.contains(&id));
+        assert_eq!(
+            replaced.records[&RecordId(id.0)],
+            state.records[&RecordId(id.0)]
+        );
+    }
+
+    // A closure that names the purchase or the later transfer is refused.
+    for (original, base, extra) in [
+        (1813, 3700, Some(EXPENSE)),
+        (1710, 3800, None),
+        (1711, 3900, None),
+    ] {
+        let mut named = request.clone();
+        named.reemissions.push(reemission(&state, original, base));
+        named.approved_accounts.extend(extra.map(account));
+        let before = snapshot(&state);
+        assert!(SegmentEngine::replace(&state, &named).is_err());
+        assert_eq!(snapshot(&state), before);
+    }
+    // So is joining the backfilled send to the later transfer instead.
+    let mut later_family = request.clone();
+    later_family.transfers[0].prior_revision = id(1750);
+    later_family.reemissions = vec![
+        reemission(&state, 1710, 3700),
+        reemission(&state, 1711, 3800),
+    ];
+    assert!(SegmentEngine::replace(&state, &later_family).is_err());
+}
+
+/// The movement binding that `dated` made for evidence `n`.
+fn binding_of(state: &DomainState, n: u32) -> SourceFacetBindingV1 {
+    let Some(AuthoritativeRecordV1::AddressedParseProduct(product)) = state.records.get(&id(n + 1))
+    else {
+        panic!("parse product missing")
+    };
+    let SourceValue::Known(amount) = product.product.facets[0].amount else {
+        panic!("amount missing")
+    };
+    SourceFacetBindingV1 {
+        observation: id(n),
+        parse_product: id(n + 1),
+        facet: product.product.facets[0].lineage_key,
+        amount,
+    }
+}
+/// A replacement at 2026-10-30 whose new opening includes `included` and
+/// whose backfill takes each of `backfill` on 2026-10-31.
+fn moving(
+    state: &mut DomainState,
+    included: Vec<SourceFacetBindingV1>,
+    backfill: &[&SourceFacetBindingV1],
+) -> SegmentReplacementV1 {
+    let mut request = replacement(state, 3360, "2026-10-30", &[]);
+    let terms = request.opening.financial.as_mut().unwrap();
+    terms.opening.as_mut().unwrap().included_activity = included;
+    request.backfill = (0u32..)
+        .zip(backfill)
+        .map(|(i, source)| {
+            let mut movement = posted((*source).clone(), 3110 + 20 * i, EXPENSE);
+            at(&mut movement, "2026-10-31");
+            movement
+        })
+        .collect();
+    request.approved_accounts.push(account(EXPENSE));
+    request
+}
+
+#[test]
+fn cur_016_1_old_inclusion_map_moves() {
+    // The old opening included a 40 USD fact on 2026-10-29 and a 60 USD fact
+    // on 2026-10-31. A new opening at 2026-10-30 includes the first; the
+    // second becomes a backfill.
+    let mut state = anchored_with(&[(1900, -40, "2026-10-29"), (1920, -60, "2026-10-31")]);
+    let early = binding_of(&state, 1900);
+    let late = binding_of(&state, 1920);
+    let request = moving(&mut state, vec![early.clone()], &[&late]);
+    let plan = ready(&state, &request);
+    let replaced = admit(&state, &planned(&state, &plan)).unwrap();
+    assert_eq!(balances(&replaced)[&account(10)], amount(3300));
+
+    let fresh = dated(
+        &mut state,
+        1940,
+        -60,
+        "2026-10-31",
+        ObservationKind::Movement,
+    );
+    let cases = [
+        ("drops the early fact", moving(&mut state, vec![], &[&late])),
+        (
+            "drops the late fact",
+            moving(&mut state, vec![early.clone()], &[&fresh]),
+        ),
+        (
+            "repeats the early fact",
+            moving(&mut state, vec![early.clone(), early.clone()], &[&late]),
+        ),
+        (
+            "repeats the late fact",
+            moving(&mut state, vec![early.clone()], &[&late, &late]),
+        ),
+    ];
+    for (name, request) in cases {
+        let before = snapshot(&state);
+        let result = SegmentEngine::replace(&state, &request);
+        assert!(result.is_err(), "{name}: {result:?}");
+        assert_eq!(snapshot(&state), before);
+    }
+}
+
+#[test]
+fn cur_016_1_partial_or_changed_reemission_refused() {
+    let refuse = |name: &str, change: &dyn Fn(&DomainState, &mut SegmentReplacementV1)| {
+        let mut state = with_transfer();
+        let mut request = cross_account(&mut state, -1000);
+        ready(&state, &request);
+        change(&state, &mut request);
+        let before = snapshot(&state);
+        let result = SegmentEngine::replace(&state, &request);
+        assert!(result.is_err(), "{name}: {result:?}");
+        assert_eq!(snapshot(&state), before);
+    };
+    fn again(request: &mut SegmentReplacementV1) -> &mut RecognitionV1 {
+        &mut request.reemissions[0].replacement
+    }
+    refuse("changed amount", &|_, request| {
+        let postings = &mut again(request).postings;
+        postings[0].amount.coefficient += 1;
+        postings[1].amount.coefficient -= 1;
+    });
+    refuse("changed date", &|_, request| {
+        for posting in &mut again(request).postings {
+            posting.effective = date("2026-11-03");
+        }
+    });
+    refuse("changed account", &|_, request| {
+        again(request).postings[0].account_id = account(OTHER);
+        request.approved_accounts.push(account(OTHER));
+    });
+    refuse("only some postings", &|_, request| {
+        again(request).postings.pop();
+    });
+    refuse("approved accounts without C", &|_, request| {
+        request.approved_accounts.retain(|a| *a != account(C));
+    });
+    refuse("the transfer named twice", &|state, request| {
+        request.reemissions.push(reemission(state, RECEIPT, 3700));
+    });
+    refuse("the transfer left out", &|_, request| {
+        request.reemissions.clear();
+        request.approved_accounts.retain(|a| *a != account(C));
+    });
+}
+
+#[test]
+fn cur_016_1_cross_account_residual_blocks() {
+    let mut state = with_transfer();
+    let request = cross_account(&mut state, -990);
+    let before = snapshot(&state);
+    let balances_before = balances(&state);
+    assert_eq!(
+        SegmentEngine::replace(&state, &request).unwrap(),
+        SegmentPreviewV1::UnresolvedResidual(amount(10))
+    );
+    assert_eq!(snapshot(&state), before);
+    assert_eq!(balances(&state), balances_before);
+    assert_eq!(balances(&state)[&account(10)], amount(3300));
+    assert_eq!(balances(&state)[&account(C)], amount(1000));
+}
+
+#[test]
+fn cur_016_1_cross_account_replay() {
+    let mut state = with_transfer();
+    let request = cross_account(&mut state, -1000);
+    let plan = ready(&state, &request);
+    let good = planned(&state, &plan);
+    let family_bytes = serde_json::to_vec(&state.records[&id(FAMILY)]).unwrap();
+    let replaced = admit(&state, &good).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&replaced.records[&id(FAMILY)]).unwrap(),
+        family_bytes
+    );
+    IdentityEngine::audit(&replaced).unwrap();
+
+    // Native history that reverses the receipt twice.
+    let mut twice = good.batch.clone();
+    let position = twice
+        .operations
+        .iter()
+        .position(|op| {
+            matches!(op, FrozenNativeOperationV1::Entry(e)
+                if e.recognition_id == recognition(RECEIPT) && e.reverses.is_some())
+        })
+        .unwrap();
+    let FrozenNativeOperationV1::Entry(mut repeat) = twice.operations[position].clone() else {
+        panic!("reversal entry")
+    };
+    repeat.key.push_str("/again");
+    twice
+        .operations
+        .insert(position + 1, FrozenNativeOperationV1::Entry(repeat));
+    refused(
+        &state,
+        &candidate(&state, plan.records.clone(), rebound(twice)),
+    );
+
+    // Native history that issues the receipt to another counterpart.
+    let mut other = good.batch.clone();
+    for op in &mut other.operations {
+        if let FrozenNativeOperationV1::Entry(e) = op
+            && e.recognition_id == recognition(3610)
+        {
+            let posting = &mut e.postings[0];
+            assert_eq!(posting.original.account_id, account(C));
+            posting.original.account_id = account(OTHER);
+            posting.path = format!("Currents:A{}", id(OTHER).0.simple());
+        }
+    }
+    let other = rebound(other);
+    let index = replaced.accounting.as_ref().unwrap();
+    assert!(AccountingAdapter::verify_correspondence(&good.commit, Some(&other), index).is_err());
+    refused(&state, &candidate(&state, plan.records.clone(), other));
+
+    // Domain history whose new revision or re-emission link differs.
+    let mut residual = plan.records.clone();
+    for record in &mut residual {
+        if let AuthoritativeRecordV1::AssociationRevision(r) = record {
+            r.residuals = vec![amount(-1000)];
+        }
+    }
+    let mut unlinked = plan.records.clone();
+    unlinked.retain(|r| !matches!(r, AuthoritativeRecordV1::SegmentReemission(_)));
+    for records in [residual, unlinked] {
+        replay_refused(&state, &candidate(&state, records, good.batch.clone()));
     }
 }

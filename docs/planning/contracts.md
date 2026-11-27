@@ -199,12 +199,57 @@ second replacement of a replaced segment, a successor that names itself and
 any history with two active segments for one component. Ordinary adoption
 still refuses activity at or before every opening cutoff.
 
-Until later CUR-016 leaves merge, the preview refuses a backfill that posts to
-another external account, an old opening with included activity, and a
-replacement when a reconciliation claim, organization record, review record
-or forecast run names the account, its old opening or that opening's legs or
-postings. There is no command route, `OperationV1` variant or owner residual
-decision; the legacy `ReplaceAccountingSegment` stays unsupported.
+Until later CUR-016 leaves merge, the preview refuses a backfill leg on
+another external account, and a replacement when a reconciliation claim,
+organization record, review record or forecast run names the account, a
+recognition in the closure, or that recognition's legs or postings. There is
+no command route, `OperationV1` variant or owner residual decision; the legacy
+`ReplaceAccountingSegment` stays unsupported.
+
+### CUR-016 cross-account closure checkpoint
+
+The engine derives a replacement's closure; the request cannot choose it. The
+closure is the old opening and the current recognitions of each CUR-015
+transfer family that a backfilled leg joins. Recognitions dated after the old
+cutoff keep their IDs. Ordinary adoption refuses activity at or before every
+opening cutoff, so no other recognition on the account can sit at or before
+it. Ordinary adoption also keeps refusing activity at or before a replaced
+opening's cutoff.
+
+`SegmentReplacementV1` adds `transfers` and `reemissions`. A
+`TransferJoinV1 { revision, prior_revision, leg }` names a family's current
+revision, the fresh ID of its next revision and the backfilled leg that joins
+it. That leg's draft posts the anchored account against the clearing account
+the family already uses; only a joined draft may post to clearing. A
+`ReemissionV1 { id, original, replacement }` issues one recognition in the
+closure again with fresh recognition and posting IDs and unchanged economics.
+The preview refuses a request whose re-emissions name a recognition twice,
+leave one out, name one outside the closure or change a posting, and a
+re-emission of a recognition that posts to the anchored account. The approved
+accounts must equal every account the plan touches, counterparts included.
+
+A ready plan holds the drafts' records, each re-emitted `Recognition`, one new
+`AssociationRevisionV1` per joined family, the successor segment and one
+`SegmentReemissionV1 { id, schema_version, segment, original, replacement }`
+per re-emission. The new revision follows the family's current revision. It
+keeps every leg, allocation, amount and date, adds the joined leg last, names
+the re-emissions and the joined leg's recognition, retires the current
+recognitions and records the new residual. This is C07's whole-revision remap
+with fresh identities. The successor's `replacement_closure` lists the old
+opening, then each original in request order. Its accounting intent is one
+`Corrections` list: the old opening's correction, then one correction per
+re-emission. C05 requires the old opening's reversal, the new opening and the
+backfills, then each original's reversal followed by its re-emission.
+
+The old opening's inclusion map may hold activity. Each fact in it must
+appear exactly once in the new history: in a backfill's sources or in the new
+opening's inclusion map. A replaced opening no longer owns its inclusion map.
+Replay derives the whole plan again from the commit, including the joins and
+re-emissions. The association audit accepts each re-emission only when one
+family revision retires the original and names the re-emission, the original
+is reversed, and the two recognitions differ only in their IDs. CUR-015
+association records are never rewritten. Payroll and duplicate families,
+changed transfer economics and other association revisions remain refused.
 
 ### CUR-016 segment commit checkpoint
 
