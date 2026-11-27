@@ -53,14 +53,14 @@ class WorkflowContract(unittest.TestCase):
                 # Each runner takes one shard; together they run every test once.
                 step["env"] = {"CURRENTS_CI_CORE_PHASES": "1",
                                "CURRENTS_TEST_SHARD": shard[gate]}
-                self.assertEqual(self.jobs[gate]["timeout-minutes"], 65)
-            else:
-                self.assertEqual(self.jobs[gate]["timeout-minutes"], 40)
+            # About twice each job's slowest time in recent runs.
+            self.assertEqual(self.jobs[gate]["timeout-minutes"],
+                             {"core": 35, "msrv": 35, "docs": 10, "privacy": 5}[gate])
             self.assertEqual(self.jobs[gate]["steps"][-1], step)
         # The core job runs the workspace build and tests on every event, so the
         # quality job never repeats them, including on push.
         quality_policy = self.jobs["quality-policy"]
-        self.assertEqual(quality_policy["timeout-minutes"], 40)
+        self.assertEqual(quality_policy["timeout-minutes"], 10)
         tests, quality, policy = quality_policy["steps"][-3:]
         self.assertEqual(tests, {
             "name": "Test quality orchestration",

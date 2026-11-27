@@ -1,0 +1,142 @@
+[
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "cur_044_no_account_probe",
+    "reason": "Runs `cargo xtask qualify financekit --account=...` to check that the FinanceKit gate rejects an account argument."
+  },
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "gate",
+    "reason": "Runs `cargo xtask qualify financekit` to check the gate's blocked report end to end."
+  },
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "cur_044_1",
+    "reason": "Calls `gate`, which runs `cargo xtask qualify financekit`, to check the FinanceKit route reasons in the blocked report."
+  },
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "cur_044_3",
+    "reason": "Calls `gate`, which runs `cargo xtask qualify financekit`, to check the statement-import and coverage reasons in the blocked report."
+  },
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "cur_044_4",
+    "reason": "Calls `gate`, which runs `cargo xtask qualify financekit`, to check the App Store distribution and automatic-capture reasons in the blocked report."
+  },
+  {
+    "path": "crates/currents-ffi/tests/cur_004.rs",
+    "function": "cur_004_3",
+    "reason": "Runs `cargo xtask qualify native-platform` without full Xcode to check the blocked report."
+  },
+  {
+    "path": "crates/currents-ffi/tests/cur_004.rs",
+    "function": "cur_004_ticket_dispatches_native_qualification",
+    "reason": "Runs `cargo xtask ticket CUR-004` to check that the ticket dispatches native qualification."
+  },
+  {
+    "path": "crates/currents-service/tests/cur_047.rs",
+    "function": "inspect",
+    "reason": "Runs `cargo xtask household-readiness` with piped input to test the command end to end."
+  },
+  {
+    "path": "crates/currents-service/tests/cur_047.rs",
+    "function": "cur_047_1",
+    "reason": "Calls `inspect`, which runs `cargo xtask household-readiness`, on the fixture and on private input."
+  },
+  {
+    "path": "crates/currents-service/tests/cur_047.rs",
+    "function": "cur_047_2",
+    "reason": "Calls `inspect`, which runs `cargo xtask household-readiness`, on the fixture and on changed inputs."
+  },
+  {
+    "path": "crates/currents-service/tests/cur_047.rs",
+    "function": "cur_047_3",
+    "reason": "Calls `inspect`, which runs `cargo xtask household-readiness`, on reordered and malformed inputs."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "cur_005_3",
+    "reason": "Runs the vendored doubleentry suite. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "native_test",
+    "reason": "Runs one vendored doubleentry test. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "cur_005_1",
+    "reason": "Calls `native_test` for the vendored atomic_rollback test. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "cur_005_2",
+    "reason": "Calls `native_test` for the vendored commit_uncertainty test. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "cur_005_4",
+    "reason": "Calls `native_test` for the vendored schema_guard test. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_006.rs",
+    "function": "cur_006_1",
+    "reason": "Resolves and builds a fixture crate without SQLCipher to check that the build is rejected."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_008.rs",
+    "function": "prefix_visibility",
+    "reason": "Runs the currents-accounting `native_head_mapping` unit test as part of the CUR-008 assertion. It rebuilds that crate's tests and is the slowest CI test."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "cur_001_3",
+    "reason": "Resolves a fixture that requires a newer Rust to check the MSRV gate's failure."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "cur_001_4",
+    "reason": "Runs `cargo xtask` with a missing MSRV tool and with native provider overrides to check that both are blocked."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "xtask",
+    "reason": "Runs `cargo xtask` gates end to end for CUR-001."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "cur_001_1",
+    "reason": "Calls `xtask` to run `cargo xtask qualify workspace` and a malformed `qualify dependency-direction`."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "cur_001_2",
+    "reason": "Calls `xtask` to run `cargo xtask qualify dependency-direction` on fixtures that add forbidden dependencies."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_003.rs",
+    "function": "run",
+    "reason": "Runs `cargo xtask` quality gates on fixtures for CUR-003."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_003.rs",
+    "function": "cur_003_1",
+    "reason": "Calls `run` to run the format, compile and lints gates on passing and failing fixture crates."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_003.rs",
+    "function": "cur_003_2",
+    "reason": "Calls `run` to run `cargo xtask qualify workflow-security` on the real workflow and on unsafe variants of it."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_003.rs",
+    "function": "cur_003_3",
+    "reason": "Calls `run` to run `cargo xtask qualify privacy` on clean and secret-bearing fixture sources."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_003.rs",
+    "function": "cur_003_4",
+    "reason": "Calls `run` to run `cargo xtask qualify docs` on passing and failing fixture crates."
+  }
+]
