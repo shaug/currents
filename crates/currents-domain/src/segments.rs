@@ -305,16 +305,6 @@ pub enum SegmentPreviewV1 {
     /// No plan exists: the owner must resolve the difference.
     UnresolvedResidual(Amount),
 }
-/// The replacement is the original with only its recognition and posting
-/// identities changed.
-pub(crate) fn same_economics(original: &RecognitionV1, replacement: &RecognitionV1) -> bool {
-    let mut same = replacement.clone();
-    same.id = original.id;
-    for (new, old) in same.postings.iter_mut().zip(&original.postings) {
-        new.id = old.id;
-    }
-    &same == original
-}
 fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError> {
     let component = state
         .records
@@ -582,22 +572,15 @@ impl SegmentEngine {
         if named != derived {
             return Err(invalid());
         }
+        // Each re-emission is an identity-only correction of its original.
         let mut originals = Vec::new();
+        let mut reissues = Vec::new();
         for again in &request.reemissions {
             let Some(AuthoritativeRecordV1::Recognition(original)) =
                 state.records.get(&RecordId(again.original.0))
             else {
                 return Err(incomplete());
             };
-            if original.id != again.original
-                || index.reversed.contains(&original.id)
-                || index
-                    .recognitions
-                    .get(&original.id)
-                    .is_none_or(Vec::is_empty)
-            {
-                return Err(invalid());
-            }
             // Activity on the account after the old cutoff keeps its IDs.
             if original
                 .postings
@@ -606,10 +589,15 @@ impl SegmentEngine {
             {
                 return Err(EngineError::version());
             }
-            if !same_economics(original, &again.replacement) {
-                return Err(invalid());
-            }
+            let reissue = CorrectionV1 {
+                active_recognition: again.original,
+                replacement: vec![again.replacement.clone()],
+                remapping: vec![],
+                reason: "Issue a transfer recognition again for a replaced segment".into(),
+            };
+            crate::correction::CorrectionEngine::correct(state, &reissue)?;
             originals.push(original);
+            reissues.push(reissue);
         }
         // Later leaves invalidate dependent records. Until then, refuse any
         // that names the account, a recognition in the closure or its legs.
@@ -802,16 +790,7 @@ impl SegmentEngine {
         let accounting = if request.reemissions.is_empty() {
             AccountingIntent::Correction(retire)
         } else {
-            AccountingIntent::Corrections(
-                std::iter::once(retire)
-                    .chain(request.reemissions.iter().map(|r| CorrectionV1 {
-                        active_recognition: r.original,
-                        replacement: vec![r.replacement.clone()],
-                        remapping: vec![],
-                        reason: "Issue a transfer recognition again for a replaced segment".into(),
-                    }))
-                    .collect(),
-            )
+            AccountingIntent::Corrections(std::iter::once(retire).chain(reissues).collect())
         };
         Ok(SegmentPreviewV1::Ready(Box::new(DecisionPlan {
             records,

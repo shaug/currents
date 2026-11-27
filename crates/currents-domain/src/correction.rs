@@ -52,9 +52,7 @@ impl CorrectionEngine {
             return Err(invalid());
         }
         let mut ids = BTreeSet::new();
-        let mut unchanged = replacement.clone();
-        unchanged.id = original.id;
-        for (posting, previous) in unchanged.postings.iter_mut().zip(&original.postings) {
+        for posting in &replacement.postings {
             if posting.id.0.is_nil()
                 || !ids.insert(posting.id)
                 || index.recognitions.values().flatten().any(|entry| {
@@ -66,9 +64,8 @@ impl CorrectionEngine {
             {
                 return Err(invalid());
             }
-            posting.id = previous.id;
         }
-        if &unchanged != original {
+        if !same_economics(original, replacement) {
             return Err(EngineError::version());
         }
         Ok(DecisionPlan {
@@ -155,6 +152,17 @@ impl CorrectionEngine {
         );
         Ok(plan)
     }
+}
+
+/// The replacement is the original with only its recognition and posting
+/// identities changed.
+pub(crate) fn same_economics(original: &RecognitionV1, replacement: &RecognitionV1) -> bool {
+    let mut same = replacement.clone();
+    same.id = original.id;
+    for (new, old) in same.postings.iter_mut().zip(&original.postings) {
+        new.id = old.id;
+    }
+    &same == original
 }
 
 /// An immutable rooted chain. The root owns historical evidence; the native
@@ -290,7 +298,7 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
                 return Err(invalid());
             }
             if next.postings.iter().any(|p| !posting_ids.insert(p.id))
-                || !crate::segments::same_economics(prior, next)
+                || !same_economics(prior, next)
             {
                 return Err(invalid());
             }

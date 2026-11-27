@@ -435,7 +435,7 @@ impl IdentityEngine {
                 return Err(conflict());
             };
             if !index.reversed.contains(&original.id)
-                || !crate::segments::same_economics(original, again)
+                || !crate::correction::same_economics(original, again)
                 || !families.values().flatten().any(|revision| {
                     revision.retired_recognitions.contains(&original.id)
                         && revision.recognitions.contains(&again.id)
