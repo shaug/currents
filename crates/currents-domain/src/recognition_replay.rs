@@ -10,6 +10,14 @@ pub(crate) fn validate_transition(
     next: &DomainState,
     commit: &DomainCommitV1,
 ) -> Result<(), EngineError> {
+    // A successor segment owns its whole commit: the plan derived again from
+    // the prior prefix must match every record.
+    if let Some(successor) = commit.records.iter().find_map(|record| match record {
+        AuthoritativeRecordV1::AccountingSegment(s) if s.prior_segment.is_some() => Some(s),
+        _ => None,
+    }) {
+        return crate::segments::readmit(prior, next, commit, successor);
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {

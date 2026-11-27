@@ -521,6 +521,33 @@ impl AccountingAdapter {
         {
             return Err(EngineError::invalid());
         }
+        // A successor segment reverses its prior opening first, then emits its
+        // new opening and each backfill in plan order, and nothing else.
+        let mut successors = commit.records.iter().filter_map(|r| match r {
+            AuthoritativeRecordV1::AccountingSegment(s) if s.prior_segment.is_some() => Some(s),
+            _ => None,
+        });
+        if let Some(segment) = successors.next() {
+            let [retired] = segment.replacement_closure.as_slice() else {
+                return Err(EngineError::invalid());
+            };
+            let expected = std::iter::once((*retired, true))
+                .chain(std::iter::once((segment.opening, false)))
+                .chain(segment.included_activity.iter().map(|id| (*id, false)))
+                .map(Some);
+            let actual = batch
+                .into_iter()
+                .flat_map(|b| &b.operations)
+                .map(|op| match op {
+                    FrozenNativeOperationV1::Entry(e) => {
+                        Some((e.recognition_id, e.reverses.is_some()))
+                    }
+                    _ => None,
+                });
+            if successors.next().is_some() || !actual.eq(expected) {
+                return Err(EngineError::invalid());
+            }
+        }
         let associations: Vec<_> = commit
             .records
             .iter()

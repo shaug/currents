@@ -140,7 +140,7 @@ continue to reject. See [qualification and limits](../qualification/associations
 
 Files: `crates/currents-domain/src/{recognition,segments,correction}.rs`.
 
-`SetAccountCatalogV1 { account_id, component_id:RecordId, account_class, unit_id, normal_sign, aliases, lifecycle, display_name }` supports create/update of domain catalog under preview; immutable native paths/unit codes/classes cannot be silently changed. `CatalogEngine::set(state:&DomainState,request:&SetAccountCatalogV1)->Result<DecisionPlan,EngineError>` produces a metadata-only native declaration plan when needed; separate financial preview follows committed declaration head. `RecognitionRequestV1 { leg_ids, facet_allocations, postings, native_dates, interpretation, authority_basis }`; `CorrectionRequestV1 { active_recognition, replacement, remapping, reason }`; `SegmentRequestV1 { component, prior_segment, opening, included_activity, replacement_closure, approved_accounts, residual_disposition }`. `RecognitionEngine::recognize(state:&DomainState,request:RecognitionRequestV1)->Result<DecisionPlan,EngineError>`; `CorrectionEngine::correct(state,&CorrectionRequestV1)->Result<DecisionPlan,EngineError>`; `SegmentEngine::replace(state,&SegmentRequestV1)->Result<DecisionPlan,EngineError>`. Each enforces facet and leg ownership, whole-entry closure, explicit dates, supported anchors, no overlapping segments, no silent residual plug; atomically invalidates dependent claims, organization mapping, matches and basis calculations.
+`SetAccountCatalogV1 { account_id, component_id:RecordId, account_class, unit_id, normal_sign, aliases, lifecycle, display_name }` supports create/update of domain catalog under preview; immutable native paths/unit codes/classes cannot be silently changed. `CatalogEngine::set(state:&DomainState,request:&SetAccountCatalogV1)->Result<DecisionPlan,EngineError>` produces a metadata-only native declaration plan when needed; separate financial preview follows committed declaration head. `RecognitionRequestV1 { leg_ids, facet_allocations, postings, native_dates, interpretation, authority_basis }`; `CorrectionRequestV1 { active_recognition, replacement, remapping, reason }`; `SegmentRequestV1 { component, prior_segment, opening, included_activity, replacement_closure, approved_accounts, residual_disposition }` holds recognition IDs only and has no route; the replacement preview takes the drafts instead (see the CUR-016 segment replacement checkpoint). `RecognitionEngine::recognize(state:&DomainState,request:RecognitionRequestV1)->Result<DecisionPlan,EngineError>`; `CorrectionEngine::correct(state,&CorrectionRequestV1)->Result<DecisionPlan,EngineError>`; `SegmentEngine::replace(state:&DomainState,request:&SegmentReplacementV1)->Result<SegmentPreviewV1,EngineError>`. Each enforces facet and leg ownership, whole-entry closure, explicit dates, supported anchors, no overlapping segments, no silent residual plug; atomically invalidates dependent claims, organization mapping, matches and basis calculations.
 
 
 ### CUR013 complete additive command route
@@ -169,6 +169,42 @@ posting identities, ownership changes and dependency remapping remain
 unsupported. A real refund is new economic activity at its own date, not
 compensation of an archived posting. General corrections and segment
 replacement remain outside this checkpoint.
+
+### CUR-016 segment replacement checkpoint
+
+`SegmentEngine::replace` previews the replacement of one account component's
+active segment. `SegmentReplacementV1 { prior_segment, opening, backfill,
+approved_accounts }` names the active segment, a posted opening draft
+(`ActivityRequestV1` with balance evidence, whose `segment_id` names the
+successor), ordered posted backfill drafts and the approved accounts. The new
+cutoff may equal the old one (an anchor correction) or come before it.
+Each backfill posts to the anchored account, after the new cutoff and through
+the old one, with retained movement evidence in the account's unit. The
+approved accounts must equal the accounts the plan touches.
+
+`SegmentPreviewV1` is `Ready(Box<DecisionPlan>)` or `UnresolvedResidual(Amount)`.
+The residual is the new opening plus backfill on the account, minus the old
+opening; the preview reports it and returns no plan. A ready plan holds each
+draft's event, legs, adoption and recognition, then a successor
+`AccountingSegmentV1` naming the prior segment, the new opening, the backfill
+in order and the retired opening as its only closure. Its accounting intent is
+one `Correction` that reverses the old opening once with its original dates,
+then adds the new opening and each backfill with their own dates.
+
+Replay re-admits a successor segment only by deriving the same plan again from
+the prior prefix; the commit holds exactly that plan, then its frozen
+manifest. C05 correspondence requires the old opening's reversal first, then
+the new opening, then the backfills in order. Preview and replay refuse a
+second replacement of a replaced segment, a successor that names itself and
+any history with two active segments for one component. Ordinary adoption
+still refuses activity at or before every opening cutoff.
+
+Until later CUR-016 leaves merge, the preview refuses a backfill that posts to
+another external account, an old opening with included activity, and a
+replacement when a reconciliation claim, organization record, review record
+or forecast run names the account, its old opening or that opening's legs or
+postings. There is no command route, `OperationV1` variant or owner residual
+decision; the legacy `ReplaceAccountingSegment` stays unsupported.
 
 <a id="c09"></a>
 
@@ -286,6 +322,7 @@ C08 replay reconstructs exact DatasetPolicy history atomically. New catalog/adop
 records are checked against the exact prior command-admission prefix and their
 complete emitted record set; a future policy cannot repair an earlier reference.
 C06 then performs frozen native correspondence and the C08 semantic audit before
-activating the projection. Unsupported association, general allocation, replacement
-segments and occurrence semantics remain fail-closed. S1 fixtures are explicitly
+activating the projection. Replay re-admits a replacement segment only when the
+plan derived again from the prior prefix matches it exactly. Unsupported
+association, general allocation and occurrence semantics remain fail-closed. S1 fixtures are explicitly
 synthetic typed-history evidence, not provider export grammars.
