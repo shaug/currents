@@ -19,14 +19,15 @@ pub(crate) const ITEM_CONTENT_COUNT: &str =
     "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
 pub(crate) const ITEM_CONTENTS: &str =
     "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
-// The broad command-effect family has 30 slots. Only values are bound; the
+// The broad command-effect family has 31 slots. Only values are bound; the
 // SQLite worker handles the same indexed per-kind existence checks together.
-const WIDE_COMMAND_EFFECT_KINDS: usize = 30;
+const WIDE_COMMAND_EFFECT_KINDS: usize = 31;
 const WIDE_COMMAND_EFFECT_MATCHES: &str = r#"
 WITH permitted(kind) AS (VALUES
     (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
     (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
-    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?)
+    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
+    (?)
 )
 SELECT count(*) FROM permitted AS p WHERE EXISTS(
     SELECT 1 FROM currents_definitions AS d

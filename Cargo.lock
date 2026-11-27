@@ -440,8 +440,11 @@ dependencies = [
 name = "currents-domain"
 version = "0.0.0"
 dependencies = [
+ "currents-accounting",
+ "currents-cipher",
  "currents-types",
  "serde_json",
+ "serde_json_canonicalizer",
  "sha2 0.11.1",
 ]
 

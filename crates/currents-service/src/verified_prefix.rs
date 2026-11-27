@@ -48,6 +48,38 @@ pub(crate) async fn rehydrate(
     exact(state, wanted)
 }
 
+/// The prefix a synthetic trusted-host commit is checked against. A retry of a
+/// command that already committed refers to its original prior, not the new
+/// tip; C04 still requires the exact persisted records and manifest.
+#[cfg(feature = "synthetic-test-fixtures")]
+pub(crate) async fn settled_or_audited_tip(
+    writer: &Writer,
+    prepared: &currents_storage::PreparedCommit,
+) -> Result<AccountingPrefixV1, EngineError> {
+    let invalid = EngineError::invalid;
+    let Some(existing) = writer
+        .command_result(prepared.result.command_id, prepared.result.digest)
+        .await?
+    else {
+        return writer.audited_prefix().await;
+    };
+    let frozen_prefix = &prepared.frozen_batch.preconditions;
+    let Some(AuthoritativeRecordV1::FrozenAccountingManifest(manifest)) = existing.records.last()
+    else {
+        return Err(invalid());
+    };
+    let mut submitted_result = prepared.result.clone();
+    submitted_result.commit = Some(existing.seq);
+    if existing.previous_digest != frozen_prefix.domain_digest
+        || existing.seq.0.checked_sub(1) != Some(frozen_prefix.through.0)
+        || &manifest.preconditions != frozen_prefix
+        || submitted_result != existing.command_result
+    {
+        return Err(invalid());
+    }
+    Ok(manifest.preconditions.clone())
+}
+
 /// Move a verified projection forward over the commits appended after it, with
 /// the same per-commit checks as `rehydrate`. The service uses this after its
 /// own commit so the next command does not need a full replay.

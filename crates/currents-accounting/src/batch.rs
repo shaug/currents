@@ -121,7 +121,7 @@ impl AccountingAdapter {
         state: &DomainState,
         operations: &mut Vec<FrozenNativeOperationV1>,
     ) -> Result<(), EngineError> {
-        if recognitions.is_empty() || recognitions.len() > 20_000 {
+        if recognitions.is_empty() || recognitions.len() > MAX_CLOSURE_OPERATIONS {
             return Err(EngineError::invalid());
         }
         let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
@@ -167,7 +167,7 @@ impl AccountingAdapter {
         state: &DomainState,
         operations: &mut Vec<FrozenNativeOperationV1>,
     ) -> Result<(), EngineError> {
-        if corrections.is_empty() || corrections.len() > 20_000 {
+        if corrections.is_empty() || corrections.len() > MAX_CLOSURE_OPERATIONS {
             return Err(EngineError::invalid());
         }
         let index = state.accounting.as_ref().ok_or_else(EngineError::invalid)?;
@@ -235,7 +235,7 @@ impl AccountingAdapter {
             for r in &c.replacement {
                 operations.push(FrozenNativeOperationV1::Entry(Self::recognition(r, state)?));
             }
-            if operations.len() > 20_000 {
+            if operations.len() > MAX_CLOSURE_OPERATIONS {
                 return Err(EngineError::invalid());
             }
         }
@@ -321,7 +321,7 @@ impl AccountingAdapter {
         {
             return Err(EngineError::version());
         }
-        if batch.operations.len() > 20_000
+        if batch.operations.len() > MAX_CLOSURE_OPERATIONS
             || batch
                 .operations
                 .iter()
@@ -519,6 +519,30 @@ impl AccountingAdapter {
             .iter()
             .any(|r| matches!(r, AuthoritativeRecordV1::RecognitionCorrectionRevision(_)))
         {
+            return Err(EngineError::invalid());
+        }
+        let mut successors = commit.records.iter().filter_map(|record| match record {
+            AuthoritativeRecordV1::AccountingSegment(segment)
+                if segment.prior_segment.is_some() =>
+            {
+                Some(segment)
+            }
+            _ => None,
+        });
+        let mut segment_owners = commit.records.iter().filter_map(|record| match record {
+            AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => Some(owner),
+            _ => None,
+        });
+        let owner = segment_owners.next();
+        if segment_owners.next().is_some() {
+            return Err(EngineError::invalid());
+        }
+        if let Some(successor) = successors.next() {
+            if successors.next().is_some() {
+                return Err(EngineError::invalid());
+            }
+            verify_segment_correspondence(successor, owner, batch, index)?;
+        } else if owner.is_some() {
             return Err(EngineError::invalid());
         }
         let associations: Vec<_> = commit
@@ -768,4 +792,106 @@ impl AccountingAdapter {
         state.accounting = Some(index);
         Ok(())
     }
+}
+
+fn verify_segment_correspondence(
+    successor: &AccountingSegmentV1,
+    owner: Option<&SegmentReplacementAuthorityV1>,
+    batch: Option<&AccountingBatchV1>,
+    index: &AccountingIndexV1,
+) -> Result<(), EngineError> {
+    let invalid = EngineError::invalid;
+    let [old_opening, remainder @ ..] = successor.replacement_closure.as_slice() else {
+        return Err(invalid());
+    };
+    let Some(
+        [
+            FrozenNativeOperationV1::Entry(reversal),
+            FrozenNativeOperationV1::Entry(opening),
+            after_opening @ ..,
+        ],
+    ) = batch.map(|b| b.operations.as_slice())
+    else {
+        return Err(invalid());
+    };
+    let (backfills, operations) = after_opening
+        .split_at_checked(successor.included_activity.len())
+        .ok_or_else(invalid)?;
+    if backfills.is_empty() {
+        return Err(invalid());
+    }
+    for (operation, expected) in backfills.iter().zip(&successor.included_activity) {
+        let FrozenNativeOperationV1::Entry(entry) = operation else {
+            return Err(invalid());
+        };
+        if entry.reverses.is_some() || entry.recognition_id != *expected {
+            return Err(invalid());
+        }
+    }
+    let exact_reverse = |entry: &FrozenEntryV1, id: RecognitionId| {
+        index.reversed.contains(&id)
+            && entry.recognition_id == id
+            && matches!(index.recognitions.get(&id).map(Vec::as_slice),
+                Some([original]) if entry.reverses.as_ref() == Some(&original.key))
+    };
+    if successor.prior_segment == Some(successor.id)
+        || !exact_reverse(reversal, *old_opening)
+        || opening.reverses.is_some()
+        || opening.recognition_id != successor.opening
+    {
+        return Err(invalid());
+    }
+    let Some(owner) = owner else {
+        return if remainder.is_empty() && operations.is_empty() {
+            Ok(())
+        } else {
+            Err(invalid())
+        };
+    };
+    let affected: BTreeSet<_> = batch
+        .ok_or_else(invalid)?
+        .operations
+        .iter()
+        .filter_map(|op| match op {
+            FrozenNativeOperationV1::Entry(entry) => Some(&entry.postings),
+            _ => None,
+        })
+        .flatten()
+        .map(|posting| posting.original.account_id)
+        .collect();
+    if owner.schema_version != 1
+        || owner.segment != successor.id
+        || Some(owner.prior_segment) != successor.prior_segment
+        || owner.affected_accounts != affected.into_iter().collect::<Vec<_>>()
+        || owner.counterparts.is_empty()
+        || owner.counterparts.len() != remainder.len()
+        || owner
+            .counterparts
+            .iter()
+            .map(|pair| pair.original)
+            .collect::<BTreeSet<_>>()
+            != remainder.iter().copied().collect()
+        || owner.counterparts.len().checked_mul(2) != Some(operations.len())
+    {
+        return Err(invalid());
+    }
+    let (pairs, []) = operations.as_chunks::<2>() else {
+        return Err(invalid());
+    };
+    for (pair, ops) in owner.counterparts.iter().zip(pairs) {
+        let [
+            FrozenNativeOperationV1::Entry(old),
+            FrozenNativeOperationV1::Entry(new),
+        ] = ops
+        else {
+            return Err(invalid());
+        };
+        if !exact_reverse(old, pair.original)
+            || new.recognition_id != pair.replacement
+            || new.reverses.is_some()
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(())
 }

@@ -50,8 +50,10 @@ const SEPARATE: &[&str] = &["currents-storage/cur_005"];
 /// (Linux, macOS and MSRV, November 2026), longest first. They start first so
 /// that none of them is left running alone at the end, and the shard split
 /// spreads them evenly. The list only changes the order; a name that no longer
-/// exists changes nothing.
+/// exists changes nothing. The CUR-016 1,200-operation replacement was added
+/// ahead of them from local timing, before it had CI history.
 const START_FIRST: &[&str] = &[
+    "cur_016_4_real_1200_operation_replacement_is_atomic_at_c04_midpoint",
     "prefix_visibility",
     "cur_007_1",
     "history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",

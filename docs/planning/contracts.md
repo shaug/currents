@@ -167,8 +167,16 @@ of a standalone chain. Replayed activity retains one adoption root and
 one native live tip. Reversing archived entries, revision forks, reused
 posting identities, ownership changes and dependency remapping remain
 unsupported. A real refund is new economic activity at its own date, not
-compensation of an archived posting. General corrections and segment
-replacement remain outside this checkpoint.
+compensation of an archived posting. General corrections remain outside
+this checkpoint; segment replacement is described below.
+
+### CUR-016 bounded segment replacement
+
+`SegmentEngine::replace` previews replacing a root opening segment with an earlier opening and ordered backfill movements up to the old cutoff. It reads a validated prefix and writes nothing. The engine derives the replacement closure itself: the old opening, every live recognition posting to the anchored account, and the counterpart recognitions of each retained transfer `AssociationRevisionV1` that touches them. The caller must name exactly that closure. Every member except the old opening is reversed and re-emitted with fresh recognition and posting IDs and unchanged economics and dates. Each re-emitted recognition must belong to a retained transfer association, so any other live activity on the account after the old cutoff blocks replacement. The preview returns `Ready` with a plan, `UnresolvedResidual` when the new opening plus backfill differs from the old opening balance (no balancing posting is invented), or `ClosureTooLarge` above `MAX_CLOSURE_OPERATIONS` (20,000, now defined in `currents-types`).
+
+`SegmentEngine::replace_owned` adds a version-1 `SegmentReplacementAuthorityV1` naming the new and prior segments, every affected account, and each counterpart's original and replacement recognition. A replacement that re-emits counterparts requires this owner. A segment family is one root plus at most one successor; forks, second hops, self-links and reused openings are invalid, and a prior opening with included activity is unsupported. Earlier records are never mutated: the old adoption, segment and recognitions stay retained, so the old read basis remains reconstructible. After a replacement only the new cutoff limits later movements on the account; a movement adopted later inside the reconciled window is ordinary activity, and the retained old balance evidence is not re-checked at adoption.
+
+Replay re-admits a successor against the prior prefix by restoring its drafts and re-running the planner. C05 checks the frozen operation order: the old opening's reversal, the new opening, the backfill in order, then a reversal and re-emission pair per counterpart. The association audit maps a retained transfer revision to its re-emitted counterparts. While any association, allocation, occurrence match, review, reconciliation claim, organization record or forecast run exists in the prefix, replacement fails closed with an unsupported-version error until later work adds dependent invalidation and organization remapping. The feature-gated synthetic host path rehydrates the prior from the Writer's audited history, re-plans, checks effects and the C05 freeze, then commits. There is no default service, wire command or approval route, and the legacy `ReplaceAccountingSegment` request still has no planner.
 
 <a id="c09"></a>
 

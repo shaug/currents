@@ -1,4 +1,7 @@
 //! Versioned C05 instructions, with no storage or native-kernel types.
+/// Maximum logical native operations in one atomic C05 closure.
+pub const MAX_CLOSURE_OPERATIONS: usize = 20_000;
+
 use crate::*;
 use std::collections::BTreeMap;
 choices!(BookkeepingFallbackV1 {

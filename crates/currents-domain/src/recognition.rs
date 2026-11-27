@@ -290,13 +290,26 @@ fn monetary(
     request: &ActivityRequestV1,
     admission: bool,
 ) -> Result<Option<RecognitionV1>, EngineError> {
-    let Some(terms) = &request.financial else {
+    if request.financial.is_none() {
         return Ok(None);
-    };
+    }
     crate::segments::initial(state, request, admission)?;
     if admission {
         crate::segments::activity_boundary(state, request)?;
     }
+    monetary_terms(state, request, admission)
+}
+
+/// Validate monetary intent without selecting an opening boundary. Segment
+/// preview separately verifies its exact prior and replacement boundaries.
+fn monetary_terms(
+    state: &DomainState,
+    request: &ActivityRequestV1,
+    admission: bool,
+) -> Result<Option<RecognitionV1>, EngineError> {
+    let Some(terms) = &request.financial else {
+        return Ok(None);
+    };
     let index = state.accounting.as_ref().ok_or_else(incomplete)?;
     if index.prefix.through != state.through || !index.calendar_declared {
         return Err(incomplete());
@@ -615,9 +628,40 @@ impl RecognitionEngine {
         state: &DomainState,
         request: &ActivityRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
+        Self::adopt_with_boundary(state, request, true)
+    }
+
+    pub(crate) fn segment_draft(
+        state: &DomainState,
+        request: &ActivityRequestV1,
+        bound_component: RecordId,
+        prior_cutoff: Date,
+        new_cutoff: Date,
+    ) -> Result<DecisionPlan, EngineError> {
+        crate::segments::validate_draft_window(
+            state,
+            request,
+            bound_component,
+            prior_cutoff,
+            new_cutoff,
+        )?;
+        Self::adopt_with_boundary(state, request, false)
+    }
+
+    fn adopt_with_boundary(
+        state: &DomainState,
+        request: &ActivityRequestV1,
+        initial_boundary: bool,
+    ) -> Result<DecisionPlan, EngineError> {
         let facets = validate(state, request, true)?;
-        let recognition = monetary(state, request, true)?;
-        let segment = crate::segments::initial(state, request, true)?;
+        let (recognition, segment) = if initial_boundary {
+            (
+                monetary(state, request, true)?,
+                crate::segments::initial(state, request, true)?,
+            )
+        } else {
+            (monetary_terms(state, request, true)?, None)
+        };
         let ids = [request.adoption_id, request.event.id]
             .into_iter()
             .chain(request.event.legs.iter().map(|id| RecordId(id.0)))

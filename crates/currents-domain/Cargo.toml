@@ -11,3 +11,8 @@ workspace = true
 currents-types.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+currents-accounting.workspace = true
+currents-cipher.workspace = true # Select the pinned bundled SQLCipher native test profile.
+serde_json_canonicalizer.workspace = true

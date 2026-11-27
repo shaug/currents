@@ -50,6 +50,7 @@ const RECORDS: &[&str] = &[
     "Recognition",
     "RecognitionCorrectionRevision",
     "AccountingSegment",
+    "SegmentReplacementAuthority",
     "ReconciliationClaim",
     "Organization",
     "Rule",
@@ -612,6 +613,31 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 0,
                 false,
             );
+        }
+        AuthoritativeRecordV1::SegmentReplacementAuthority(owner) => {
+            if owner.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            if owner.segment == owner.prior_segment
+                || owner.counterparts.is_empty()
+                || owner.counterparts.len() > 1024
+                || owner.affected_accounts.is_empty()
+                || owner.affected_accounts.len() > 4096
+            {
+                return Err(EngineError::invalid());
+            }
+            m.reference(&["AccountingSegment"], &v["segment"], None);
+            m.reference(&["AccountingSegment"], &v["prior_segment"], None);
+            m.many(&["Account"], &v["affected_accounts"]);
+            m.define("SegmentReplacementOwner", &v["segment"], 0, false);
+            for pair in v["counterparts"]
+                .as_array()
+                .ok_or_else(EngineError::invalid)?
+            {
+                m.reference(&["Recognition"], &pair["original"], None);
+                m.reference(&["Recognition"], &pair["replacement"], None);
+                m.define("SegmentCounterpartSuccessor", &pair["original"], 0, false);
+            }
         }
         AuthoritativeRecordV1::AccountingSegment(_) => {
             m.reference(&["AccountComponent"], &v["component"], None);
