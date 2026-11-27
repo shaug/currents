@@ -483,7 +483,16 @@ const CUR_017_SUITES: &Suites = &[
     (
         "currents-domain",
         "cur_017",
-        &["cur_017_claim_record_round_trip"],
+        &[
+            "cur_017_claim_record_round_trip",
+            "cur_017_1_offsetting_omissions",
+            "cur_017_1_complete_coverage_is_proposed",
+            "cur_017_activity_explicit_exclusion",
+            "cur_017_activity_needs_complete_interval",
+            "cur_017_activity_scope_and_basis",
+            "cur_017_activity_digest_ignores_posting_ids",
+            "cur_017_activity_refuses_other_bases",
+        ],
     ),
     (
         "currents-service",
@@ -552,7 +561,8 @@ fn ticket_cur_017() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-017",
         "suites":ticket_suites("CUR017", CUR_017_SUITES)?,
-        "scope":"synthetic reconciliation claim records through the encrypted writer and replay; no evaluation, confirmation or command route"
+        "offsetting_omissions_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s9/offsetting-omissions.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity claim evaluation; no balance, holdings or relationship evaluation, confirmation or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {

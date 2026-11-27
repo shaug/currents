@@ -46,7 +46,8 @@ choices!(ReconciliationKindV1 {
     Relationship,
     Holdings
 });
-dto!(ReconciliationRequestV1 { kind:ReconciliationKindV1, scope:AccountScope, cutoff:TemporalValue, evidence:Vec<RecordId>, exclusions:Vec<RecordId>, basis:ReadBasis });
+// `cutoffs` states the interval's start, end and date basis.
+dto!(ReconciliationRequestV1 { kind:ReconciliationKindV1, scope:AccountScope, cutoffs:DateScope, evidence:Vec<RecordId>, exclusions:Vec<RecordId>, basis:ReadBasis });
 dto!(ConfirmReconciliationV1 {
     claim: RecordId,
     digest: Digest

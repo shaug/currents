@@ -1,0 +1,14 @@
+{
+  "account": "A",
+  "unit": "USD",
+  "coverage": {"start": "2026-11-01", "end": "2026-11-30", "basis": "Posting", "status": "Complete"},
+  "opening": {"as_of": "2026-10-31", "amount": 1000},
+  "lines": [
+    {"name": "debit", "date": "2026-11-05", "amount": -40},
+    {"name": "deposit", "date": "2026-11-12", "amount": 100},
+    {"name": "reversal", "date": "2026-11-19", "amount": -100}
+  ],
+  "closing": {"as_of": "2026-11-30", "amount": 960},
+  "recognized": ["debit"],
+  "expected": {"status": "PartiallySupported", "missing_allocations": ["deposit", "reversal"]}
+}

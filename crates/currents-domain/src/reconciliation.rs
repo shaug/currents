@@ -1,13 +1,19 @@
-//! Pure, bounded comparison of caller-selected Activity lines, not claim admission.
+//! Reconciliation claim evaluation, and the bounded comparison of
+//! caller-selected Activity lines it uses.
 use crate::activity_predicate::ActivityPredicateV1;
-use currents_types::{AccountId, Amount, Date, DateBasis, EngineError, RecordId, TemporalValue};
+use crate::catalog::incomplete;
+use crate::dependencies::{self, ActivityScope};
+use currents_types::{
+    AccountId, Amount, AuthoritativeRecordV1, ClaimReasonV1, Date, DateBasis, DomainState,
+    EngineError, EvidenceAllocationV1, MovementFacetV1, ObservationKind, ReconciliationClaimV1,
+    ReconciliationKindV1, ReconciliationRequestV1, ReconciliationStatus, RecordId, SourceValue,
+    TemporalValue,
+};
+use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EvidenceLineIdV1 {
-    pub observation: RecordId,
-    pub facet: RecordId,
-}
+/// One source line: a facet of one observation version.
+pub type EvidenceLineIdV1 = currents_types::EvidenceLineV1;
 
 #[derive(Clone, Debug)]
 pub struct ActivityLineV1 {
@@ -103,4 +109,325 @@ pub fn compare_activity_allocations(
         }
     }
     Ok(differences)
+}
+
+/// The version of the Activity comparison a claim records.
+pub const ACTIVITY_COMPARISON_VERSION: u32 = 1;
+
+pub struct ReconciliationEngine;
+
+impl ReconciliationEngine {
+    /// Evaluate `request` at `state` into a claim that is `Proposed` or
+    /// `PartiallySupported`. The request's basis must name the state's
+    /// commit. Only Activity claims are evaluated so far.
+    pub fn evaluate(
+        state: &DomainState,
+        request: &ReconciliationRequestV1,
+    ) -> Result<ReconciliationClaimV1, EngineError> {
+        if request.basis.through_commit != state.through {
+            return Err(dependencies::stale());
+        }
+        match request.kind {
+            ReconciliationKindV1::Activity => activity(state, request),
+            ReconciliationKindV1::Balance
+            | ReconciliationKindV1::Relationship
+            | ReconciliationKindV1::Holdings => Err(EngineError::version()),
+        }
+    }
+}
+
+/// A named statement: its movement lines and its reported balances.
+struct Statement<'a> {
+    lines: Vec<(EvidenceLineIdV1, Amount, &'a TemporalValue)>,
+    balances: Vec<(Amount, &'a TemporalValue)>,
+}
+
+impl<'a> Statement<'a> {
+    fn read(state: &'a DomainState, evidence: &[RecordId]) -> Result<Self, EngineError> {
+        let mut statement = Self {
+            lines: Vec::new(),
+            balances: Vec::new(),
+        };
+        for id in evidence {
+            match state.records.get(id) {
+                Some(AuthoritativeRecordV1::ImportReceipt(_)) => {}
+                Some(AuthoritativeRecordV1::ObservationVersion(_)) => {
+                    for facet in facets(state, *id)? {
+                        let SourceValue::Known(amount) = facet.amount else {
+                            return Err(incomplete());
+                        };
+                        let line = EvidenceLineIdV1 {
+                            observation: *id,
+                            facet: facet.lineage_key,
+                        };
+                        match facet.kind {
+                            ObservationKind::Movement => {
+                                statement.lines.push((line, amount, &facet.temporal))
+                            }
+                            ObservationKind::Balance => {
+                                statement.balances.push((amount, &facet.temporal))
+                            }
+                            _ => return Err(EngineError::invalid()),
+                        }
+                    }
+                }
+                _ => return Err(EngineError::invalid()),
+            }
+        }
+        Ok(statement)
+    }
+
+    /// The one balance reported at the end of `day`, if the statement
+    /// reports exactly one amount there.
+    fn balance(&self, day: Option<Date>) -> Result<Option<Amount>, EngineError> {
+        let mut found: Option<Amount> = None;
+        for (amount, temporal) in &self.balances {
+            let TemporalValue::Date { civil, .. } = temporal else {
+                continue;
+            };
+            if Some(*civil) != day {
+                continue;
+            }
+            let amount = amount.normalized()?;
+            if found.is_some_and(|old| old != amount) {
+                return Ok(None);
+            }
+            found = Some(amount);
+        }
+        Ok(found)
+    }
+
+    fn unmapped(&self) -> bool {
+        let civil = |t: &TemporalValue| matches!(t, TemporalValue::Date { .. });
+        self.lines.iter().any(|(_, _, t)| !civil(t)) || self.balances.iter().any(|(_, t)| !civil(t))
+    }
+}
+
+/// Activity coverage: every source line in a complete interval is allocated
+/// exactly once to a recognized leg, every recognized leg in scope is
+/// supported or excluded, and the source opening plus its lines in the
+/// interval equals its closing.
+fn activity(
+    state: &DomainState,
+    request: &ReconciliationRequestV1,
+) -> Result<ReconciliationClaimV1, EngineError> {
+    let evidence = sorted(&request.evidence);
+    let exclusions = sorted(&request.exclusions);
+    let scope = ActivityScope::new(&request.scope.accounts, &request.cutoffs, &evidence)?;
+    let unit = dependencies::catalog(state, scope.account)?.unit_id;
+    let legs = dependencies::live_legs(state)?;
+    let statement = Statement::read(state, &evidence)?;
+    for id in &exclusions {
+        let names_line = statement.lines.iter().any(|(l, ..)| l.observation == *id);
+        let names_leg = legs.iter().any(|live| RecordId(live.leg.id.0) == *id);
+        if !names_line && !names_leg {
+            return Err(EngineError::invalid());
+        }
+    }
+    let excluded = |id: RecordId| exclusions.binary_search(&id).is_ok();
+    let within = |day: &Date| scope.start <= *day && *day <= scope.end;
+
+    // Every source line with a civil date, and the source's movement in the
+    // interval, exclusions included.
+    let mut sources = Vec::new();
+    let mut movement = Amount::new(0, 0, unit)?;
+    for (line, amount, temporal) in &statement.lines {
+        let TemporalValue::Date { civil, .. } = temporal else {
+            continue;
+        };
+        if within(civil) {
+            movement = movement.checked_add(amount)?;
+        }
+        if !excluded(line.observation) {
+            sources.push(ActivityLineV1 {
+                identity: *line,
+                account: scope.account,
+                amount: *amount,
+                effective: (*temporal).clone(),
+                posting: (*temporal).clone(),
+            });
+        }
+    }
+    // Every allocation of a live recognized leg. The comparison selects the
+    // ones in scope; it needs the others to find repeated identities.
+    let mut allocations = Vec::new();
+    let mut accounting = BTreeSet::new();
+    let mut unmapped = statement.unmapped();
+    for live in &legs {
+        let leg = live.leg;
+        if scope.relevant(leg) {
+            accounting.insert(RecordId(leg.id.0));
+            accounting.extend(live.recognitions.iter().map(|r| RecordId(r.0)));
+        }
+        if excluded(RecordId(leg.id.0)) {
+            continue;
+        }
+        if scope.unmapped(leg) {
+            unmapped = true;
+            continue;
+        }
+        for allocation in leg.allocations.iter() {
+            if excluded(allocation.observation) {
+                continue;
+            }
+            allocations.push(ActivityLineV1 {
+                identity: EvidenceLineIdV1 {
+                    observation: allocation.observation,
+                    facet: allocation.facet,
+                },
+                account: leg.account_id,
+                amount: allocation.amount,
+                effective: leg.effective.clone(),
+                posting: leg.posting.clone(),
+            });
+        }
+    }
+
+    let mut reasons = Vec::new();
+    let mut differences = Vec::new();
+    if dependencies::coverage(state, &scope).is_none() {
+        reasons.push(ClaimReasonV1::IncompleteInterval);
+    }
+    // A reported balance holds at the end of its day: the opening is the
+    // day before the interval and the closing its last day.
+    let opening = statement.balance(scope.start.previous_day())?;
+    let closing = statement.balance(Some(scope.end))?;
+    if opening.is_none() {
+        reasons.push(ClaimReasonV1::UnknownOpening);
+    }
+    if closing.is_none() {
+        reasons.push(ClaimReasonV1::UnknownClosing);
+    }
+    if let (Some(opening), Some(closing)) = (opening, closing) {
+        let residual = closing.checked_add(&opening.checked_add(&movement)?.checked_neg()?)?;
+        if residual.coefficient != 0 {
+            reasons.push(ClaimReasonV1::UnexplainedResidual);
+            differences.push(residual.normalized()?);
+        }
+    }
+    if unmapped {
+        reasons.push(ClaimReasonV1::MissingDateMapping);
+    }
+    let mut unmatched = BTreeSet::new();
+    for difference in compare_activity_allocations(
+        &[scope.account],
+        scope.basis,
+        scope.start,
+        scope.end,
+        &sources,
+        &allocations,
+    )? {
+        use ActivityDifferenceV1 as D;
+        let (line, reason) = match difference {
+            D::MissingAllocation(l) => (l, ClaimReasonV1::MissingAllocation(l)),
+            D::UnexpectedAllocation(l) => (l, ClaimReasonV1::UnexpectedAllocation(l)),
+            D::UnsupportedMultiplicity(l) => (l, ClaimReasonV1::RepeatedIdentity(l)),
+            D::DifferentTerms(l) => (l, ClaimReasonV1::DifferentTerms(l)),
+        };
+        unmatched.insert(line);
+        reasons.push(reason);
+    }
+    let matched_allocations = sources
+        .iter()
+        .filter(|s| {
+            !unmatched.contains(&s.identity)
+                && matches!(&s.posting, TemporalValue::Date { civil, .. } if within(civil))
+        })
+        .map(|s| EvidenceAllocationV1 {
+            observation: s.identity.observation,
+            facet: s.identity.facet,
+            amount: s.amount,
+        })
+        .collect();
+
+    let (status, reason) = if reasons.is_empty() {
+        (
+            ReconciliationStatus::Proposed,
+            "Every source line in the interval is allocated once, and the source balances.",
+        )
+    } else {
+        (
+            ReconciliationStatus::PartiallySupported,
+            "Activity coverage is partial for the listed reasons.",
+        )
+    };
+    Ok(ReconciliationClaimV1 {
+        id: claim_id(request)?,
+        kind: ReconciliationKindV1::Activity,
+        comparison_version: ACTIVITY_COMPARISON_VERSION,
+        basis: request.basis.clone(),
+        scope: vec![scope.account],
+        unit,
+        cutoffs: request.cutoffs.clone(),
+        dependency_digest: dependencies::activity_digest(
+            state,
+            &scope,
+            ACTIVITY_COMPARISON_VERSION,
+        )?,
+        evidence_dependencies: evidence,
+        decision_dependencies: vec![],
+        accounting_dependencies: accounting.into_iter().collect(),
+        matched_allocations,
+        differences,
+        exclusions,
+        status,
+        reasons,
+        reason: reason.into(),
+    })
+}
+
+fn sorted(ids: &[RecordId]) -> Vec<RecordId> {
+    let mut ids = ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+/// The facets that parse products report for `observation`, one per lineage
+/// key. Products that disagree about one facet are refused.
+fn facets(
+    state: &DomainState,
+    observation: RecordId,
+) -> Result<Vec<&MovementFacetV1>, EngineError> {
+    let mut facets = BTreeMap::<RecordId, &MovementFacetV1>::new();
+    for record in state.records.values() {
+        let product = match record {
+            AuthoritativeRecordV1::AddressedParseProduct(p)
+                if p.product.source_version_id == observation =>
+            {
+                p.validate()?;
+                &p.product
+            }
+            AuthoritativeRecordV1::ParseProduct(p) if p.source_version_id == observation => p,
+            _ => continue,
+        };
+        for facet in &product.facets {
+            if facets
+                .insert(facet.lineage_key, facet)
+                .is_some_and(|old| old != facet)
+            {
+                return Err(EngineError::invalid());
+            }
+        }
+    }
+    if facets.is_empty() {
+        return Err(incomplete());
+    }
+    Ok(facets.into_values().collect())
+}
+
+/// A claim's ID derives from its request, so the same request at the same
+/// basis yields the same claim.
+fn claim_id(request: &ReconciliationRequestV1) -> Result<RecordId, EngineError> {
+    let bytes = serde_json::to_vec(request).map_err(|_| EngineError::invalid())?;
+    let mut hash = Sha256::new();
+    hash.update(b"currents/reconciliation-claim/v1\0");
+    hash.update(&bytes);
+    let digest: [u8; 32] = hash.finalize().into();
+    let mut id = [0; 16];
+    id.copy_from_slice(&digest[..16]);
+    // An RFC 9562 version 8 (custom) UUID.
+    id[6] = (id[6] & 0x0f) | 0x80;
+    id[8] = (id[8] & 0x3f) | 0x80;
+    Ok(RecordId(uuid::Uuid::from_bytes(id)))
 }

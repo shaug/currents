@@ -284,10 +284,10 @@
           "through_commit": "1",
           "unit_catalog_version": 1
         },
-        "cutoff": {
-          "civil": "2026-11-09",
-          "kind": "Date",
-          "original_text": "synthetic"
+        "cutoffs": {
+          "basis": "Posting",
+          "end": "2026-11-09",
+          "start": "2026-11-01"
         },
         "evidence": [],
         "exclusions": [],
