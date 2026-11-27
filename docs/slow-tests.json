@@ -3,8 +3,8 @@
   "tests": [
     {
       "test": "currents-service/cur_016 cur_016_4_1200_operation_replacement_is_atomic",
-      "limit_seconds": 1340,
-      "reason": "Arrived with PR #121 after the baseline: took 665s at most in three CI runs (Linux, macOS, MSRV) on main at f928968, 2026-11-27. It cancels and then commits a 1,200-operation replacement and rebuilds the store; making it faster is a follow-up."
+      "limit_seconds": 920,
+      "reason": "Took 460s at most in three CI runs (Linux, macOS, MSRV) on PR #151 at 9e0b556, 2026-11-27, down from 552s on main. It cancels and then commits a 1,200-operation replacement and rebuilds the store; Linux spends most of the rest on per-record SQL checks."
     },
     {
       "test": "currents-storage/cur_008 prefix_visibility",
