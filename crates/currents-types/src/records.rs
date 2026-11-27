@@ -295,6 +295,15 @@ pub enum RecognitionCorrectionRemapV1 {
     UnchangedStableLegs,
     ReinterpretedStableLegs(StableLegsReinterpretationV1),
 }
+impl RecognitionCorrectionRemapV1 {
+    /// The revision schema version this disposition requires.
+    pub fn schema_version(&self) -> u32 {
+        match self {
+            Self::UnchangedStableLegs => 1,
+            Self::ReinterpretedStableLegs(_) => 2,
+        }
+    }
+}
 impl Schema for RecognitionCorrectionRemapV1 {
     fn schema() -> serde_json::Value {
         serde_json::json!({"oneOf": [

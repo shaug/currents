@@ -154,27 +154,24 @@ impl CorrectionEngine {
             return Err(EngineError::invalid());
         };
         plan.invalidations.extend(claims);
-        let (schema_version, remap_disposition) = match interpretation {
-            Interpretation::Unchanged => (1, RecognitionCorrectionRemapV1::UnchangedStableLegs),
+        let remap_disposition = match interpretation {
+            Interpretation::Unchanged => RecognitionCorrectionRemapV1::UnchangedStableLegs,
             Interpretation::New {
                 governing_policy,
                 unresolved_account,
-            } => (
-                2,
-                RecognitionCorrectionRemapV1::ReinterpretedStableLegs(
-                    StableLegsReinterpretationV1 {
-                        governing_policy: governing_policy.clone(),
-                        unresolved_account,
-                        changed_accounts: change.changed_accounts(),
-                    },
-                ),
+            } => RecognitionCorrectionRemapV1::ReinterpretedStableLegs(
+                StableLegsReinterpretationV1 {
+                    governing_policy: governing_policy.clone(),
+                    unresolved_account,
+                    changed_accounts: change.changed_accounts(),
+                },
             ),
         };
         plan.records.insert(
             0,
             AuthoritativeRecordV1::RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1 {
                 id: revision_id,
-                schema_version,
+                schema_version: remap_disposition.schema_version(),
                 prior_recognition: original_id,
                 replacement_recognition: replacement.id,
                 reason: request.reason.clone(),
@@ -384,15 +381,6 @@ fn retained_recognition<'a>(
     Ok(r)
 }
 
-/// A revision that keeps the interpretation is version 1; one that records a
-/// new interpretation is version 2.
-fn revision_version(revision: &RecognitionCorrectionRevisionV1) -> u32 {
-    match revision.remap_disposition {
-        RecognitionCorrectionRemapV1::UnchangedStableLegs => 1,
-        RecognitionCorrectionRemapV1::ReinterpretedStableLegs(_) => 2,
-    }
-}
-
 pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains, EngineError> {
     let invalid = EngineError::invalid;
     let mut successors = BTreeMap::new();
@@ -401,7 +389,7 @@ pub(crate) fn correction_chains(state: &DomainState) -> Result<CorrectionChains,
         let AuthoritativeRecordV1::RecognitionCorrectionRevision(revision) = record else {
             continue;
         };
-        if revision.schema_version != revision_version(revision) {
+        if revision.schema_version != revision.remap_disposition.schema_version() {
             return Err(EngineError::version());
         }
         if *id != revision.id

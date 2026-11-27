@@ -599,19 +599,14 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             }
         }
         AuthoritativeRecordV1::RecognitionCorrectionRevision(r) => {
-            // Version 2 records a new interpretation of the same legs.
-            let version = match &r.remap_disposition {
-                RecognitionCorrectionRemapV1::UnchangedStableLegs => 1,
-                RecognitionCorrectionRemapV1::ReinterpretedStableLegs(_) => {
-                    let new = &v["remap_disposition"]["ReinterpretedStableLegs"];
-                    m.policy(&new["governing_policy"]);
-                    m.reference(&["Account"], &new["unresolved_account"], None);
-                    m.many(&["Account"], &new["changed_accounts"]);
-                    2
-                }
-            };
-            if r.schema_version != version {
+            if r.schema_version != r.remap_disposition.schema_version() {
                 return Err(EngineError::version());
+            }
+            if let RecognitionCorrectionRemapV1::ReinterpretedStableLegs(_) = &r.remap_disposition {
+                let new = &v["remap_disposition"]["ReinterpretedStableLegs"];
+                m.policy(&new["governing_policy"]);
+                m.reference(&["Account"], &new["unresolved_account"], None);
+                m.many(&["Account"], &new["changed_accounts"]);
             }
             if r.prior_recognition == r.replacement_recognition || r.reason.trim().is_empty() {
                 return Err(EngineError::invalid());

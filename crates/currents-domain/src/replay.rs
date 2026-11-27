@@ -74,12 +74,7 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::RelationshipCapture(v) => Some(v.id),
                 AuthoritativeRecordV1::RelationshipParseRevision(v) => Some(v.id),
                 AuthoritativeRecordV1::RecognitionCorrectionRevision(v) => {
-                    // Version 2 records a new interpretation of the same legs.
-                    let version = match v.remap_disposition {
-                        RecognitionCorrectionRemapV1::UnchangedStableLegs => 1,
-                        RecognitionCorrectionRemapV1::ReinterpretedStableLegs(_) => 2,
-                    };
-                    if v.schema_version != version {
+                    if v.schema_version != v.remap_disposition.schema_version() {
                         return Err(EngineError::version());
                     }
                     Some(v.id)
