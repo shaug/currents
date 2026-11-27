@@ -38,11 +38,32 @@ Core and MSRV run the same tests as `cargo test --workspace`, except the
 vendored doubleentry suite in `crates/currents-storage/tests/cur_005.rs`. Each
 test runs in its own process on a pool sized to the machine's cores. Set
 `CURRENTS_TEST_JOBS` to change the pool size; `1` runs one test at a time.
-The pool starts the longest tests first (`START_FIRST` in
-`xtask/src/test_pool.rs`), and runs `cargo test --doc` as one of its jobs.
-`CURRENTS_TEST_SHARD=K/N` runs part K of N of that schedule; CI splits Linux
-core and MSRV into three parts and macOS core into two, each on its own runner. In CI the core gate prints each test's
-start time and duration. Nextest is not used.
+`cargo test --doc` runs alone before the pool starts, because cargo holds the
+target directory's build lock until the last doctest finishes and every test
+that starts cargo would wait behind it. `CURRENTS_TEST_SHARD=K/N` runs part K
+of N of the schedule; CI splits Linux core and MSRV into three parts and macOS
+core into two, each on its own runner, and the last part runs the doctests.
+Nextest is not used.
+
+`docs/slow-tests.json` lists the tests (and `doctests`) that may take longer
+than `default_limit_seconds`, each with its own limit and a reason, longest
+first. The pool starts listed tests first, in list order, and the shard split
+spreads them evenly. In CI the core gate prints each test's start time and
+duration and fails when a test runs past its limit. Every run of the workspace
+gate, local or CI, fails when the list names a test that no longer exists.
+Local runs do not check limits, because local machines vary too much. The
+first list held every test slower than 15 seconds in nine CI runs on
+2026-11-26, each with twice its slowest time, so every test started with at
+least twice its CI time as headroom. AGENTS.md gives the rules for adding an
+entry.
+
+The quality gate also rejects a function under `crates/` that calls
+`Command::new("cargo")` or `Command::new(env!("CARGO"))`, directly or through
+other functions or methods in the same file, unless
+`docs/nested-cargo-tests.json` lists that file and function with a reason, and
+it rejects entries whose function no longer starts cargo. CI job timeouts sit
+at about twice the slowest job in recent runs, so a job that doubles in time
+fails instead of running for an hour.
 
 The vendored suite's result changes only with `vendor/`, `patches/`,
 `rust-toolchain.toml`, `.cargo/` or its test file. The CI `doubleentry` job

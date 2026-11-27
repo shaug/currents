@@ -1,6 +1,7 @@
 //! CUR-017 reconciliation claims through the encrypted writer and replay.
 use currents_accounting::AccountingAdapter;
 use currents_domain::correction::{CorrectionEngine, CorrectionRequestV1};
+use currents_domain::reconciliation::{ClaimApplicabilityV1, ReconciliationEngine};
 use currents_protocol::OperationV1;
 use currents_service as service_api;
 use currents_storage::{CommitControl, CommitFailure, PreparedCommit};
@@ -204,16 +205,16 @@ async fn replay_through(
 }
 
 #[tokio::test]
-async fn cur_017_correction_invalidates_named_recognition() {
+async fn cur_017_identity_correction_keeps_claims_current() {
     use currents_service::synthetic_commit_verified_correction;
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("named-recognition.db");
+    let path = dir.path().join("identity-correction.db");
     let (mut f, mut state, recognition) = purchase_on_a(&path).await;
     f.service.close().await.unwrap();
 
-    // NAMED is the October claim on A, which names R. DATED is the October
-    // claim on the expense account, which names nothing R touches; R's
-    // counter posting falls on a date inside it.
+    // NAMED is the October claim on A, which names R's leg. DATED is the
+    // October claim on the expense account, which names nothing R touches;
+    // R's counter posting falls on a date inside it.
     let mut recorded = Vec::new();
     for (n, on) in [(52_000, ACCOUNT_A), (52_010, EXPENSE)] {
         let on = AccountId(fixture::id(on).0);
@@ -229,18 +230,16 @@ async fn cur_017_correction_invalidates_named_recognition() {
     }
     let claimed = state;
     let (named, dated) = (recorded[0].id, recorded[1].id);
-    assert!(
-        recorded[0]
-            .accounting_dependencies
-            .contains(&RecordId(recognition.0))
-    );
-    assert!(recorded[1].accounting_dependencies.is_empty());
-
-    // An identity-only correction of R: the same purchase with fresh IDs.
     let AuthoritativeRecordV1::Recognition(original) = &claimed.records[&RecordId(recognition.0)]
     else {
         panic!("R is retained");
     };
+    // A claim names the legs it compared, never a recognition.
+    let leg = RecordId(original.leg_ids[0].0);
+    assert_eq!(recorded[0].accounting_dependencies, vec![leg]);
+    assert!(recorded[1].accounting_dependencies.is_empty());
+
+    // An identity-only correction of R: the same purchase with fresh IDs.
     let mut replacement = original.clone();
     replacement.id = RecognitionId(fixture::id(9400).0);
     for (ordinal, posting) in replacement.postings.iter_mut().enumerate() {
@@ -254,7 +253,7 @@ async fn cur_017_correction_invalidates_named_recognition() {
     };
     let revision = fixture::id(55_010);
     let plan = CorrectionEngine::correct_durable(&claimed, revision, &request).unwrap();
-    assert_eq!(plan.invalidations.last(), Some(&named));
+    assert!(!plan.invalidations.contains(&named));
     assert!(!plan.invalidations.contains(&dated));
     let store = open(&path).await;
     let receipt =
@@ -266,10 +265,13 @@ async fn cur_017_correction_invalidates_named_recognition() {
     let replayed = replay_through(&store.history(), receipt.commit, &witness).await;
     witness.close().await.unwrap();
     store.close().await.unwrap();
-    assert!(replayed.claim_invalidated(named));
-    assert!(!replayed.claim_invalidated(dated));
+    // The legs and the digest stay, so both claims still apply.
     for key in [named, dated] {
-        assert!(!claimed.claim_invalidated(key));
+        assert!(!replayed.claim_invalidated(key));
+        assert_eq!(
+            ReconciliationEngine::applicability(&replayed, key).unwrap(),
+            ClaimApplicabilityV1::Current
+        );
         assert_eq!(replayed.claim_status(key), claimed.claim_status(key));
         assert_eq!(
             serde_json::to_vec(&replayed.records[&key]).unwrap(),
