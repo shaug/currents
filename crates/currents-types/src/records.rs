@@ -117,14 +117,56 @@ choices!(ReconciliationStatus {
     Disputed,
     Superseded
 });
-// Why a claim is only partially supported (technical design section 6).
-choices!(ClaimReasonV1 {
+/// One source line: a facet of one observation version.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceLineV1 {
+    pub observation: RecordId,
+    pub facet: RecordId,
+}
+impl Schema for EvidenceLineV1 {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","additionalProperties":false,"required":["observation","facet"],"properties":{"observation":RecordId::schema(),"facet":RecordId::schema()}})
+    }
+}
+/// Why a claim is only partially supported (technical design section 6).
+/// A line reason names the exact source line it concerns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ClaimReasonV1 {
     UnknownOpening,
     IncompleteInterval,
     IncompatibleBalanceKinds,
     MissingDateMapping,
-    UnexplainedResidual
-});
+    UnexplainedResidual,
+    UnknownClosing,
+    /// A source line that no recognized leg allocates.
+    MissingAllocation(EvidenceLineV1),
+    /// A recognized leg in scope allocates a line the source does not report.
+    UnexpectedAllocation(EvidenceLineV1),
+    /// A line that the source reports, or legs allocate, more than once.
+    RepeatedIdentity(EvidenceLineV1),
+    /// A line whose account, date or amount differs from its allocation.
+    DifferentTerms(EvidenceLineV1),
+    /// A recognized leg in scope that allocates no source line, such as a
+    /// leg an association admitted.
+    UnsupportedLeg(LegId),
+}
+impl Schema for ClaimReasonV1 {
+    fn schema() -> serde_json::Value {
+        let variant = |name: &str, value: serde_json::Value| serde_json::json!({"type":"object","additionalProperties":false,"required":[name],"properties":{name:value}});
+        let line = |name: &str| variant(name, EvidenceLineV1::schema());
+        serde_json::json!({"oneOf":[
+            {"type":"string","enum":["UnknownOpening","IncompleteInterval","IncompatibleBalanceKinds","MissingDateMapping","UnexplainedResidual","UnknownClosing"]},
+            line("MissingAllocation"),
+            line("UnexpectedAllocation"),
+            line("RepeatedIdentity"),
+            line("DifferentTerms"),
+            variant("UnsupportedLeg", LegId::schema())
+        ]})
+    }
+}
 choices!(AuthorityKind {
     Owner,
     StandingRule,
@@ -374,6 +416,19 @@ dto!(AccountingSegmentV1 { id:RecordId, component:RecordId, prior_segment:Option
 // `accounting_dependencies` names the recognitions, legs, association
 // revisions and segments the claim compared.
 dto!(ReconciliationClaimV1 { id:RecordId, kind:ReconciliationKindV1, comparison_version:u32, basis:ReadBasis, scope:Vec<AccountId>, unit:UnitId, cutoffs:DateScope, evidence_dependencies:Vec<RecordId>, decision_dependencies:Vec<RecordId>, accounting_dependencies:Vec<RecordId>, dependency_digest:Digest, matched_allocations:Vec<EvidenceAllocationV1>, differences:Vec<Amount>, exclusions:Vec<RecordId>, status:ReconciliationStatus, reasons:Vec<ClaimReasonV1>, reason:String });
+// An owner's confirmation or dispute of one claim at the dependency digest
+// the claim recorded. The claim record itself is never rewritten.
+choices!(ClaimDispositionV1 {
+    ConfirmedForScope,
+    Disputed
+});
+dto!(ReconciliationDispositionV1 {
+    id: RecordId,
+    claim: RecordId,
+    dependency_digest: Digest,
+    disposition: ClaimDispositionV1,
+    reason: String
+});
 dto!(OrganizationRecordV1 { id:RecordId, version:u32, kind:OrganizationKind, targets:Vec<RecordId>, parent:Option<RecordId>, text:String, allocations:Vec<EvidenceAllocationV1>, supersedes:Option<RecordId> });
 dto!(RuleV1 { id:RecordId, version:u32, operation_kinds:Vec<DecisionKind>, accounts:Vec<AccountId>, conditions:Vec<ReportedFieldV1>, grant_id:GrantId, revoked:bool });
 dto!(ReviewRecordV1 { id:RecordId, targets:Vec<RecordId>, disposition:ReviewDisposition, reason:String });
@@ -381,7 +436,7 @@ dto!(ScenarioV1 { id:RecordId, version:u32, basis:ReadBasis, commitments:Vec<Com
 dto!(ForecastPointV1 { account_id:AccountId, at:TemporalValue, amount:SourceValue<Amount>, uncertainty:Vec<String> });
 dto!(DecisionEnvelopeV1 { id:RecordId, commit:CommitSeq, item_position:u32, decision_type:DecisionKind, schema_version:u32, actor:RecordId, authority:AuthorityKind, grant_id:Option<GrantId>, command_id:CommandId, command_digest:Digest, references:Vec<RecordId>, recorded_time:RecordedInstant, adopted_result:Vec<RecordId>, policy:PolicyReferenceV1, corrections:Vec<RecordId>, supersedes:Vec<RecordId> });
 tagged!(AuthoritativeRecordV1 {
- DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), SegmentReemission(SegmentReemissionV1), ReconciliationClaim(ReconciliationClaimV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1)
+ DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), SegmentReemission(SegmentReemissionV1), ReconciliationClaim(ReconciliationClaimV1), ReconciliationDisposition(ReconciliationDispositionV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1)
 });
 choices!(CommandState {
     Committed,

@@ -37,13 +37,28 @@ impl<'a> ActivityPredicateV1<'a> {
         if !self.accounts.contains(&account) {
             return Ok(None);
         }
-        let date = match self.basis {
-            DateBasis::Effective => effective,
-            DateBasis::Posting => posting,
-        };
-        let TemporalValue::Date { civil, .. } = date else {
-            return Err(EngineError::version());
-        };
-        Ok((self.start <= *civil && *civil <= self.end).then_some(*civil))
+        let civil = civil_date(self.basis, effective, posting).ok_or_else(EngineError::version)?;
+        Ok(within(self.start, self.end, civil).then_some(civil))
     }
+}
+
+/// The date `basis` selects, when it is a civil date.
+pub(crate) fn civil_date(
+    basis: DateBasis,
+    effective: &TemporalValue,
+    posting: &TemporalValue,
+) -> Option<Date> {
+    let date = match basis {
+        DateBasis::Effective => effective,
+        DateBasis::Posting => posting,
+    };
+    match date {
+        TemporalValue::Date { civil, .. } => Some(*civil),
+        _ => None,
+    }
+}
+
+/// `day` falls inside the inclusive interval from `start` to `end`.
+pub(crate) fn within(start: Date, end: Date, day: Date) -> bool {
+    start <= day && day <= end
 }

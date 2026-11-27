@@ -4,11 +4,13 @@
 //! process instead lets independent tests use every core. It also keeps
 //! process-global state apart: SQLCipher memory security, tracing subscribers
 //! and exit-time native cleanup never cross from one test to another. In CI,
-//! `CURRENTS_TEST_SHARD` splits the tests between several runners.
+//! `CURRENTS_TEST_SHARD` splits the tests between several runners, and each
+//! test must finish within its time limit from `docs/slow-tests.json`.
 use crate::checks::{checked, output, recorded, root, sha};
 use serde_json::{Value, json};
 use std::{
-    env,
+    collections::BTreeSet,
+    env, fs,
     io::Write,
     path::{Path, PathBuf},
     sync::{
@@ -33,46 +35,101 @@ struct Case<'a> {
     name: String,
 }
 
-/// One unit of pool work: the workspace doctests, or the test at an index.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Job {
-    Doctests,
-    Test(usize),
-}
-
 /// Test binaries that exercise only vendored code. Their result changes only
 /// when the vendored sources, their patches, the toolchain or the test itself
 /// change, so the CI `doubleentry` job runs them (`cargo xtask ticket CUR-005`)
 /// only for inputs that have no recorded pass, instead of every core run.
 const SEPARATE: &[&str] = &["currents-storage/cur_005"];
 
-/// The 20 tests with the largest average share of test time over six CI runs
-/// (Linux, macOS and MSRV, November 2026), longest first. They start first so
-/// that none of them is left running alone at the end, and the shard split
-/// spreads them evenly. The list only changes the order; a name that no longer
-/// exists changes nothing.
-const START_FIRST: &[&str] = &[
-    "prefix_visibility",
-    "cur_007_1",
-    "history::audit_parity_tests::combined_decisions_count_boundary_and_rehashed_overflow",
-    "cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings",
-    "cur_015_opening_boundary_encrypted_initial_and_remap",
-    "cur_025_service_durable_revisions_and_no_recognition",
-    "cur_007_3",
-    "cur_007_2",
-    "cur_014_2_slice_fault",
-    "cur_007_4",
-    "cur_010_1",
-    "cur_015_initial_multidate_batch_is_atomic_and_replayable",
-    "history::audit_parity_tests::records_count_boundary_and_rehashed_overflow",
-    "history::audit_parity_tests::observation_count_boundary_and_rehashed_overflow",
-    "cur_015_multiple_corrections_never_publish_a_partial_native_prefix",
-    "cur_006_3",
-    "cur_015_3_real_parser_remap_preserves_raw_cancellation_retry_and_reopen",
-    "cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice",
-    "cur_003_1",
-    "cur_015_4_real_service_duplicates_expiry_reparse_and_reconnect",
-];
+/// The reviewed list of tests that may take longer than the default CI time
+/// limit, with their own limits, longest first. The pool starts these tests
+/// first, in list order, so that none of them is left running alone at the end
+/// and the shard split spreads them evenly.
+const SLOW_TESTS: &str = "docs/slow-tests.json";
+
+/// The doctests job's name in timing lines and in the slow-test list.
+const DOCTESTS: &str = "doctests";
+
+/// What a CI run says when a test runs past its limit.
+const OVER_LIMIT: &str = "Make the test faster. Each service reopen replays the whole \
+history, so reopen only when reopening is what the test checks, and do not start cargo \
+from a test. If the test needs the time, add or raise its entry in docs/slow-tests.json \
+with a reason; the maintainer reviews every change to that file. See AGENTS.md.";
+
+/// CI time limits from `docs/slow-tests.json`.
+#[derive(Debug, PartialEq)]
+struct Limits {
+    default: Duration,
+    /// Listed tests (`package/target test_name`, or `doctests`) and their
+    /// limits, in list order.
+    listed: Vec<(String, Duration)>,
+}
+
+impl Limits {
+    fn load() -> Result<Self> {
+        let path = root().join(SLOW_TESTS);
+        let text =
+            fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        Self::parse(&text)
+    }
+
+    fn parse(text: &str) -> Result<Self> {
+        let bad = |why: &str| format!("{SLOW_TESTS}: {why}");
+        let value: Value = serde_json::from_str(text).map_err(|error| bad(&error.to_string()))?;
+        let seconds = |value: &Value| {
+            value
+                .as_u64()
+                .filter(|seconds| *seconds > 0)
+                .map(Duration::from_secs)
+        };
+        let default = seconds(&value["default_limit_seconds"])
+            .ok_or_else(|| bad("default_limit_seconds must be a positive integer"))?;
+        let entries = value["tests"]
+            .as_array()
+            .ok_or_else(|| bad("tests must be a list"))?;
+        let mut listed: Vec<(String, Duration)> = Vec::new();
+        for entry in entries {
+            let test = entry["test"]
+                .as_str()
+                .filter(|test| !test.is_empty())
+                .ok_or_else(|| bad("every entry needs a test"))?;
+            let limit = seconds(&entry["limit_seconds"])
+                .ok_or_else(|| bad(&format!("{test}: limit_seconds must be a positive integer")))?;
+            if entry["reason"]
+                .as_str()
+                .is_none_or(|reason| reason.trim().is_empty())
+            {
+                return Err(bad(&format!("{test}: every entry needs a reason")));
+            }
+            if listed.iter().any(|(seen, _)| seen == test) {
+                return Err(bad(&format!("{test} is listed twice")));
+            }
+            listed.push((test.to_owned(), limit));
+        }
+        Ok(Self { default, listed })
+    }
+
+    /// The test's position in the list, if it is listed.
+    fn rank(&self, test: &str) -> Option<usize> {
+        self.listed.iter().position(|(listed, _)| listed == test)
+    }
+
+    fn limit(&self, test: &str) -> Duration {
+        self.listed
+            .iter()
+            .find(|(listed, _)| listed == test)
+            .map_or(self.default, |(_, limit)| *limit)
+    }
+
+    /// Listed names that match no test in this run.
+    fn missing<'a>(&'a self, tests: &BTreeSet<String>) -> Vec<&'a str> {
+        self.listed
+            .iter()
+            .map(|(test, _)| test.as_str())
+            .filter(|test| !tests.contains(*test))
+            .collect()
+    }
+}
 
 /// The part of the run that one CI runner takes: `index` of `count`, set by
 /// `CURRENTS_TEST_SHARD=index/count`. Without it, one runner takes everything.
@@ -110,6 +167,12 @@ impl Shard {
         self.index == 1
     }
 
+    /// The last shard runs the doctests, so that they do not add to the first
+    /// shard's native driver.
+    fn is_last(self) -> bool {
+        self.index == self.count
+    }
+
     /// This shard's items. The first `head` items, the longest, are dealt back
     /// and forth (1, 2, 2, 1, ...) so that every shard gets a fair share of
     /// them. The rest are dealt in turn (1, 2, 1, 2, ...), so neighboring tests,
@@ -137,24 +200,29 @@ impl Shard {
     }
 }
 
-/// The run order: the longest tests, then the doctests, then every other test
-/// in listing order.
-fn schedule(cases: &[Case]) -> Vec<Job> {
+/// The name a test goes by in timing lines and in the slow-test list.
+fn key(case: &Case) -> String {
+    format!("{} {}", case.binary.label, case.name)
+}
+
+/// The test run order, as indexes into `cases`, and how many listed tests lead
+/// it: the listed tests in list order, then every other test in listing order.
+fn schedule(cases: &[Case], limits: &Limits) -> (Vec<usize>, usize) {
+    let unlisted = limits.listed.len();
     let rank = |index: &usize| {
         cases
             .get(*index)
-            .and_then(|case| START_FIRST.iter().position(|name| *name == case.name))
-            .unwrap_or(START_FIRST.len())
+            .and_then(|case| limits.rank(&key(case)))
+            .unwrap_or(unlisted)
     };
     let mut tests: Vec<usize> = (0..cases.len()).collect();
+    // A stable sort keeps unlisted tests in their original order.
     tests.sort_by_key(rank);
-    let first = tests
+    let head = tests
         .iter()
-        .take_while(|index| rank(index) < START_FIRST.len())
+        .take_while(|index| rank(index) < unlisted)
         .count();
-    let mut jobs: Vec<Job> = tests.iter().copied().map(Job::Test).collect();
-    jobs.insert(first, Job::Doctests);
-    jobs
+    (tests, head)
 }
 
 /// Worker count: `CURRENTS_TEST_JOBS` if set, else every available core.
@@ -254,10 +322,10 @@ fn pool<T: Sync, R: Send>(
 }
 
 /// Builds (or reuses) the workspace test binaries and runs this shard's part of
-/// the tests and doctests that `cargo test --workspace` runs, each test in its
-/// own process. `SEPARATE` binaries are left out. With `timings`, it prints
-/// when each test started and how long it took to stderr, which stays out of
-/// the evidence.
+/// the tests that `cargo test --workspace` runs, each test in its own process.
+/// The last shard also runs the doctests. `SEPARATE` binaries are left out. With `timings` (CI only), it
+/// prints when each test started and how long it took to stderr, which stays
+/// out of the evidence, and fails when a test runs past its time limit.
 pub(crate) fn run(
     program: &Path,
     rustc: Option<&Path>,
@@ -282,6 +350,7 @@ pub(crate) fn run(
             .into_iter()
             .partition(|binary| SEPARATE.contains(&binary.label.as_str()));
     let workers = jobs()?;
+    let limits = Limits::load()?;
     let never = AtomicBool::new(false);
 
     // Listing is cheap, but a first launch can be slow on macOS, so list in parallel.
@@ -330,18 +399,35 @@ pub(crate) fn run(
             &b.binary.executable,
         ))
     });
-    let schedule = schedule(&cases);
-    // The long tests and the doctests come first.
-    let head = schedule
-        .iter()
-        .position(|job| *job == Job::Doctests)
-        .map_or(0, |doctests| doctests + 1);
+    // A fixture run lists another workspace's tests, so only the workspace run
+    // checks that every listed name still exists.
+    if manifest.is_none() {
+        let tests: BTreeSet<String> = cases.iter().map(key).chain([DOCTESTS.to_owned()]).collect();
+        let missing = limits.missing(&tests);
+        if !missing.is_empty() {
+            return Err(format!(
+                "{SLOW_TESTS} lists tests that no longer exist; remove or rename them:\n  {}",
+                missing.join("\n  ")
+            ));
+        }
+    }
+    let (schedule, head) = schedule(&cases, &limits);
     let work = shard.take(schedule, head);
 
     let stop = AtomicBool::new(false);
     let mut outputs = vec![String::new(); cases.len()];
-    let mut doctests = None;
     let mut failures = Vec::new();
+    let mut over_limit = Vec::new();
+    let mut check_limit = |test: &str, took: Duration| {
+        let limit = limits.limit(test);
+        if timings && took > limit {
+            over_limit.push(format!(
+                "{test}: {}s, limit {}s",
+                took.as_secs(),
+                limit.as_secs()
+            ));
+        }
+    };
     let args = |case: &Case| {
         [
             "--exact".to_owned(),
@@ -350,58 +436,52 @@ pub(crate) fn run(
         ]
     };
     let began = Instant::now();
+    // `cargo test --doc` holds the target directory's build lock until its last
+    // doctest finishes, so every test that starts cargo would wait behind it.
+    // The doctests therefore run alone, before this shard's tests.
+    let doctests = if shard.is_last() {
+        let result = output(program, &doc, &root(), rustc);
+        let took = began.elapsed();
+        if timings {
+            timing(DOCTESTS, Duration::ZERO, took);
+        }
+        check_limit(DOCTESTS, took);
+        let stdout = result.and_then(|out| recorded(program, &doc, &root(), rustc, &out))?;
+        Some(json!({"command": doc, "stdout_sha256": sha(stdout.as_bytes())}))
+    } else {
+        None
+    };
     pool(
         &work,
         workers,
         &stop,
-        |job| {
+        |index| {
             let started = Instant::now();
-            let result = match *job {
-                Job::Doctests => output(program, &doc, &root(), rustc),
-                Job::Test(index) => cases
-                    .get(index)
-                    .ok_or_else(|| "unknown test".to_owned())
-                    .and_then(|case| {
-                        let args = args(case);
-                        let args: Vec<_> = args.iter().map(String::as_str).collect();
-                        output(
-                            &case.binary.executable,
-                            &args,
-                            &case.binary.package_dir,
-                            rustc,
-                        )
-                    }),
-            };
-            (*job, started, started.elapsed(), result)
+            let result = cases
+                .get(*index)
+                .ok_or_else(|| "unknown test".to_owned())
+                .and_then(|case| {
+                    let args = args(case);
+                    let args: Vec<_> = args.iter().map(String::as_str).collect();
+                    output(
+                        &case.binary.executable,
+                        &args,
+                        &case.binary.package_dir,
+                        rustc,
+                    )
+                });
+            (*index, started, started.elapsed(), result)
         },
         // Evidence is recorded here, on the reporting thread, as results arrive.
-        |_, (job, started, took, result)| {
-            let index = match job {
-                Job::Doctests => {
-                    if timings {
-                        timing("doctests", started.duration_since(began), took);
-                    }
-                    match result.and_then(|out| recorded(program, &doc, &root(), rustc, &out)) {
-                        Ok(stdout) => doctests = Some(stdout),
-                        Err(error) => {
-                            stop.store(true, Ordering::SeqCst);
-                            failures.push(error);
-                        }
-                    }
-                    return;
-                }
-                Job::Test(index) => index,
-            };
+        |_, (index, started, took, result)| {
             let Some(case) = cases.get(index) else {
                 return;
             };
+            let test = key(case);
             if timings {
-                timing(
-                    &format!("{} {}", case.binary.label, case.name),
-                    started.duration_since(began),
-                    took,
-                );
+                timing(&test, started.duration_since(began), took);
             }
+            check_limit(&test, took);
             let args = args(case);
             let args: Vec<_> = args.iter().map(String::as_str).collect();
             let recorded = result.and_then(|out| {
@@ -439,17 +519,13 @@ pub(crate) fn run(
     if !failures.is_empty() {
         return Err(failures.join("\n"));
     }
-    let doctests = match doctests {
-        Some(stdout) => Some(json!({"command": doc, "stdout_sha256": sha(stdout.as_bytes())})),
-        None if work.contains(&Job::Doctests) => return Err("doctests did not run".into()),
-        // Another shard runs them.
-        None => None,
-    };
-
-    let mut names: Vec<_> = cases
-        .iter()
-        .map(|case| format!("{} {}", case.binary.label, case.name))
-        .collect();
+    if !over_limit.is_empty() {
+        return Err(format!(
+            "These tests ran past their CI time limit:\n  {}\n{OVER_LIMIT}",
+            over_limit.join("\n  ")
+        ));
+    }
+    let mut names: Vec<_> = cases.iter().map(key).collect();
     names.sort();
     let separate: Vec<_> = separate.iter().map(|binary| &binary.label).collect();
     Ok(json!({
@@ -469,14 +545,20 @@ pub(crate) fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::{Binary, Case, Job, START_FIRST, Shard, binaries, pool, schedule};
+    use super::{Binary, Case, Limits, Shard, binaries, pool, schedule};
     use std::{
+        collections::BTreeSet,
         path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
+        time::Duration,
     };
 
+    fn limits(text: &str) -> Limits {
+        Limits::parse(text).unwrap()
+    }
+
     #[test]
-    fn schedule_starts_long_tests_then_doctests() {
+    fn schedule_starts_listed_tests_in_list_order() {
         let binary = Binary {
             executable: PathBuf::new(),
             package_dir: PathBuf::new(),
@@ -486,21 +568,65 @@ mod tests {
             binary: &binary,
             name: name.into(),
         };
-        let (Some(first), Some(second)) = (START_FIRST.first(), START_FIRST.get(1)) else {
-            panic!("START_FIRST lists at least two tests");
-        };
-        let cases = [case("a"), case(second), case("b"), case(first)];
-        assert_eq!(
-            schedule(&cases),
-            [
-                Job::Test(3),
-                Job::Test(1),
-                Job::Doctests,
-                Job::Test(0),
-                Job::Test(2)
-            ]
+        let cases = [case("a"), case("slow"), case("b"), case("slowest")];
+        // The doctests entry sets only their limit; they are not pool work.
+        let listed = limits(
+            r#"{"default_limit_seconds": 30, "tests": [
+                {"test": "pkg/target slowest", "limit_seconds": 90, "reason": "r"},
+                {"test": "doctests", "limit_seconds": 60, "reason": "r"},
+                {"test": "pkg/target slow", "limit_seconds": 45, "reason": "r"}]}"#,
         );
-        assert_eq!(schedule(&cases[..1]), [Job::Doctests, Job::Test(0)]);
+        assert_eq!(schedule(&cases, &listed), (vec![3, 1, 0, 2], 2));
+        let none = limits(r#"{"default_limit_seconds": 30, "tests": []}"#);
+        assert_eq!(schedule(&cases, &none), (vec![0, 1, 2, 3], 0));
+    }
+
+    #[test]
+    fn only_the_last_shard_runs_the_doctests() {
+        let last: Vec<bool> = (1..=3)
+            .map(|index| Shard { index, count: 3 }.is_last())
+            .collect();
+        assert_eq!(last, [false, false, true]);
+        assert!(Shard::ALL.is_last());
+    }
+
+    #[test]
+    fn limits_apply_to_listed_tests_and_default_to_the_rest() {
+        let listed = limits(
+            r#"{"default_limit_seconds": 30, "tests": [
+                {"test": "pkg/target slow", "limit_seconds": 90, "reason": "r"}]}"#,
+        );
+        assert_eq!(listed.limit("pkg/target slow"), Duration::from_secs(90));
+        assert_eq!(listed.limit("pkg/target other"), Duration::from_secs(30));
+        let tests: BTreeSet<String> = ["pkg/target other".to_owned()].into();
+        assert_eq!(listed.missing(&tests), ["pkg/target slow"]);
+        let tests: BTreeSet<String> = ["pkg/target slow".to_owned()].into();
+        assert!(listed.missing(&tests).is_empty());
+    }
+
+    #[test]
+    fn slow_test_list_needs_limits_reasons_and_unique_names() {
+        for bad in [
+            "not json",
+            r#"{"tests": []}"#,
+            r#"{"default_limit_seconds": 0, "tests": []}"#,
+            r#"{"default_limit_seconds": 30}"#,
+            r#"{"default_limit_seconds": 30, "tests": [{"limit_seconds": 9, "reason": "r"}]}"#,
+            r#"{"default_limit_seconds": 30, "tests": [{"test": "t", "reason": "r"}]}"#,
+            r#"{"default_limit_seconds": 30, "tests": [{"test": "t", "limit_seconds": 9}]}"#,
+            r#"{"default_limit_seconds": 30, "tests": [{"test": "t", "limit_seconds": 9, "reason": " "}]}"#,
+            r#"{"default_limit_seconds": 30, "tests": [
+                {"test": "t", "limit_seconds": 9, "reason": "r"},
+                {"test": "t", "limit_seconds": 9, "reason": "r"}]}"#,
+        ] {
+            assert!(Limits::parse(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn checked_in_slow_test_list_is_valid() {
+        let text = std::fs::read_to_string(super::root().join(super::SLOW_TESTS)).unwrap();
+        Limits::parse(&text).unwrap();
     }
 
     #[test]

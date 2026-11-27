@@ -73,6 +73,14 @@ Files: `crates/currents-domain/src/replay.rs`, `crates/currents-service/src/repl
 
 `ReplayEngine::apply(state:&mut DomainState,commit:&DomainCommitV1)->Result<(),EngineError>` uses frozen decisions only; `async ReplayCoordinator::rebuild(source:HistoryReader,destination:EncryptedStore)->Result<ReplayReport,EngineError>` lives in currents-service; verifier composes it headlessly. Domain ReplayEngine only applies typed records with no storage dependency; `ReplayReport { through, domain_hash, posting_hash, native_head, native_leaf_hash, identity_map_hash, problems }`. `SnapshotV1 { dataset_id, through, prefix_digest, schema_version, projector_version, replay_state, state_hash, basis }`; `SnapshotManager::select(prefix:&HistoryReader,candidate:SnapshotV1)->Result<Option<DomainState>,EngineError>` discards incompatible caches but never masks corrupt authority. Native ledger always full replay until a separately proven restoration API exists. Create at 10,000 records/clean close 1,000 tail; monthly unlocked full comparison; restore/upgrades full replay.
 
+A commit that records a reconciliation claim, confirmation or dispute holds
+exactly that one record and its frozen manifest, one `Reconciliation`
+decision and no invalidations. Replay derives the claim again with
+`ReconciliationEngine::record` from a request rebuilt from the claim, or the
+confirmation or dispute again with `confirm` or `dispute`, at the prior
+history, and rejects the commit when the derived record differs. Replay
+rejects a confirmation whose claim no longer applies at the prior history.
+
 <a id="c07"></a>
 
 ## C07: Acquisition and source identity, owners CUR-012, CUR-015, CUR-041
@@ -364,7 +372,10 @@ The claim record is never rewritten. `DomainState::claim_invalidated` reports
 true from the commit whose result invalidated the claim, and
 `DomainState::claim_status` keeps reporting the record's own lifecycle status.
 Replay derives the plan again and rejects a segment or correction commit whose
-recorded invalidations differ.
+recorded invalidations differ. Replay rejects any other commit whose result
+lists a reconciliation claim in its invalidations. Adoption, association and
+import commits invalidate no claim when they commit; a reader sees their
+changes in the claim's dependency digest (C09).
 
 Organization records on legs that stay keep their targets. A replacement that
 retires a leg that an organization record targets returns
@@ -433,7 +444,7 @@ frozen.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoff, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
@@ -454,6 +465,147 @@ Split/repeated identities touching scope remain unsupported (callers
 must supply all sibling rows, including those outside scope). An empty
 difference list proves neither account-period completeness nor retained
 allocation eligibility; this is not claim confirmation or service dispatch.
+
+### CUR-017 activity coverage checkpoint
+
+`ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`
+evaluates `Activity` requests. It refuses a request whose
+`basis.through_commit` is not the state's commit, or whose accounting index
+lags the state, with `StaleBasis`. Other kinds return `UnsupportedVersion`
+until their leaves merge. An Activity request names exactly one account and a
+`cutoffs` interval with both a start and an end. Each `evidence` ID names an
+import receipt or an observation version. Evaluation refuses a named
+observation version that has a later explicit revision with `StaleBasis`.
+Each exclusion names a named observation or a live recognized leg.
+
+The source lines are the movement facets of the named observations. A line's
+one reported date is its facet's temporal value, and the comparison uses it
+under either date basis. The recognized legs are the legs of every Activity
+recognition that the accounting index has not reversed. Exclusions remove the
+named lines, their allocations and the named legs from the comparison. The
+engine compares the lines with every live leg's allocations through
+`compare_activity_allocations`, so offsetting omissions never net out.
+
+The claim is `Proposed` only when it has no reasons. Otherwise it is
+`PartiallySupported`. `ClaimReasonV1` reasons are:
+
+- `IncompleteInterval`: no named receipt reports `Complete` coverage of the
+  whole interval by the request's date basis.
+- `UnknownOpening` or `UnknownClosing`: the statement reports no single
+  balance at the end of the day before the interval, or at the end of its last
+  day.
+- `UnexplainedResidual`: the opening plus the source lines in the interval,
+  excluded lines included, is not the closing. `differences` holds the
+  closing minus that sum.
+- `MissingDateMapping`: a named line or balance, or a live leg on the account,
+  has no civil date by the request's basis. It leaves the comparison.
+- `MissingAllocation`, `UnexpectedAllocation`, `RepeatedIdentity` and
+  `DifferentTerms` each name one `EvidenceLineV1 { observation, facet }`.
+  They serialize as `{"MissingAllocation":{...}}`.
+- `UnsupportedLeg` names a live leg on the account, with a civil date inside
+  the interval, that allocates no source line, such as a leg an association
+  admitted. Excluding the leg removes the reason. It serializes as
+  `{"UnsupportedLeg":"<leg id>"}`; the reasons without a payload stay plain
+  strings.
+
+The claim records the request's basis, account, `cutoffs` and sorted
+evidence and exclusions, the account's unit and comparison version 1.
+`matched_allocations` lists every compared line in the interval that matched,
+with its source amount. `accounting_dependencies` names each live leg the
+claim compared: a leg on the account inside the interval or without a civil
+date, or one that allocates a named observation. It names no recognition, so
+an identity-only correction, which replaces a recognition and keeps its legs,
+does not invalidate the claim under the CUR-016 rules.
+`decision_dependencies` is empty. The claim ID is a version 8 UUID derived
+from the request's kind, accounts, `cutoffs`, sorted evidence and exclusions,
+and basis, so the same request at the same basis gives the same claim and
+replay can derive the ID again from the claim.
+
+`dependency_digest` is a SHA-256 over the comparison version, the account
+and interval, each named observation with its latest explicit revision, each
+compared leg by its stable leg ID with its account, unit, effective date,
+posting date, normalized amount and evidence allocations, the account's
+current catalog terms except its display name, and the receipt coverage the
+claim used. Recognition and posting IDs are not inputs, so an identity-only
+correction keeps the digest. Neither organization records nor the display
+name enter the digest.
+
+### CUR-017 claim lifecycle checkpoint
+
+```text
+ReconciliationEngine::record(state,&request)->Result<DecisionPlan,EngineError>
+ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>
+ReconciliationEngine::dispute(state,claim:RecordId,digest:Digest,reason:&str)->Result<DecisionPlan,EngineError>
+ReconciliationEngine::lifecycle(state,claim:RecordId)->Result<ReconciliationStatus,EngineError>
+```
+
+`record` evaluates the request and returns a plan with the one claim, no
+invalidations and `AccountingIntent::NoEffect`. Its commit holds one
+`Reconciliation` decision.
+
+An owner confirms or disputes a claim with a
+`ReconciliationDispositionV1 { id, claim, dependency_digest, disposition, reason }`
+record, where `disposition` is `ConfirmedForScope` or `Disputed`. The plan
+holds only that record, with no invalidations and no accounting effect. Its
+ID derives from the claim and the disposition, so a claim takes at most one.
+Storage checks that `claim` names a `ReconciliationClaim`. The claim record
+itself is never rewritten.
+
+- `confirm` refuses with `InvalidReference` unless the claim's lifecycle
+  status is `Proposed`. It refuses with `StaleBasis` unless `digest` equals
+  the claim's recorded digest and the claim's applicability at `state` is
+  `Current`.
+- `dispute` accepts a `Proposed` or `PartiallySupported` claim with a
+  nonblank reason, and refuses with `StaleBasis` unless `digest` equals the
+  claim's recorded digest. It does not recompute the digest.
+- `lifecycle` reports `Superseded` once the state holds a newer claim with the
+  same kind, accounts, unit and `cutoffs`. A claim's commit follows its basis
+  commit, so the newer claim has the later `basis.through_commit`. Otherwise it
+  reports `ConfirmedForScope` or `Disputed` once the state holds the claim's
+  disposition, and the claim's own recorded status before either. Each status
+  holds from the commit that records the deciding record, so replay through an
+  earlier commit reports the earlier status.
+
+`DomainState::claim_status` still reports the record's own status, and
+`DomainState::claim_invalidated` keeps its CUR-016 meaning. Routes for these
+operations belong to later work.
+
+### CUR-017 claim applicability checkpoint
+
+```text
+ReconciliationEngine::applicability(state,claim:RecordId)->Result<ClaimApplicabilityV1,EngineError>
+ClaimApplicabilityV1 = Current | Invalidated(Vec<InvalidationReasonV1>)
+InvalidationReasonV1 = ScopeActivity | EvidenceRevision | AccountMapping | Coverage | Relationship | RetiredDependency
+```
+
+A claim stops applying from the first commit that changes an input in its
+scope. `applicability` reports `Invalidated` when the dependency digest
+computed at `state` differs from the claim's recorded digest, or when
+`DomainState::claim_invalidated` reports true. Each reason names an input:
+
+- `ScopeActivity`: the live legs in the claim's scope differ from the legs it
+  names, such as a newly recognized backdated line on the account inside the
+  interval.
+- `EvidenceRevision`: a named observation has a later explicit revision.
+  Evaluation refuses a revised observation, so the revision came after the
+  claim.
+- `Coverage`: whether the named receipts report the interval complete differs
+  from the claim's own `IncompleteInterval` reason.
+- `AccountMapping`: the account's catalog terms, other than its display name,
+  changed. A named receipt never changes, so when the interval's completeness
+  is unchanged, a digest difference left after comparing the legs and named
+  versions is in the catalog.
+- `Relationship`: reserved for relationship claims. An Activity claim compares
+  no relationship.
+- `RetiredDependency`: a segment replacement or correction listed the claim
+  in its invalidations under the CUR-016 rules.
+
+Activity outside the claim's accounts or dates, an organization record and a
+display name change leave the claim `Current`. Neither the claim record nor
+its disposition changes, and the history through an earlier commit reports
+the claim's applicability at that commit. `applicability` refuses another
+claim kind or comparison version with `UnsupportedVersion`, and an accounting
+index that lags the state with `StaleBasis`.
 
 <a id="c10"></a>
 

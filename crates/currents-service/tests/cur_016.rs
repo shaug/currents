@@ -1,4 +1,7 @@
 //! CUR-016 corrections against an actual committed and replayed accounting prefix.
+use currents_domain::reconciliation::{
+    ClaimApplicabilityV1, InvalidationReasonV1, ReconciliationEngine,
+};
 use currents_domain::segments::{
     SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
 };
@@ -7,6 +10,8 @@ use currents_types::*;
 #[path = "../../currents-domain/tests/support/associations.rs"]
 #[allow(dead_code)]
 mod association_fixtures;
+#[path = "support/claims.rs"]
+mod claims;
 #[path = "../../currents-domain/tests/support/recognition.rs"]
 #[allow(dead_code)]
 mod fixture;
@@ -1571,46 +1576,18 @@ async fn cur_016_1_encrypted_cross_account_commit() {
     rebuilt.close().await.unwrap();
 }
 
-// Claims on account A: K1 covers 2026-10-01 to 2026-10-31 with status
-// Proposed, K2 covers 2026-11-05 to 2026-11-30. Both have empty explicit
-// dependency lists.
-const K1: u32 = 4001;
-const K2: u32 = 4002;
-
-fn claim_on_a(n: u32, start: &str, end: &str) -> AuthoritativeRecordV1 {
-    let fixtures: Vec<AuthoritativeRecordV1> =
-        serde_json::from_str(include_str!("../../../fixtures/contracts/v1/records.json")).unwrap();
-    let Some(AuthoritativeRecordV1::ReconciliationClaim(mut claim)) = fixtures
-        .into_iter()
-        .find(|r| matches!(r, AuthoritativeRecordV1::ReconciliationClaim(_)))
-    else {
-        panic!("claim fixture missing");
-    };
-    let civil = |day: &str| {
-        let TemporalValue::Date { civil, .. } = fixture::date(day) else {
-            panic!("civil date")
-        };
-        Some(civil)
-    };
-    claim.id = fixture::id(n);
-    claim.scope = vec![account(ACCOUNT_A)];
-    claim.cutoffs = DateScope {
-        start: civil(start),
-        end: civil(end),
-        basis: DateBasis::Effective,
-    };
-    claim.status = ReconciliationStatus::Proposed;
-    claim.basis.dataset_id = DatasetId(support::id(1000).0);
-    AuthoritativeRecordV1::ReconciliationClaim(claim)
-}
+// Claims on account A, each recorded as its owner records it: K1 covers
+// 2026-10-01 to 2026-10-31 and K2 covers 2026-11-05 to 2026-11-30.
 
 /// A history where K1 and K2 commit after A's anchor, then the replacement
 /// `a_replacement` commits through the verified writer path.
 struct Invalidated {
     path: std::path::PathBuf,
-    /// The state at the claims' commit.
+    /// The state at the claims' commits.
     claimed: DomainState,
     replaced: CommitSeq,
+    k1: RecordId,
+    k2: RecordId,
 }
 async fn invalidated_a(dir: &std::path::Path) -> Invalidated {
     use currents_service::synthetic_commit_verified_segment;
@@ -1618,29 +1595,23 @@ async fn invalidated_a(dir: &std::path::Path) -> Invalidated {
     let (mut f, old) = anchored_a(&path).await;
     f.service.close().await.unwrap();
 
-    // The claims commit with no accounting effect, as their owner will.
-    let plan = DecisionPlan {
-        records: vec![
-            claim_on_a(K1, "2026-10-01", "2026-10-31"),
-            claim_on_a(K2, "2026-11-05", "2026-11-30"),
-        ],
-        invalidations: vec![],
-        accounting: AccountingIntent::NoEffect(NoEffectV1 {
-            reason: "Synthetic reconciliation claims".into(),
-        }),
-    };
-    let frozen = currents_accounting::AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
-    let store = open(&path).await;
-    store
-        .writer()
-        .commit(segment_commit(&plan, &frozen, 52_000, Default::default()))
-        .await
-        .unwrap();
-    store.close().await.unwrap();
-    f.service = f.reopen().await;
-    let claimed = refresh_financial(&mut f, None).await;
-    assert_eq!(claimed.through, CommitSeq(old.through.0 + 1));
-    f.service.close().await.unwrap();
+    let mut claimed = old.clone();
+    let mut ids = Vec::new();
+    for (n, start, end) in [
+        (52_000, "2026-10-01", "2026-10-31"),
+        (52_005, "2026-11-05", "2026-11-30"),
+    ] {
+        let request = claims::request(&claimed, account(ACCOUNT_A), start, end);
+        let (claim, prepared) = claims::recorded(&claimed, &request, n);
+        let store = open(&path).await;
+        store.writer().commit(prepared).await.unwrap();
+        store.close().await.unwrap();
+        f.service = f.reopen().await;
+        claimed = refresh_financial(&mut f, None).await;
+        f.service.close().await.unwrap();
+        ids.push(claim.id);
+    }
+    assert_eq!(claimed.through, CommitSeq(old.through.0 + 2));
 
     let request = a_replacement();
     let (plan, frozen) = ready_plan(&claimed, &request);
@@ -1657,6 +1628,8 @@ async fn invalidated_a(dir: &std::path::Path) -> Invalidated {
         path,
         claimed,
         replaced: receipt.commit,
+        k1: ids[0],
+        k2: ids[1],
     }
 }
 
@@ -1673,8 +1646,8 @@ async fn cur_016_backfill_invalidates_claim_in_scope() {
         .pop()
         .unwrap();
     let invalidations = &commit.command_result.effects.invalidations;
-    assert!(invalidations.contains(&fixture::id(K1)));
-    assert!(!invalidations.contains(&fixture::id(K2)));
+    assert!(invalidations.contains(&history.k1));
+    assert!(!invalidations.contains(&history.k2));
 
     let witness = open(&dir.path().join("through-claims.db")).await;
     let at_claims = replay_through(&store.history(), history.claimed.through, &witness).await;
@@ -1684,11 +1657,25 @@ async fn cur_016_backfill_invalidates_claim_in_scope() {
     witness.close().await.unwrap();
     store.close().await.unwrap();
 
-    assert!(!at_claims.claim_invalidated(fixture::id(K1)));
-    assert!(replaced.claim_invalidated(fixture::id(K1)));
-    assert!(!replaced.claim_invalidated(fixture::id(K2)));
-    for kept in [K1, K2] {
-        let key = fixture::id(kept);
+    assert!(!at_claims.claim_invalidated(history.k1));
+    assert!(replaced.claim_invalidated(history.k1));
+    assert!(!replaced.claim_invalidated(history.k2));
+    // K1 stops applying from the replacement, which retired its inputs.
+    let applicability =
+        |state: &DomainState, key| ReconciliationEngine::applicability(state, key).unwrap();
+    assert_eq!(
+        applicability(&at_claims, history.k1),
+        ClaimApplicabilityV1::Current
+    );
+    let ClaimApplicabilityV1::Invalidated(reasons) = applicability(&replaced, history.k1) else {
+        panic!("K1 no longer applies");
+    };
+    assert!(reasons.contains(&InvalidationReasonV1::RetiredDependency));
+    assert_eq!(
+        applicability(&replaced, history.k2),
+        ClaimApplicabilityV1::Current
+    );
+    for key in [history.k1, history.k2] {
         assert_eq!(
             serde_json::to_vec(&replaced.records[&key]).unwrap(),
             serde_json::to_vec(&history.claimed.records[&key]).unwrap()
@@ -1716,10 +1703,9 @@ async fn cur_016_replay_checks_invalidations() {
     let again = replay_through(&rebuilt.history(), history.replaced, &witness).await;
     witness.close().await.unwrap();
     rebuilt.close().await.unwrap();
-    assert!(source.invalidated.contains(&fixture::id(K1)));
+    assert!(source.invalidated.contains(&history.k1));
     assert_eq!(again.invalidated, source.invalidated);
-    for claim in [K1, K2] {
-        let key = fixture::id(claim);
+    for key in [history.k1, history.k2] {
         assert_eq!(again.claim_status(key), source.claim_status(key));
         assert_eq!(again.claim_invalidated(key), source.claim_invalidated(key));
     }
@@ -1734,17 +1720,13 @@ async fn cur_016_replay_checks_invalidations() {
         .unwrap();
     store.close().await.unwrap();
     let mut added = stored.clone();
-    added
-        .command_result
-        .effects
-        .invalidations
-        .push(fixture::id(K2));
+    added.command_result.effects.invalidations.push(history.k2);
     let mut omitted = stored.clone();
     omitted
         .command_result
         .effects
         .invalidations
-        .retain(|id| *id != fixture::id(K1));
+        .retain(|id| *id != history.k1);
     let mut exact = history.claimed.clone();
     currents_domain::ReplayEngine::apply(&mut exact, &stored).unwrap();
     for tampered in [added, omitted] {

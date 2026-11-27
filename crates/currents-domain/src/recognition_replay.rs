@@ -32,6 +32,35 @@ pub(crate) fn validate_transition(
     }) {
         return crate::correction::readmit_replaced_legs(prior, commit, revision);
     }
+    // So does a reconciliation claim, confirmation or dispute.
+    if commit.records.iter().any(|record| {
+        matches!(
+            record,
+            AuthoritativeRecordV1::ReconciliationClaim(_)
+                | AuthoritativeRecordV1::ReconciliationDisposition(_)
+        )
+    }) {
+        return crate::reconciliation::readmit(prior, commit);
+    }
+    // Only a segment replacement or a correction invalidates a claim, and
+    // each derives its invalidations again. A later input change in a claim's
+    // scope shows in its dependency digest instead.
+    let corrects = commit.records.iter().any(|record| {
+        matches!(
+            record,
+            AuthoritativeRecordV1::RecognitionCorrectionRevision(_)
+        )
+    });
+    if !corrects
+        && commit
+            .command_result
+            .effects
+            .invalidations
+            .iter()
+            .any(|id| next.claim_status(*id).is_some())
+    {
+        return Err(EngineError::invalid());
+    }
     let mut emitted = Vec::new();
     for record in &commit.records {
         let plan = match record {

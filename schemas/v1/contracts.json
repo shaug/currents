@@ -8203,14 +8203,140 @@
                 },
                 "reasons": {
                   "items": {
-                    "enum": [
-                      "UnknownOpening",
-                      "IncompleteInterval",
-                      "IncompatibleBalanceKinds",
-                      "MissingDateMapping",
-                      "UnexplainedResidual"
-                    ],
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "enum": [
+                          "UnknownOpening",
+                          "IncompleteInterval",
+                          "IncompatibleBalanceKinds",
+                          "MissingDateMapping",
+                          "UnexplainedResidual",
+                          "UnknownClosing"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "MissingAllocation": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facet": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "observation": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "observation",
+                              "facet"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "MissingAllocation"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "UnexpectedAllocation": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facet": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "observation": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "observation",
+                              "facet"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "UnexpectedAllocation"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "RepeatedIdentity": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facet": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "observation": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "observation",
+                              "facet"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "RepeatedIdentity"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "DifferentTerms": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "facet": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "observation": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "observation",
+                              "facet"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "DifferentTerms"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "UnsupportedLeg": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "UnsupportedLeg"
+                        ],
+                        "type": "object"
+                      }
+                    ]
                   },
                   "maxItems": 16384,
                   "type": "array"
@@ -8255,6 +8381,55 @@
                 "exclusions",
                 "status",
                 "reasons",
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ReconciliationDisposition"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "claim": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "dependency_digest": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "disposition": {
+                  "enum": [
+                    "ConfirmedForScope",
+                    "Disputed"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "claim",
+                "dependency_digest",
+                "disposition",
                 "reason"
               ],
               "type": "object"
@@ -22092,102 +22267,37 @@
                       ],
                       "type": "object"
                     },
-                    "cutoff": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "civil": {
-                              "format": "date",
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "Date"
-                            },
-                            "original_text": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "civil",
-                            "original_text"
+                    "cutoffs": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "enum": [
+                            "Effective",
+                            "Posting"
                           ],
-                          "type": "object"
+                          "type": "string"
                         },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "Instant"
-                            },
-                            "original_offset": {
-                              "anyOf": [
-                                {
-                                  "maxLength": 1048576,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "original_text": {
-                              "type": "string"
-                            },
-                            "original_zone": {
-                              "anyOf": [
-                                {
-                                  "maxLength": 1048576,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "precision": {
-                              "enum": [
-                                "Second",
-                                "Millisecond",
-                                "Microsecond",
-                                "Nanosecond",
-                                "Unknown"
-                              ],
-                              "type": "string"
-                            },
-                            "utc": {
-                              "format": "date-time",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "utc",
-                            "original_offset",
-                            "original_zone",
-                            "precision",
-                            "original_text"
-                          ],
-                          "type": "object"
+                        "end": {
+                          "format": "date",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "Unknown"
-                            },
-                            "original_text": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "original_text"
-                          ],
-                          "type": "object"
+                        "start": {
+                          "format": "date",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         }
-                      ]
+                      },
+                      "required": [
+                        "start",
+                        "end",
+                        "basis"
+                      ],
+                      "type": "object"
                     },
                     "evidence": {
                       "items": {
@@ -22244,7 +22354,7 @@
                   "required": [
                     "kind",
                     "scope",
-                    "cutoff",
+                    "cutoffs",
                     "evidence",
                     "exclusions",
                     "basis"
@@ -42227,14 +42337,140 @@
                       },
                       "reasons": {
                         "items": {
-                          "enum": [
-                            "UnknownOpening",
-                            "IncompleteInterval",
-                            "IncompatibleBalanceKinds",
-                            "MissingDateMapping",
-                            "UnexplainedResidual"
-                          ],
-                          "type": "string"
+                          "oneOf": [
+                            {
+                              "enum": [
+                                "UnknownOpening",
+                                "IncompleteInterval",
+                                "IncompatibleBalanceKinds",
+                                "MissingDateMapping",
+                                "UnexplainedResidual",
+                                "UnknownClosing"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "MissingAllocation": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "MissingAllocation"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "UnexpectedAllocation": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "UnexpectedAllocation"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "RepeatedIdentity": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "RepeatedIdentity"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "DifferentTerms": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "DifferentTerms"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "UnsupportedLeg": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "UnsupportedLeg"
+                              ],
+                              "type": "object"
+                            }
+                          ]
                         },
                         "maxItems": 16384,
                         "type": "array"
@@ -42279,6 +42515,55 @@
                       "exclusions",
                       "status",
                       "reasons",
+                      "reason"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "ReconciliationDisposition"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "claim": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "dependency_digest": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "enum": [
+                          "ConfirmedForScope",
+                          "Disputed"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "claim",
+                      "dependency_digest",
+                      "disposition",
                       "reason"
                     ],
                     "type": "object"
@@ -55960,14 +56245,140 @@
                       },
                       "reasons": {
                         "items": {
-                          "enum": [
-                            "UnknownOpening",
-                            "IncompleteInterval",
-                            "IncompatibleBalanceKinds",
-                            "MissingDateMapping",
-                            "UnexplainedResidual"
-                          ],
-                          "type": "string"
+                          "oneOf": [
+                            {
+                              "enum": [
+                                "UnknownOpening",
+                                "IncompleteInterval",
+                                "IncompatibleBalanceKinds",
+                                "MissingDateMapping",
+                                "UnexplainedResidual",
+                                "UnknownClosing"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "MissingAllocation": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "MissingAllocation"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "UnexpectedAllocation": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "UnexpectedAllocation"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "RepeatedIdentity": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "RepeatedIdentity"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "DifferentTerms": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "facet"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "DifferentTerms"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "UnsupportedLeg": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "UnsupportedLeg"
+                              ],
+                              "type": "object"
+                            }
+                          ]
                         },
                         "maxItems": 16384,
                         "type": "array"
@@ -56012,6 +56423,55 @@
                       "exclusions",
                       "status",
                       "reasons",
+                      "reason"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "ReconciliationDisposition"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "claim": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "dependency_digest": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "enum": [
+                          "ConfirmedForScope",
+                          "Disputed"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "claim",
+                      "dependency_digest",
+                      "disposition",
                       "reason"
                     ],
                     "type": "object"
@@ -67514,14 +67974,140 @@
                           },
                           "reasons": {
                             "items": {
-                              "enum": [
-                                "UnknownOpening",
-                                "IncompleteInterval",
-                                "IncompatibleBalanceKinds",
-                                "MissingDateMapping",
-                                "UnexplainedResidual"
-                              ],
-                              "type": "string"
+                              "oneOf": [
+                                {
+                                  "enum": [
+                                    "UnknownOpening",
+                                    "IncompleteInterval",
+                                    "IncompatibleBalanceKinds",
+                                    "MissingDateMapping",
+                                    "UnexplainedResidual",
+                                    "UnknownClosing"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "MissingAllocation": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "facet": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "observation": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "observation",
+                                        "facet"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "MissingAllocation"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "UnexpectedAllocation": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "facet": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "observation": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "observation",
+                                        "facet"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "UnexpectedAllocation"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "RepeatedIdentity": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "facet": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "observation": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "observation",
+                                        "facet"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "RepeatedIdentity"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "DifferentTerms": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "facet": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "observation": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "observation",
+                                        "facet"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "DifferentTerms"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "UnsupportedLeg": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "UnsupportedLeg"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
                             },
                             "maxItems": 16384,
                             "type": "array"
@@ -79103,102 +79689,37 @@
                               ],
                               "type": "object"
                             },
-                            "cutoff": {
-                              "oneOf": [
-                                {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "civil": {
-                                      "format": "date",
-                                      "type": "string"
-                                    },
-                                    "kind": {
-                                      "const": "Date"
-                                    },
-                                    "original_text": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "kind",
-                                    "civil",
-                                    "original_text"
+                            "cutoffs": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "basis": {
+                                  "enum": [
+                                    "Effective",
+                                    "Posting"
                                   ],
-                                  "type": "object"
+                                  "type": "string"
                                 },
-                                {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "kind": {
-                                      "const": "Instant"
-                                    },
-                                    "original_offset": {
-                                      "anyOf": [
-                                        {
-                                          "maxLength": 1048576,
-                                          "type": "string"
-                                        },
-                                        {
-                                          "type": "null"
-                                        }
-                                      ]
-                                    },
-                                    "original_text": {
-                                      "type": "string"
-                                    },
-                                    "original_zone": {
-                                      "anyOf": [
-                                        {
-                                          "maxLength": 1048576,
-                                          "type": "string"
-                                        },
-                                        {
-                                          "type": "null"
-                                        }
-                                      ]
-                                    },
-                                    "precision": {
-                                      "enum": [
-                                        "Second",
-                                        "Millisecond",
-                                        "Microsecond",
-                                        "Nanosecond",
-                                        "Unknown"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "utc": {
-                                      "format": "date-time",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "kind",
-                                    "utc",
-                                    "original_offset",
-                                    "original_zone",
-                                    "precision",
-                                    "original_text"
-                                  ],
-                                  "type": "object"
+                                "end": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 },
-                                {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "kind": {
-                                      "const": "Unknown"
-                                    },
-                                    "original_text": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "kind",
-                                    "original_text"
-                                  ],
-                                  "type": "object"
+                                "start": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
                                 }
-                              ]
+                              },
+                              "required": [
+                                "start",
+                                "end",
+                                "basis"
+                              ],
+                              "type": "object"
                             },
                             "evidence": {
                               "items": {
@@ -79255,7 +79776,7 @@
                           "required": [
                             "kind",
                             "scope",
-                            "cutoff",
+                            "cutoffs",
                             "evidence",
                             "exclusions",
                             "basis"
@@ -94846,102 +95367,37 @@
                                   ],
                                   "type": "object"
                                 },
-                                "cutoff": {
-                                  "oneOf": [
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "civil": {
-                                          "format": "date",
-                                          "type": "string"
-                                        },
-                                        "kind": {
-                                          "const": "Date"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "civil",
-                                        "original_text"
+                                "cutoffs": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "basis": {
+                                      "enum": [
+                                        "Effective",
+                                        "Posting"
                                       ],
-                                      "type": "object"
+                                      "type": "string"
                                     },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Instant"
-                                        },
-                                        "original_offset": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        },
-                                        "original_zone": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "precision": {
-                                          "enum": [
-                                            "Second",
-                                            "Millisecond",
-                                            "Microsecond",
-                                            "Nanosecond",
-                                            "Unknown"
-                                          ],
-                                          "type": "string"
-                                        },
-                                        "utc": {
-                                          "format": "date-time",
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "utc",
-                                        "original_offset",
-                                        "original_zone",
-                                        "precision",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
+                                    "end": {
+                                      "format": "date",
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
                                     },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Unknown"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
+                                    "start": {
+                                      "format": "date",
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
                                     }
-                                  ]
+                                  },
+                                  "required": [
+                                    "start",
+                                    "end",
+                                    "basis"
+                                  ],
+                                  "type": "object"
                                 },
                                 "evidence": {
                                   "items": {
@@ -94998,7 +95454,7 @@
                               "required": [
                                 "kind",
                                 "scope",
-                                "cutoff",
+                                "cutoffs",
                                 "evidence",
                                 "exclusions",
                                 "basis"

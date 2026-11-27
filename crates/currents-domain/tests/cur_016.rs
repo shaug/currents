@@ -207,6 +207,19 @@ fn note(n: u32, target: RecordId) -> AuthoritativeRecordV1 {
     note.targets = vec![target];
     AuthoritativeRecordV1::Organization(note)
 }
+/// The state holding the fixed `claims`. Replay derives a committed claim
+/// again from its request, and no request evaluates to these claims, so they
+/// are placed in the state rather than committed.
+fn holding(state: &DomainState, claims: Vec<AuthoritativeRecordV1>) -> DomainState {
+    let mut state = state.clone();
+    for record in claims {
+        let AuthoritativeRecordV1::ReconciliationClaim(claim) = &record else {
+            panic!("claims only")
+        };
+        state.records.insert(claim.id, record);
+    }
+    state
+}
 /// Commit `records` with no accounting effect, as their owners will.
 fn recorded(state: &DomainState, records: Vec<AuthoritativeRecordV1>) -> DomainState {
     let reason = "Synthetic dependent records".into();
@@ -1228,7 +1241,7 @@ fn claims() -> Vec<AuthoritativeRecordV1> {
 fn cur_016_claims_outside_change_stay_current() {
     let mut state = with_transfer();
     let request = cross_account(&mut state, 4300);
-    let state = recorded(&state, claims());
+    let state = holding(&state, claims());
     let plan = ready(&state, &request);
     assert!(plan.invalidations.contains(&id(K1)));
     assert!(!plan.invalidations.contains(&id(K2)));
@@ -1280,7 +1293,7 @@ fn cur_016_identity_correction_and_claims() {
     let bought = recognition(4113);
     let mut named = claim(4004, EXPENSE, "2026-12-01", "2026-12-31");
     named.accounting_dependencies = vec![RecordId(bought.0)];
-    let state = recorded(
+    let state = holding(
         &state,
         vec![
             AuthoritativeRecordV1::ReconciliationClaim(claim(K1, 10, "2026-10-01", "2026-10-31")),
@@ -1794,7 +1807,7 @@ fn cur_016_reinterpretation_invalidates_claims_in_scope() {
         claim(8501, WAGES, "2026-11-01", "2026-11-30"),
         claim(8502, 10, "2026-11-01", "2026-11-30"),
     ];
-    let state = recorded(
+    let state = holding(
         &deposited(),
         claims
             .into_iter()
@@ -2096,7 +2109,7 @@ fn cur_016_leg_date_correction() {
         claim(8503, EXPENSE, "2026-11-02", "2026-11-02"),
         claim(8504, CARD, "2026-11-01", "2026-11-01"),
     ];
-    let state = recorded(
+    let state = holding(
         &card_purchase(),
         claims
             .into_iter()
