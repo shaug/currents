@@ -18,21 +18,6 @@ pub(crate) const ITEM_CONTENT_COUNT: &str =
     "SELECT count(*) FROM currents_content_refs WHERE seq=? AND position=?";
 pub(crate) const ITEM_CONTENTS: &str =
     "SELECT digest FROM currents_content_refs WHERE seq=? AND position=?";
-// The broad command-effect family has 32 slots. Only values are bound; the
-// SQLite worker handles the same indexed per-kind existence checks together.
-const WIDE_COMMAND_EFFECT_KINDS: usize = 32;
-const WIDE_COMMAND_EFFECT_MATCHES: &str = r#"
-WITH permitted(kind) AS (VALUES
-    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
-    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
-    (?),(?),(?),(?),(?),(?),(?),(?),(?),(?),
-    (?),(?)
-)
-SELECT count(*) FROM permitted AS p WHERE EXISTS(
-    SELECT 1 FROM currents_definitions AS d
-    WHERE d.kind=p.kind AND d.id=? AND d.seq<=?
-)
-"#;
 fn canonical<T: serde::Serialize>(v: &T) -> Result<Vec<u8>, EngineError> {
     serde_json_canonicalizer::to_vec(v).map_err(|_| EngineError::invalid())
 }
@@ -374,18 +359,37 @@ impl Writer {
             }
             // All same-commit definitions now exist in this dataset's authority
             // transaction. Invalid result references roll back its native effect too.
-            for reference in crate::references::command_effects(&commit.command_result.effects) {
-                let mut matches = 0usize;
-                for kind in &reference.kinds {
-                    if tx
-                        .definition(kind, &reference.id, reference.version)
-                        .await?
-                        .is_some()
-                    {
-                        matches = matches.saturating_add(1);
-                    }
+            let mut probes = Probes::default();
+            let effects: Vec<Probed> =
+                crate::references::command_effects(&commit.command_result.effects)
+                    .map(|reference| probes.add(reference))
+                    .collect();
+            let mut references = Vec::with_capacity(metadata.len());
+            for meta in &metadata {
+                let mut probed = Vec::with_capacity(meta.references.len());
+                for reference in &meta.references {
+                    let reference = if reference.kinds == ["DatasetCatalog"] {
+                        catalog_reference(reference, tx.dataset_record(&reference.id).await?)?
+                    } else {
+                        reference.clone()
+                    };
+                    probed.push(probes.add(reference));
                 }
-                if matches != 1 {
+                references.push(probed);
+            }
+            let mut answers = Vec::with_capacity(probes.len());
+            for chunk in probes.chunks() {
+                let chunk: Vec<(&str, &str, Option<i64>)> = chunk
+                    .iter()
+                    .map(|(kind, id, version)| (kind.as_str(), id.as_str(), *version))
+                    .collect();
+                answers.extend(tx.definitions(&chunk).await?);
+            }
+            if answers.len() != probes.len() {
+                return Err(EngineError::invalid());
+            }
+            for probed in &effects {
+                if probed.single(&answers).is_none() {
                     return Err(EngineError::invalid());
                 }
             }
@@ -398,28 +402,18 @@ impl Writer {
                 )
                 .await?;
             }
-            for (position, meta) in metadata.iter().enumerate() {
-                for reference in &meta.references {
-                    let reference = if reference.kinds == ["DatasetCatalog"] {
-                        catalog_reference(reference, tx.dataset_record(&reference.id).await?)?
-                    } else {
-                        reference.clone()
-                    };
-                    let mut found = None;
-                    for kind in &reference.kinds {
-                        if let Some(version) = tx
-                            .definition(kind, &reference.id, reference.version)
-                            .await?
-                        {
-                            if found.is_some() {
-                                return Err(EngineError::invalid());
-                            }
-                            found = Some((kind, version));
-                        }
-                    }
-                    let (kind, version) = found.ok_or_else(EngineError::invalid)?;
-                    tx.insert_reference(number, position as i64, kind, &reference.id, version)
-                        .await?;
+            for (position, (meta, probed)) in metadata.iter().zip(&references).enumerate() {
+                for probed in probed {
+                    let (kind, version) =
+                        probed.single(&answers).ok_or_else(EngineError::invalid)?;
+                    tx.insert_reference(
+                        number,
+                        position as i64,
+                        kind,
+                        &probed.reference.id,
+                        version,
+                    )
+                    .await?;
                 }
                 for content in &meta.contents {
                     let size = tx
@@ -640,6 +634,16 @@ impl HistoryStream {
         // content references in this size-bounded commit, and are discarded on
         // every return (including failure), not retained for the whole archive.
         let mut verified_content = BTreeMap::new();
+        let mut probes = Probes::default();
+        let mut described = describe(&mut self.tx, &items, self.next, &mut probes)
+            .await
+            .into_iter();
+        let effects: Vec<Probed> = crate::references::command_effects(&c.command_result.effects)
+            .map(|reference| probes.add(reference))
+            .collect();
+        // A failed lookup surfaces where the first answer is needed, as before.
+        let looked_up = definition_versions(&mut self.tx, &probes, self.next).await;
+        let answers = || looked_up.as_deref().map_err(|_| schema::failure());
         for (position, item) in items.iter().enumerate() {
             let bytes = canonical(item)?;
             if bytes.len() > staging::CHUNK {
@@ -657,14 +661,7 @@ impl HistoryStream {
             let actual: Vec<u8> = row.try_get("canonical").map_err(|_| schema::failure())?;
             let digest: Vec<u8> = row.try_get("digest").map_err(|_| schema::failure())?;
             let kind: String = row.try_get("kind").map_err(|_| schema::failure())?;
-            let meta = crate::references::describe_in(&items, item).map_err(|error| match error
-                .class
-            {
-                // Supported stored records are authority, not repairable caller input.
-                // Preserve unsupported-version and any other distinct error classes.
-                ErrorClass::InvalidReference => schema::failure(),
-                _ => error,
-            })?;
+            let Described { meta, references } = described.next().ok_or_else(schema::failure)??;
             if meta.prefixes.iter().any(|p| *p > c.seq.0) {
                 return Err(schema::failure());
             }
@@ -686,24 +683,10 @@ impl HistoryStream {
                 return Err(schema::failure());
             }
             let mut expected_references = Vec::new();
-            for reference in &meta.references {
-                let reference = if reference.kinds == ["DatasetCatalog"] {
-                    let bytes=sqlx::query_scalar("SELECT i.canonical FROM currents_definitions d JOIN currents_items i ON i.seq=d.seq AND i.position=d.position WHERE d.kind='Dataset' AND d.id=? AND d.version=0 AND d.seq<=?").bind(&reference.id).bind(self.next).fetch_optional(&mut *self.tx).await.map_err(|_|schema::failure())?;
-                    catalog_reference(reference, bytes)?
-                } else {
-                    reference.clone()
-                };
-                let mut matches = 0usize;
-                for kind in &reference.kinds {
-                    let found:Option<i64>=sqlx::query_scalar("SELECT version FROM currents_definitions WHERE kind=? AND id=? AND seq<=? AND (? IS NULL OR version=?) ORDER BY version LIMIT 1").bind(kind).bind(&reference.id).bind(self.next).bind(reference.version).bind(reference.version).fetch_optional(&mut *self.tx).await.map_err(|_|schema::failure())?;
-                    if let Some(version) = found {
-                        expected_references.push((kind.clone(), reference.id.clone(), version));
-                        matches = matches.saturating_add(1);
-                    }
-                }
-                if matches != 1 {
-                    return Err(schema::failure());
-                }
+            for probed in references {
+                let probed = probed?;
+                let (kind, version) = probed.single(answers()?).ok_or_else(schema::failure)?;
+                expected_references.push((kind.to_owned(), probed.reference.id.clone(), version));
             }
             let rows = sqlx::query(ITEM_REFERENCES)
                 .bind(self.next)
@@ -804,37 +787,8 @@ impl HistoryStream {
         }
         // Resolve against this commit's prefix, not the requested stream cutoff:
         // a later definition must never legitimize an earlier command result.
-        for reference in crate::references::command_effects(&c.command_result.effects) {
-            if reference.kinds.len() == WIDE_COMMAND_EFFECT_KINDS {
-                let mut query = sqlx::query_scalar::<_, i64>(WIDE_COMMAND_EFFECT_MATCHES);
-                for kind in &reference.kinds {
-                    query = query.bind(kind);
-                }
-                let matches = query
-                    .bind(&reference.id)
-                    .bind(self.next)
-                    .fetch_one(&mut *self.tx)
-                    .await
-                    .map_err(|_| schema::failure())?;
-                if matches != 1 {
-                    return Err(schema::failure());
-                }
-                continue;
-            }
-            let mut matches = 0usize;
-            for kind in &reference.kinds {
-                let found: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM currents_definitions WHERE kind=? AND id=? AND seq<=?)")
-                    .bind(kind)
-                    .bind(&reference.id)
-                    .bind(self.next)
-                    .fetch_one(&mut *self.tx)
-                    .await
-                    .map_err(|_| schema::failure())?;
-                if found {
-                    matches = matches.saturating_add(1);
-                }
-            }
-            if matches != 1 {
+        for probed in &effects {
+            if probed.single(answers()?).is_none() {
                 return Err(schema::failure());
             }
         }
@@ -842,6 +796,78 @@ impl HistoryStream {
         self.next = self.next.checked_add(1).ok_or_else(schema::failure)?;
         Ok(Some(c))
     }
+}
+/// One stored item's metadata, with each reference ready to resolve.
+struct Described {
+    meta: crate::references::Metadata,
+    references: Vec<Result<Probed, EngineError>>,
+}
+/// Describe a stored commit's items and collect their definition probes before
+/// the item loop. It stops at the first failure, which the loop then reports
+/// when it reaches that item, so errors keep their item order and class.
+async fn describe(
+    tx: &mut Transaction<'static, Sqlite>,
+    items: &[AuthoritativeRecordV1],
+    through: i64,
+    probes: &mut Probes,
+) -> Vec<Result<Described, EngineError>> {
+    let mut described = Vec::with_capacity(items.len());
+    for item in items {
+        let meta = match crate::references::describe_in(items, item) {
+            Ok(meta) => meta,
+            Err(error) => {
+                described.push(Err(match error.class {
+                    // Supported stored records are authority, not repairable caller input.
+                    // Preserve unsupported-version and any other distinct error classes.
+                    ErrorClass::InvalidReference => schema::failure(),
+                    _ => error,
+                }));
+                break;
+            }
+        };
+        let mut references = Vec::with_capacity(meta.references.len());
+        let mut failed = false;
+        for reference in &meta.references {
+            let reference = if reference.kinds == ["DatasetCatalog"] {
+                let bytes = sqlx::query_scalar("SELECT i.canonical FROM currents_definitions d JOIN currents_items i ON i.seq=d.seq AND i.position=d.position WHERE d.kind='Dataset' AND d.id=? AND d.version=0 AND d.seq<=?").bind(&reference.id).bind(through).fetch_optional(&mut **tx).await.map_err(|_| schema::failure());
+                bytes.and_then(|bytes| catalog_reference(reference, bytes))
+            } else {
+                Ok(reference.clone())
+            };
+            failed = reference.is_err();
+            references.push(reference.map(|reference| probes.add(reference)));
+            if failed {
+                break;
+            }
+        }
+        described.push(Ok(Described { meta, references }));
+        if failed {
+            break;
+        }
+    }
+    described
+}
+/// Answer every probe at the commit's own prefix, one statement per chunk.
+async fn definition_versions(
+    tx: &mut Transaction<'static, Sqlite>,
+    probes: &Probes,
+    through: i64,
+) -> Result<Vec<Option<i64>>, EngineError> {
+    let mut answers = Vec::with_capacity(probes.len());
+    for chunk in probes.chunks() {
+        let json = serde_json::to_string(chunk).map_err(|_| schema::failure())?;
+        let found: Vec<Option<i64>> = sqlx::query_scalar(DEFINITION_VERSIONS)
+            .bind(json)
+            .bind(through)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(|_| schema::failure())?;
+        if found.len() != chunk.len() {
+            return Err(schema::failure());
+        }
+        answers.extend(found);
+    }
+    Ok(answers)
 }
 async fn verify_blob(
     tx: &mut Transaction<'static, Sqlite>,
@@ -945,6 +971,9 @@ fn catalog_reference(
         version: reference.version,
     })
 }
+
+mod definitions;
+use definitions::{DEFINITION_VERSIONS, Probed, Probes};
 
 #[cfg(test)]
 mod audit_parity_tests;

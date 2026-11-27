@@ -188,54 +188,24 @@ async fn command_effects_roundtrip_same_and_prior_prefix_families() {
         reopened.history().read_prefix(CommitSeq(4)).await.unwrap(),
         expected
     );
-    assert_wide_effect_lookup_plan(&reopened, &expected.first().unwrap().command_result.effects)
+    assert_definition_lookup_plan(&reopened, &expected.first().unwrap().command_result.effects)
         .await;
     reopened.close().await.unwrap();
 }
 
-async fn assert_wide_effect_lookup_plan(store: &EncryptedStore, effects: &EffectsV1) {
-    let references: Vec<_> = crate::references::command_effects(effects).collect();
-    let widths: Vec<_> = references
-        .iter()
-        .map(|reference| reference.kinds.len())
-        .collect();
-    assert_eq!(
-        widths,
-        [
-            WIDE_COMMAND_EFFECT_KINDS,
-            WIDE_COMMAND_EFFECT_KINDS,
-            WIDE_COMMAND_EFFECT_KINDS,
-            WIDE_COMMAND_EFFECT_KINDS,
-            1,
-            1
-        ],
-        "update the fixed wide lookup when the closed effect families change"
-    );
-    for reference in references.iter().take(4) {
-        let unique: std::collections::BTreeSet<_> = reference.kinds.iter().collect();
-        assert_eq!(unique.len(), WIDE_COMMAND_EFFECT_KINDS);
+async fn assert_definition_lookup_plan(store: &EncryptedStore, effects: &EffectsV1) {
+    let mut probes = Probes::default();
+    for reference in crate::references::command_effects(effects) {
+        probes.add(reference);
     }
-    for (reference, kind) in references.iter().skip(4).zip(["Account", "Unit"]) {
-        assert!(reference.kinds.iter().map(String::as_str).eq([kind]));
-    }
-    assert_eq!(
-        WIDE_COMMAND_EFFECT_MATCHES.matches("(?)").count(),
-        WIDE_COMMAND_EFFECT_KINDS
-    );
-
+    let chunk = probes.chunks().next().unwrap();
     // Follow the schema plan tests: only the fixed query text enters the SQL;
-    // the populated fixture's actual kinds, ID and cutoff are bound normally.
-    let reference = references.first().unwrap();
-    let explain = format!("EXPLAIN QUERY PLAN {WIDE_COMMAND_EFFECT_MATCHES}");
-    let mut query = sqlx::query(sqlx::AssertSqlSafe(explain.as_str()));
-    for kind in &reference.kinds {
-        query = query.bind(kind);
-    }
-    let history = store.history();
-    let rows = query
-        .bind(&reference.id)
+    // the populated fixture's actual probes and cutoff are bound normally.
+    let explain = format!("EXPLAIN QUERY PLAN {DEFINITION_VERSIONS}");
+    let rows = sqlx::query(sqlx::AssertSqlSafe(explain.as_str()))
+        .bind(serde_json::to_string(chunk).unwrap())
         .bind(1_i64)
-        .fetch_all(&history.pool)
+        .fetch_all(&store.history().pool)
         .await
         .unwrap();
     let details: Vec<String> = rows
@@ -259,7 +229,6 @@ async fn assert_wide_effect_lookup_plan(store: &EncryptedStore, effects: &Effect
             detail != "SCAN d"
                 && !detail.starts_with("SCAN d ")
                 && !detail.starts_with("SCAN currents_definitions")
-                && !detail.contains("USE TEMP B-TREE")
         }),
         "{details:?}"
     );
@@ -521,4 +490,79 @@ async fn command_effect_amount_validation_is_preserved() {
     }
     assert!(store.history().stream_prefix(CommitSeq(1)).await.is_err());
     store.close().await.unwrap();
+}
+
+// More probes than one lookup statement holds. Item references share probes with
+// the effects, and a bad effect in the last chunk still rejects on both paths.
+#[tokio::test]
+async fn lookups_beyond_one_chunk_keep_every_check() {
+    let reviews: Vec<u128> = (5_000..5_130).collect();
+    let wide = crate::references::command_effects(&all_effects(1000))
+        .next()
+        .unwrap()
+        .kinds
+        .len();
+    let probes = reviews.len() * wide;
+    assert!(probes > super::definitions::PROBES_PER_QUERY, "{probes}");
+    let commit_input = |last: RecordId| {
+        let mut records = definitions(1000);
+        records.extend(reviews.iter().map(|n| review(*n)));
+        records.push(AuthoritativeRecordV1::Review(ReviewRecordV1 {
+            id: id(6_000),
+            targets: reviews.iter().map(|n| id(*n)).collect(),
+            disposition: ReviewDisposition::Accepted,
+            reason: "synthetic".into(),
+        }));
+        let mut input = append_input(0, records);
+        input.result.effects = all_effects(1000);
+        input
+            .result
+            .effects
+            .records
+            .extend(reviews.iter().map(|n| id(*n)));
+        *input.result.effects.records.last_mut().unwrap() = last;
+        input
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("chunks.db");
+    let store = open(&path).await;
+    let error = store
+        .writer()
+        .append(commit_input(id(9999)))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, CommitFailure::DefinitelyRolledBack(error) if error.class == ErrorClass::InvalidReference),
+        "{error:?}"
+    );
+    assert!(store.history().stream_prefix(CommitSeq(1)).await.is_err());
+    let first = store
+        .writer()
+        .append(commit_input(id(*reviews.last().unwrap())))
+        .await
+        .unwrap();
+    let mut commits = vec![first];
+    assert_eq!(
+        store.history().read_prefix(CommitSeq(1)).await.unwrap(),
+        commits
+    );
+    *commits[0]
+        .command_result
+        .effects
+        .records
+        .last_mut()
+        .unwrap() = id(9999);
+    let pool = currents_cipher::open_pool(&path, DatasetKey::new([0x47; 32]), CipherProfileV1, 1)
+        .await
+        .unwrap();
+    rewrite_commits(&pool, &mut commits).await;
+    pool.close().await;
+    let error = store.history().read_prefix(CommitSeq(1)).await.unwrap_err();
+    assert_eq!(error.class, ErrorClass::IntegrityFailure);
+    store.close().await.unwrap();
+    let error = EncryptedStore::open(&path, DatasetKey::new([0x47; 32]), CipherProfileV1)
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.class, ErrorClass::IntegrityFailure);
 }
