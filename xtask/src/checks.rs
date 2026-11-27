@@ -513,6 +513,11 @@ const CUR_017_SUITES: &Suites = &[
             "cur_017_balance_kind_product_versions",
             "cur_017_balance_claim_replay_and_applicability",
             "cur_017_anchor_invalidates_activity_claim",
+            "cur_017_4_holdings_value_match_fails",
+            "cur_017_holdings_exact_match",
+            "cur_017_holdings_claim_without_journal_quantities",
+            "cur_017_relationship_settled",
+            "cur_017_relationship_residual_is_partial",
         ],
     ),
     (
@@ -584,7 +589,7 @@ fn ticket_cur_017() -> Result<Value> {
         "suites":ticket_suites("CUR017", CUR_017_SUITES)?,
         "offsetting_omissions_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s9/offsetting-omissions.json")).map_err(|e| e.to_string())?),
         "circular_anchor_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s9/circular-anchor.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity and Balance claim evaluation, confirmation and applicability; no holdings or relationship evaluation or command route"
+        "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity, Balance, Holdings and Relationship claim evaluation, confirmation and applicability, with holdings claims partial until journal quantities exist; no command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {

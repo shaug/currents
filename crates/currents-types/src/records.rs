@@ -158,16 +158,21 @@ pub enum ClaimReasonV1 {
     RepeatedIdentity(EvidenceLineV1),
     /// A line whose account, date or amount differs from its allocation.
     DifferentTerms(EvidenceLineV1),
-    /// A recognized leg in scope that allocates no source line, such as a
-    /// leg an association admitted.
+    /// A recognized leg its source allocations do not fully support: in an
+    /// Activity claim, a leg in scope that allocates no source line, such as
+    /// a leg an association admitted; in a Relationship claim, a leg whose
+    /// allocations differ from its amount.
     UnsupportedLeg(LegId),
+    /// The journal records no security quantities, so a holdings claim has
+    /// nothing to compare the source holdings with.
+    JournalQuantityUnavailable,
 }
 impl Schema for ClaimReasonV1 {
     fn schema() -> serde_json::Value {
         let variant = |name: &str, value: serde_json::Value| serde_json::json!({"type":"object","additionalProperties":false,"required":[name],"properties":{name:value}});
         let line = |name: &str| variant(name, EvidenceLineV1::schema());
         serde_json::json!({"oneOf":[
-            {"type":"string","enum":["UnknownOpening","IncompleteInterval","IncompatibleBalanceKinds","MissingDateMapping","UnexplainedResidual","UnknownClosing","CircularAnchor","UnknownBalanceKind","IncompatibleUnits","IncompatibleBoundary"]},
+            {"type":"string","enum":["UnknownOpening","IncompleteInterval","IncompatibleBalanceKinds","MissingDateMapping","UnexplainedResidual","UnknownClosing","CircularAnchor","UnknownBalanceKind","IncompatibleUnits","IncompatibleBoundary","JournalQuantityUnavailable"]},
             line("MissingAllocation"),
             line("UnexpectedAllocation"),
             line("RepeatedIdentity"),

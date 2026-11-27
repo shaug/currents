@@ -8528,7 +8528,8 @@
                           "CircularAnchor",
                           "UnknownBalanceKind",
                           "IncompatibleUnits",
-                          "IncompatibleBoundary"
+                          "IncompatibleBoundary",
+                          "JournalQuantityUnavailable"
                         ],
                         "type": "string"
                       },
@@ -42979,7 +42980,8 @@
                                 "CircularAnchor",
                                 "UnknownBalanceKind",
                                 "IncompatibleUnits",
-                                "IncompatibleBoundary"
+                                "IncompatibleBoundary",
+                                "JournalQuantityUnavailable"
                               ],
                               "type": "string"
                             },
@@ -57204,7 +57206,8 @@
                                 "CircularAnchor",
                                 "UnknownBalanceKind",
                                 "IncompatibleUnits",
-                                "IncompatibleBoundary"
+                                "IncompatibleBoundary",
+                                "JournalQuantityUnavailable"
                               ],
                               "type": "string"
                             },
@@ -68937,7 +68940,8 @@
                                     "CircularAnchor",
                                     "UnknownBalanceKind",
                                     "IncompatibleUnits",
-                                    "IncompatibleBoundary"
+                                    "IncompatibleBoundary",
+                                    "JournalQuantityUnavailable"
                                   ],
                                   "type": "string"
                                 },

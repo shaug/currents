@@ -473,11 +473,10 @@ allocation eligibility; this is not claim confirmation or service dispatch.
 ### CUR-017 activity coverage checkpoint
 
 `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`
-evaluates `Activity` requests, and `Balance` requests as the balance agreement
-checkpoint below describes. It refuses a request whose
-`basis.through_commit` is not the state's commit, or whose accounting index
-lags the state, with `StaleBasis`. `Relationship` and `Holdings` requests
-return `UnsupportedVersion` until their leaves merge. An Activity request names exactly one account and a
+evaluates `Activity` requests, and `Balance`, `Holdings` and `Relationship`
+requests as the checkpoints below describe. It refuses a request whose
+`basis.through_commit` is not the state's commit, or an Activity or Balance
+request whose accounting index lags the state, with `StaleBasis`. An Activity request names exactly one account and a
 `cutoffs` interval with both a start and an end. Each `evidence` ID names an
 import receipt or an observation version. Evaluation refuses a named
 observation version that has a later explicit revision with `StaleBasis`.
@@ -582,6 +581,64 @@ Applicability adds `InvalidationReasonV1::Anchor`: the anchor that decides the
 claim changed, such as an opening adopted after an Activity claim whose
 interval now starts before it.
 
+### CUR-017 holdings agreement checkpoint
+
+```text
+compare_holdings(source:&[HoldingPositionV1],journal:&[HoldingPositionV1])->Result<Vec<HoldingDifferenceV1>,EngineError>
+HoldingPositionV1 { quantity:Amount, basis:RecordId, boundary:Date }
+HoldingDifferenceV1 = Quantity(Amount) | IncompatibleBasis(UnitId) | IncompatibleBoundary(UnitId)
+```
+
+`currents_domain::holdings::compare_holdings` is a pure comparison. A
+position states a quantity in its security's unit, under one
+corporate-action basis, at the end of one day; it has no price, so equal
+market value never makes positions agree. Each side names a security at most
+once, or the comparison refuses with `InvalidReference`. Per security, in
+unit order, it reports `IncompatibleBasis` and `IncompatibleBoundary` when
+the sides differ in basis or boundary, and then compares no quantity.
+Otherwise it reports `Quantity` with the source quantity minus the journal
+quantity when they differ. A security on one side only compares with a zero
+quantity. An empty list is agreement.
+
+A `Holdings` request names one account and a `cutoffs` scope with no start
+and an end, the boundary. Its `evidence` names import receipts and current
+observation versions whose facets are all `Holding` facets, at least one in
+all, and it has no exclusions. The journal records no security quantities
+until CUR-021 (#30), so the claim is always `PartiallySupported` with the one
+reason `JournalQuantityUnavailable`, no differences, no matched allocations
+and no accounting dependencies. It records comparison version 1 and the
+account's unit. Its digest covers the named observations with their latest
+revisions, the account and boundary, and the account's catalog terms, under
+its own domain tag; no leg or anchor enters it. `applicability` rechecks it
+the same way.
+
+### CUR-017 relationship settlement checkpoint
+
+A `Relationship` request names no account, a `cutoffs` scope with neither a
+start nor an end, and no exclusions. Its one `evidence` ID names a revision
+of a `Transfer` or `Payroll` association; another kind is refused with
+`InvalidReference`. The claim evaluates the association family's current
+revision and says nothing about the rest of any account. It is `Proposed`
+only when it has no reasons. Otherwise it is `PartiallySupported`:
+
+- `UnexplainedResidual`: the revision records a nonzero residual.
+  `differences` lists each nonzero residual.
+- `UnsupportedLeg`: the revision's evidenced allocations do not support one
+  of its legs in full, in the leg's unit. Additive allocations must sum to
+  the leg's amount; a corroborating allocation supports the leg when it
+  equals that amount. `differences` lists the leg's amount minus its
+  support, after the residuals.
+
+The claim names the current revision as its only `accounting_dependencies`
+entry and names no evidence, accounts or matched allocations. Its unit is
+the unit of the revision's first leg, and it records comparison version 1.
+Replay evaluates the request that names the revision the claim compared.
+Its dependency digest covers the comparison version, the association's root
+and the revision, under its own domain tag. A later revision of the
+association makes `applicability` report `Relationship`. `lifecycle`
+supersedes a Relationship claim only with a newer claim on the same
+association.
+
 ### CUR-017 claim lifecycle checkpoint
 
 ```text
@@ -650,8 +707,8 @@ computed at `state` differs from the claim's recorded digest, or when
   changed. A named receipt never changes, so when the interval's completeness
   is unchanged, a digest difference left after comparing the legs, anchor and
   named versions is in the catalog.
-- `Relationship`: reserved for relationship claims. An Activity claim compares
-  no relationship.
+- `Relationship`: the association a Relationship claim compared has a later
+  revision. Activity, Balance and Holdings claims compare no relationship.
 - `RetiredDependency`: a segment replacement or correction listed the claim
   in its invalidations under the CUR-016 rules.
 
@@ -659,9 +716,8 @@ Activity outside the claim's accounts or dates, an organization record and a
 display name change leave the claim `Current`. Neither the claim record nor
 its disposition changes, and the history through an earlier commit reports
 the claim's applicability at that commit. `applicability` refuses a claim
-kind other than Activity and Balance, or another comparison version, with
-`UnsupportedVersion`, and an accounting
-index that lags the state with `StaleBasis`.
+with another comparison version with `UnsupportedVersion`, and an Activity
+or Balance claim whose accounting index lags the state with `StaleBasis`.
 
 <a id="c10"></a>
 

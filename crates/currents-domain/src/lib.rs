@@ -32,4 +32,5 @@ mod activity_predicate;
 pub mod correction;
 mod dependencies;
 pub mod dependents;
+pub mod holdings;
 pub mod reconciliation;

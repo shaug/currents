@@ -4,7 +4,9 @@
 //! recognized leg the claim compared, the scope account's catalog terms
 //! except its display name, the coverage report an Activity claim used, the
 //! account's opening anchor where it decides the claim, and the comparison
-//! version. Legs are keyed by their stable identity, so an identity-only
+//! version. A Holdings claim compares no journal, so its digest covers no
+//! leg or anchor. A Relationship claim's digest covers only the
+//! association's root and current revision. Legs are keyed by their stable identity, so an identity-only
 //! correction, which replaces recognition and posting IDs and keeps the legs,
 //! leaves the digest unchanged. A claim whose recorded digest differs from
 //! the digest at a later state no longer applies there.
@@ -17,9 +19,9 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The scope of a claim: one account, its dates by one basis, and the named
-/// evidence. An Activity claim's interval has a start. A Balance claim's
-/// interval has none, because the balance at its boundary, the interval's
-/// end, depends on every date through it.
+/// evidence. An Activity claim's interval has a start. A Balance or Holdings
+/// claim's interval has none, because the position at its boundary, the
+/// interval's end, depends on every date through it.
 #[derive(Clone, Copy)]
 pub(crate) struct ClaimScope<'a> {
     pub(crate) kind: ReconciliationKindV1,
@@ -33,7 +35,7 @@ pub(crate) struct ClaimScope<'a> {
 impl<'a> ClaimScope<'a> {
     /// The scope of a `kind` claim on `accounts` over `cutoffs`. It must name
     /// one account and an end. An Activity interval also needs a start no
-    /// later than its end; a Balance interval must have no start.
+    /// later than its end; a Balance or Holdings interval must have no start.
     pub(crate) fn new(
         kind: ReconciliationKindV1,
         accounts: &[AccountId],
@@ -45,8 +47,13 @@ impl<'a> ClaimScope<'a> {
         };
         let start = match (kind, cutoffs.start, cutoffs.end) {
             (ReconciliationKindV1::Activity, Some(start), Some(end)) if start <= end => Some(start),
-            (ReconciliationKindV1::Balance, None, Some(_)) => None,
-            (ReconciliationKindV1::Activity | ReconciliationKindV1::Balance, ..) => {
+            (ReconciliationKindV1::Balance | ReconciliationKindV1::Holdings, None, Some(_)) => None,
+            (
+                ReconciliationKindV1::Activity
+                | ReconciliationKindV1::Balance
+                | ReconciliationKindV1::Holdings,
+                ..,
+            ) => {
                 return Err(EngineError::invalid());
             }
             _ => return Err(EngineError::version()),
@@ -304,11 +311,18 @@ impl ClaimInputs {
         }
         observations.sort();
         observations.dedup();
-        let rows = live_legs(state)?
-            .into_iter()
-            .filter(|leg| scope.relevant(leg))
-            .map(row)
-            .collect::<Result<_, _>>()?;
+        // A Holdings claim compares no journal amount, so no leg or anchor
+        // decides it.
+        let journal = scope.kind != ReconciliationKindV1::Holdings;
+        let rows = if journal {
+            live_legs(state)?
+                .into_iter()
+                .filter(|leg| scope.relevant(leg))
+                .map(row)
+                .collect::<Result<_, _>>()?
+        } else {
+            Vec::new()
+        };
         let mut catalog = catalog(state, scope.account)?;
         catalog.display_name = String::new();
         let coverage = match scope.kind {
@@ -320,7 +334,11 @@ impl ClaimInputs {
             rows,
             catalog,
             coverage,
-            anchor: Anchor::active(state, scope.account)?.filter(|a| scope.decided_by(a)),
+            anchor: if journal {
+                Anchor::active(state, scope.account)?.filter(|a| scope.decided_by(a))
+            } else {
+                None
+            },
         })
     }
 
@@ -353,7 +371,13 @@ impl ClaimInputs {
             ReconciliationKindV1::Activity => {
                 &b"currents/reconciliation-dependencies/activity/v1\0"[..]
             }
-            _ => &b"currents/reconciliation-dependencies/balance/v1\0"[..],
+            ReconciliationKindV1::Balance => {
+                &b"currents/reconciliation-dependencies/balance/v1\0"[..]
+            }
+            ReconciliationKindV1::Holdings => {
+                &b"currents/reconciliation-dependencies/holdings/v1\0"[..]
+            }
+            ReconciliationKindV1::Relationship => return Err(EngineError::version()),
         });
         hash.update(&bytes);
         Ok(Digest(hash.finalize().into()))
@@ -404,6 +428,41 @@ impl ClaimInputs {
         }
         Ok(reasons)
     }
+}
+
+/// The current revision of the association family that revision `named`
+/// belongs to.
+pub(crate) fn association(
+    state: &DomainState,
+    named: RecordId,
+) -> Result<AssociationRevisionV1, EngineError> {
+    let Some(AuthoritativeRecordV1::AssociationRevision(revision)) = state.records.get(&named)
+    else {
+        return Err(EngineError::invalid());
+    };
+    crate::associations::current_heads(state)?
+        .remove(&revision.root)
+        .ok_or_else(EngineError::invalid)
+}
+
+/// A Relationship claim's dependency digest: the association's root, the
+/// revision the claim compared, and the comparison version. Association
+/// revisions never change, so a later revision is the only change to what
+/// the claim compared.
+pub(crate) fn relationship_digest(
+    revision: &AssociationRevisionV1,
+    comparison_version: u32,
+) -> Result<Digest, EngineError> {
+    let inputs = json!({
+        "comparison_version": comparison_version,
+        "root": revision.root,
+        "revision": revision.id,
+    });
+    let bytes = serde_json::to_vec(&inputs).map_err(|_| EngineError::invalid())?;
+    let mut hash = Sha256::new();
+    hash.update(b"currents/reconciliation-dependencies/relationship/v1\0");
+    hash.update(&bytes);
+    Ok(Digest(hash.finalize().into()))
 }
 
 /// One recognized leg, without posting or recognition IDs.
