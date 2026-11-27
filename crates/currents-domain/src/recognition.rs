@@ -542,7 +542,11 @@ pub(crate) fn readopt(
     request: &ActivityRequestV1,
     admission: bool,
 ) -> Result<Option<RecognitionV1>, EngineError> {
-    validate(state, request, admission, false)?;
+    // A leg correction's adoption keeps its split legs.
+    let split = crate::correction::replaced_adoptions(state)
+        .replacements
+        .contains(&request.adoption_id);
+    validate(state, request, admission, split)?;
     let mode = if admission {
         Admission::Ordinary
     } else {

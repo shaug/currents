@@ -2153,6 +2153,30 @@ fn cur_016_leg_split() {
     assert_eq!(total.normalized().unwrap(), amount(-96));
     old_purchase_kept(&state, &corrected);
 
+    // The split recognition is the live tip: its legs stay while a
+    // reinterpretation swaps the two expense accounts.
+    let AuthoritativeRecordV1::Recognition(split) = &corrected.records[&id(NEW_ADOPTION + 3)]
+    else {
+        panic!("the split recognition is retained")
+    };
+    let mut swapped = split.clone();
+    swapped.id = recognition(8800);
+    for (posting, n) in swapped.postings.iter_mut().zip(8801..) {
+        posting.id = id(n);
+    }
+    swapped.postings[1].account_id = account(EXPENSE_B);
+    swapped.postings[3].account_id = account(EXPENSE);
+    let request = currents_domain::correction::CorrectionRequestV1 {
+        active_recognition: split.id,
+        replacement: vec![swapped],
+        remapping: vec![],
+        reason: "Reinterpret the split purchase".into(),
+    };
+    let plan = reinterpret(&corrected, 8820, &request, None).unwrap();
+    let reinterpreted = admit(&corrected, &planned(&corrected, &plan)).unwrap();
+    assert_eq!(balance(&reinterpreted, EXPENSE), amount(36));
+    assert_eq!(balance(&reinterpreted, EXPENSE_B), amount(60));
+
     // A split totaling 95 is refused with no plan.
     let short = [(&source, -60, EXPENSE), (&source, -35, EXPENSE_B)];
     let before = snapshot(&state);
