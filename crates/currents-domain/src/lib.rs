@@ -9,6 +9,8 @@ pub mod recognition;
 
 pub mod segments;
 
+mod lookup;
+
 pub mod policy_history;
 
 mod recognition_replay;

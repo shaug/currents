@@ -1,5 +1,6 @@
 //! Explicit evidence adoption and recognition, with no ambient clock or identity generation.
-use crate::catalog::{CatalogEngine, incomplete, known_time, unit, version};
+use crate::catalog::{incomplete, known_time, version};
+use crate::lookup::Lookup;
 use currents_types::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,15 +20,22 @@ pub(crate) fn fact(
     state: &DomainState,
     source: &SourceFacetBindingV1,
 ) -> Result<(RecordId, RecordId), EngineError> {
-    Ok(facet_of(state, source, true)?.0)
+    fact_in(&Lookup::new(state), source)
+}
+pub(crate) fn fact_in(
+    lookup: &Lookup,
+    source: &SourceFacetBindingV1,
+) -> Result<(RecordId, RecordId), EngineError> {
+    Ok(facet_of(lookup, source, true)?.0)
 }
 /// The fact `source` binds and the known amount of its facet version. When
 /// `whole` holds, the binding must carry that whole amount.
 pub(crate) fn facet_of(
-    state: &DomainState,
+    lookup: &Lookup,
     source: &SourceFacetBindingV1,
     whole: bool,
 ) -> Result<((RecordId, RecordId), Amount), EngineError> {
+    let state = lookup.state;
     let Some(AuthoritativeRecordV1::AddressedParseProduct(product)) =
         state.records.get(&source.parse_product)
     else {
@@ -59,7 +67,7 @@ pub(crate) fn facet_of(
     if whole && !equal(value, source.amount)? {
         return Err(EngineError::invalid());
     }
-    let (root, kind) = source_root(state, source.observation)?;
+    let (root, kind) = lookup.root(source.observation)?;
     if kind != facet.kind {
         return Err(EngineError::invalid());
     }
@@ -69,7 +77,7 @@ pub(crate) fn facet_of(
     let mut current = source.observation;
     loop {
         let mut found = false;
-        for record in state.records.values() {
+        for record in lookup.parsed(current) {
             let parsed = match record {
                 AuthoritativeRecordV1::AddressedParseProduct(p)
                     if p.product.source_version_id == current =>
@@ -116,12 +124,12 @@ pub(crate) type Portions<'a> =
 /// Total `sources` by the fact each binds. Every binding of one fact must
 /// name the same facet version as its first.
 pub(crate) fn portions<'a>(
-    state: &DomainState,
+    lookup: &Lookup,
     sources: impl IntoIterator<Item = &'a SourceFacetBindingV1>,
 ) -> Result<Portions<'a>, EngineError> {
     let mut portions = Portions::new();
     for source in sources {
-        let (key, value) = facet_of(state, source, false)?;
+        let (key, value) = facet_of(lookup, source, false)?;
         let zero = Amount::new(0, 0, value.unit_id)?;
         let (first, _, total) = portions.entry(key).or_insert((source, value, zero));
         if (first.observation, first.parse_product) != (source.observation, source.parse_product) {
@@ -153,7 +161,7 @@ pub(crate) fn revises(
     }
     Ok(true)
 }
-fn source_root(
+pub(crate) fn source_root(
     state: &DomainState,
     id: RecordId,
 ) -> Result<(RecordId, ObservationKind), EngineError> {
@@ -194,11 +202,12 @@ fn source_root(
 /// replaces the legs of a retired one, may bind portions of one facet
 /// version to several legs, and those portions must total its amount.
 fn validate(
-    state: &DomainState,
+    lookup: &Lookup,
     request: &ActivityRequestV1,
     admission: bool,
     split: bool,
 ) -> Result<Vec<AdoptedFacetV1>, EngineError> {
+    let state = lookup.state;
     version(request.schema_version)?;
     match request.status {
         ActivityStatusV1::Pending
@@ -266,21 +275,17 @@ fn validate(
         {
             return Err(EngineError::invalid());
         }
-        let mut components = state.records.values().filter_map(|r| match r {
-            AuthoritativeRecordV1::AccountComponent(c) if c.account_id == leg.account_id => Some(c),
-            _ => None,
-        });
-        let component = components.next().ok_or_else(incomplete)?;
-        if components.next().is_some() || component.unit_id != leg.movement.unit_id {
+        let component = component(lookup, leg.account_id)?;
+        if component.unit_id != leg.movement.unit_id {
             return Err(EngineError::invalid());
         }
-        let current = CatalogEngine::current(state, component.id)?;
+        let current = lookup.current(component.id)?;
         if (admission && current.catalog.lifecycle != Lifecycle::Open)
             || current.origin != AccountOriginV1::External
         {
             return Err(EngineError::invalid());
         }
-        let definition = unit(state, leg.movement.unit_id)?;
+        let definition = lookup.unit(leg.movement.unit_id)?;
         leg.movement.checked_rescale(definition.exponent)?;
         if leg.movement.coefficient == 0 {
             return Err(EngineError::invalid());
@@ -324,11 +329,11 @@ fn validate(
                 return Err(duplicate());
             }
             if split {
-                let (key, _) = facet_of(state, source, false)?;
+                let (key, _) = facet_of(lookup, source, false)?;
                 if !facts.insert((key, Some(leg.id))) {
                     return Err(duplicate());
                 }
-            } else if !facts.insert((fact(state, source)?, None)) {
+            } else if !facts.insert((fact_in(lookup, source)?, None)) {
                 return Err(duplicate());
             }
             adopted.push(AdoptedFacetV1 {
@@ -338,7 +343,7 @@ fn validate(
         }
     }
     if split {
-        for (_, value, total) in portions(state, adopted.iter().map(|a| &a.source))?.values() {
+        for (_, value, total) in portions(lookup, adopted.iter().map(|a| &a.source))?.values() {
             if !equal(*value, *total)? {
                 return Err(EngineError::invalid());
             }
@@ -346,16 +351,16 @@ fn validate(
     }
     Ok(adopted)
 }
-fn component(state: &DomainState, account: AccountId) -> Result<&AccountComponentV1, EngineError> {
-    let mut matches = state.records.values().filter_map(|r| match r {
-        AuthoritativeRecordV1::AccountComponent(c) if c.account_id == account => Some(c),
-        _ => None,
-    });
-    let c = matches.next().ok_or_else(incomplete)?;
-    if matches.next().is_some() {
-        return Err(EngineError::invalid());
+/// The account's one component.
+fn component<'a>(
+    lookup: &Lookup<'a>,
+    account: AccountId,
+) -> Result<&'a AccountComponentV1, EngineError> {
+    match lookup.components(account) {
+        [] => Err(incomplete()),
+        [c] => Ok(c),
+        _ => Err(EngineError::invalid()),
     }
-    Ok(c)
 }
 /// Which opening and boundary rules apply to one adoption's money.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -368,20 +373,21 @@ enum Admission {
     Audit,
 }
 fn monetary(
-    state: &DomainState,
+    lookup: &Lookup,
     request: &ActivityRequestV1,
     mode: Admission,
 ) -> Result<Option<RecognitionV1>, EngineError> {
+    let state = lookup.state;
     let Some(terms) = &request.financial else {
         return Ok(None);
     };
     match mode {
         Admission::Ordinary => {
-            crate::segments::initial(state, request, true)?;
+            crate::segments::initial(lookup, request, true)?;
             crate::segments::activity_boundary(state, request)?;
         }
         Admission::Audit => {
-            crate::segments::initial(state, request, false)?;
+            crate::segments::initial(lookup, request, false)?;
         }
         Admission::Replacement => {}
     }
@@ -432,8 +438,8 @@ fn monetary(
         {
             return Err(EngineError::invalid());
         }
-        let c = component(state, posting.account_id)?;
-        let catalog = CatalogEngine::current(state, c.id)?;
+        let c = component(lookup, posting.account_id)?;
+        let catalog = lookup.current(c.id)?;
         if admission && catalog.catalog.lifecycle != Lifecycle::Open {
             return Err(EngineError::invalid());
         }
@@ -441,7 +447,7 @@ fn monetary(
             .accounts
             .get(&posting.account_id)
             .ok_or_else(incomplete)?;
-        let u = unit(state, posting.amount.unit_id)?;
+        let u = lookup.unit(posting.amount.unit_id)?;
         if c.unit_id != posting.amount.unit_id
             || mapping.account_id != c.account_id
             || mapping.unit_id != c.unit_id
@@ -556,17 +562,19 @@ pub(crate) fn readopt(
     request: &ActivityRequestV1,
     admission: bool,
 ) -> Result<Option<RecognitionV1>, EngineError> {
+    let lookup = Lookup::new(state);
     // A leg correction's adoption keeps its split legs.
-    let split = crate::correction::replaced_adoptions(state)
+    let split = lookup
+        .replaced()
         .replacements
         .contains(&request.adoption_id);
-    validate(state, request, admission, split)?;
+    validate(&lookup, request, admission, split)?;
     let mode = if admission {
         Admission::Ordinary
     } else {
         Admission::Audit
     };
-    monetary(state, request, mode)
+    monetary(&lookup, request, mode)
 }
 /// The external postings are the legs exactly: one posting per leg, with its
 /// account, amount, effective date and posting date.
@@ -575,6 +583,7 @@ pub(crate) fn postings_are_legs(
     legs: &[AdoptedLegV1],
     postings: &[PostingV1],
 ) -> Result<bool, EngineError> {
+    let lookup = Lookup::new(state);
     let mut unmatched = Vec::new();
     for item in legs {
         let leg = &item.leg;
@@ -582,8 +591,8 @@ pub(crate) fn postings_are_legs(
         unmatched.push((leg.account_id, movement, &leg.effective, &leg.posting));
     }
     for posting in postings {
-        let c = component(state, posting.account_id)?;
-        if CatalogEngine::current(state, c.id)?.origin != AccountOriginV1::External {
+        let c = component(&lookup, posting.account_id)?;
+        if lookup.current(c.id)?.origin != AccountOriginV1::External {
             continue;
         }
         let amount = posting.amount.normalized()?;
@@ -686,6 +695,7 @@ fn consumed(
     state: &DomainState,
     adoptions: &[ActivityAdoptionV1],
 ) -> Result<BTreeSet<RecordId>, EngineError> {
+    let lookup = Lookup::new(state);
     let mut consumed = BTreeSet::new();
     let mut owners = BTreeMap::<(RecordId, RecordId), Vec<&ActivityAdoptionV1>>::new();
     let mut legs = BTreeSet::new();
@@ -702,7 +712,7 @@ fn consumed(
         .collect();
     // An adoption whose legs a correction replaced no longer owns its facts;
     // its replacement binds them.
-    let released = crate::correction::replaced_adoptions(state).retired;
+    let released = &lookup.replaced().retired;
     for a in adoptions {
         for leg in &a.legs {
             if !legs.insert(*leg) {
@@ -744,7 +754,7 @@ fn consumed(
         // A split replacement binds one fact to several legs; it owns it once.
         let mut facts = BTreeSet::new();
         for facet in a.facets.iter().filter(|_| !released.contains(&a.id)) {
-            facts.insert(facet_of(state, &facet.source, false)?.0);
+            facts.insert(facet_of(&lookup, &facet.source, false)?.0);
         }
         for source in a
             .opening
@@ -752,7 +762,7 @@ fn consumed(
             .filter(|o| !retired.contains(&o.segment_id))
             .flat_map(|o| o.included_activity.iter())
         {
-            owners.entry(fact(state, source)?).or_default().push(a);
+            owners.entry(fact_in(&lookup, source)?).or_default().push(a);
         }
         for fact in facts {
             owners.entry(fact).or_default().push(a);
@@ -795,8 +805,9 @@ impl RecognitionEngine {
         state: &DomainState,
         request: &ActivityRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
-        let draft = Self::draft(state, request, Admission::Ordinary, None)?;
-        let mut all = Self::audit(state)?;
+        let lookup = Lookup::new(state);
+        let draft = Self::draft(&lookup, request, Admission::Ordinary, None)?;
+        let mut all = Self::audit_in(&lookup)?;
         all.push(draft.adoption);
         consumed(&prospective(state, &draft.records), &all)?;
         Ok(DecisionPlan {
@@ -813,15 +824,16 @@ impl RecognitionEngine {
     /// Draft one adoption. A draft that replaces the legs of `retiring` may
     /// split its facts and binds facts that `retiring` adopted.
     fn draft(
-        state: &DomainState,
+        lookup: &Lookup,
         request: &ActivityRequestV1,
         mode: Admission,
         retiring: Option<&ActivityAdoptionV1>,
     ) -> Result<Draft, EngineError> {
-        let facets = validate(state, request, true, retiring.is_some())?;
-        let recognition = monetary(state, request, mode)?;
+        let state = lookup.state;
+        let facets = validate(lookup, request, true, retiring.is_some())?;
+        let recognition = monetary(lookup, request, mode)?;
         let segment = match mode {
-            Admission::Ordinary => crate::segments::initial(state, request, true)?,
+            Admission::Ordinary => crate::segments::initial(lookup, request, true)?,
             _ => None,
         };
         let ids = [request.adoption_id, request.event.id]
@@ -838,38 +850,39 @@ impl RecognitionEngine {
         // Legs whose adoption a correction retired, or this draft retires, no
         // longer own their facts.
         let mut released = BTreeSet::new();
-        for id in crate::correction::replaced_adoptions(state).retired {
-            if let Some(AuthoritativeRecordV1::ActivityAdoption(a)) = state.records.get(&id) {
+        for id in &lookup.replaced().retired {
+            if let Some(AuthoritativeRecordV1::ActivityAdoption(a)) = state.records.get(id) {
                 released.extend(a.legs.iter().copied());
             }
         }
         released.extend(retiring.iter().flat_map(|a| a.legs.iter().copied()));
         // Older delivered recognitions may precede ActivityAdoption. Their legs
         // and explicit allocations remain owned; the new route cannot bypass them.
-        for record in state.records.values() {
-            if let AuthoritativeRecordV1::Recognition(old) = record {
-                if old.leg_ids.iter().any(|l| request.event.legs.contains(l))
-                    || recognition.as_ref().is_some_and(|r| {
-                        r.id == old.id
-                            || r.lineage == old.lineage
-                            || r.postings
-                                .iter()
-                                .any(|p| old.postings.iter().any(|q| p.id == q.id))
-                    })
-                {
-                    return Err(duplicate());
-                }
-                if !old.leg_ids.is_empty() && old.leg_ids.iter().all(|l| released.contains(l)) {
-                    continue;
-                }
-                for allocation in &old.evidence_allocations {
-                    for binding in &facets {
-                        if source_root(state, allocation.observation)?.0
-                            == facet_of(state, &binding.source, false)?.0.0
-                            && allocation.facet == binding.source.facet
-                        {
-                            return Err(duplicate());
-                        }
+        let roots: Vec<Result<RecordId, EngineError>> = facets
+            .iter()
+            .map(|binding| Ok(facet_of(lookup, &binding.source, false)?.0.0))
+            .collect();
+        for old in lookup.recognitions() {
+            if old.leg_ids.iter().any(|l| request.event.legs.contains(l))
+                || recognition.as_ref().is_some_and(|r| {
+                    r.id == old.id
+                        || r.lineage == old.lineage
+                        || r.postings
+                            .iter()
+                            .any(|p| old.postings.iter().any(|q| p.id == q.id))
+                })
+            {
+                return Err(duplicate());
+            }
+            if !old.leg_ids.is_empty() && old.leg_ids.iter().all(|l| released.contains(l)) {
+                continue;
+            }
+            for allocation in &old.evidence_allocations {
+                for (binding, root) in facets.iter().zip(&roots) {
+                    if lookup.root(allocation.observation)?.0 == root.clone()?
+                        && allocation.facet == binding.source.facet
+                    {
+                        return Err(duplicate());
                     }
                 }
             }
@@ -912,17 +925,19 @@ impl RecognitionEngine {
         })
     }
     pub fn audit(state: &DomainState) -> Result<Vec<ActivityAdoptionV1>, EngineError> {
+        Self::audit_in(&Lookup::new(state))
+    }
+    fn audit_in(lookup: &Lookup) -> Result<Vec<ActivityAdoptionV1>, EngineError> {
+        let state = lookup.state;
         let mut adoptions = Vec::new();
         // Replay has admitted each immutable correction owner against its exact
         // prior prefix. Keep the original adoption's reconstruction independent
         // of the replacement while binding both to the verified native index.
         let corrections = crate::correction::correction_chains(state)?;
-        let split = crate::correction::replaced_adoptions(state).replacements;
+        let split = &lookup.replaced().replacements;
         let mut lineage_owners = BTreeMap::<RecordId, Vec<RecognitionId>>::new();
-        for record in state.records.values() {
-            if let AuthoritativeRecordV1::Recognition(r) = record
-                && !corrections.is_replacement(r.id)
-            {
+        for r in lookup.recognitions() {
+            if !corrections.is_replacement(r.id) {
                 lineage_owners.entry(r.lineage).or_default().push(r.id);
             }
         }
@@ -934,16 +949,16 @@ impl RecognitionEngine {
                 return Err(EngineError::invalid());
             }
             let request = restore(state, a)?;
-            if validate(state, &request, false, split.contains(&a.id))? != a.facets {
+            if validate(lookup, &request, false, split.contains(&a.id))? != a.facets {
                 return Err(EngineError::invalid());
             }
-            if let Some(segment) = crate::segments::initial(state, &request, false)?
+            if let Some(segment) = crate::segments::initial(lookup, &request, false)?
                 && state.records.get(&segment.id)
                     != Some(&AuthoritativeRecordV1::AccountingSegment(segment))
             {
                 return Err(EngineError::invalid());
             }
-            if let Some(r) = monetary(state, &request, Admission::Audit)? {
+            if let Some(r) = monetary(lookup, &request, Admission::Audit)? {
                 if lineage_owners.get(&r.lineage).map(Vec::as_slice) != Some([r.id].as_slice()) {
                     return Err(duplicate());
                 }
@@ -992,12 +1007,12 @@ fn prospective(state: &DomainState, records: &[AuthoritativeRecordV1]) -> Domain
 /// `added` identities the replacement adds beyond its drafts must differ from
 /// every draft identity and from each other.
 pub(crate) fn adopt_drafts<'a>(
-    state: &DomainState,
+    lookup: &Lookup,
     requests: impl IntoIterator<Item = &'a ActivityRequestV1>,
     retired: RecordId,
     added: &[RecordId],
 ) -> Result<Vec<(Vec<AuthoritativeRecordV1>, RecognitionV1)>, EngineError> {
-    let mut all = RecognitionEngine::audit(state)?;
+    let mut all = RecognitionEngine::audit_in(lookup)?;
     for adoption in &mut all {
         if let Some(opening) = adoption.opening.as_mut().filter(|_| adoption.id == retired) {
             opening.included_activity.clear();
@@ -1007,7 +1022,7 @@ pub(crate) fn adopt_drafts<'a>(
     let mut ids = BTreeSet::new();
     let mut planned = Vec::new();
     for request in requests {
-        let draft = RecognitionEngine::draft(state, request, Admission::Replacement, None)?;
+        let draft = RecognitionEngine::draft(lookup, request, Admission::Replacement, None)?;
         let Some(recognition) = draft.recognition else {
             return Err(EngineError::invalid());
         };
@@ -1033,7 +1048,7 @@ pub(crate) fn adopt_drafts<'a>(
     if added.iter().any(|id| !ids.insert(*id)) {
         return Err(duplicate());
     }
-    consumed(&prospective(state, &records), &all)?;
+    consumed(&prospective(lookup.state, &records), &all)?;
     Ok(planned)
 }
 /// Plan `request`, a posted adoption that replaces the legs of `retired`,
@@ -1064,9 +1079,10 @@ pub(crate) fn replace_adoption(
     {
         return Err(EngineError::invalid());
     }
-    let draft = RecognitionEngine::draft(state, request, Admission::Ordinary, Some(retired))?;
+    let lookup = Lookup::new(state);
+    let draft = RecognitionEngine::draft(&lookup, request, Admission::Ordinary, Some(retired))?;
     let recognition = draft.recognition.ok_or_else(EngineError::invalid)?;
-    let mut all = RecognitionEngine::audit(state)?;
+    let mut all = RecognitionEngine::audit_in(&lookup)?;
     for adoption in all.iter_mut().filter(|a| a.id == retired.id) {
         adoption.facets.clear();
         adoption.prior_pending = None;
