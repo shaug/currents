@@ -829,7 +829,7 @@ fn holdings(
     if !request.exclusions.is_empty() {
         return Err(EngineError::invalid());
     }
-    let mut holdings = 0;
+    let mut named_holding = false;
     for id in &evidence {
         match state.records.get(id) {
             Some(AuthoritativeRecordV1::ImportReceipt(_)) => {}
@@ -841,13 +841,13 @@ fn holdings(
                     if facet.kind != ObservationKind::Holding {
                         return Err(EngineError::invalid());
                     }
-                    holdings += 1;
+                    named_holding = true;
                 }
             }
             _ => return Err(EngineError::invalid()),
         }
     }
-    if holdings == 0 {
+    if !named_holding {
         return Err(EngineError::invalid());
     }
     let inputs = ClaimInputs::read(state, &scope)?;
