@@ -433,7 +433,7 @@ frozen.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoff, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
@@ -454,6 +454,65 @@ Split/repeated identities touching scope remain unsupported (callers
 must supply all sibling rows, including those outside scope). An empty
 difference list proves neither account-period completeness nor retained
 allocation eligibility; this is not claim confirmation or service dispatch.
+
+### CUR-017 activity coverage checkpoint
+
+`ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`
+evaluates `Activity` requests. It refuses a request whose
+`basis.through_commit` is not the state's commit, or whose accounting index
+lags the state, with `StaleBasis`. Other kinds return `UnsupportedVersion`
+until their leaves merge. An Activity request names exactly one account and a
+`cutoffs` interval with both a start and an end. Each `evidence` ID names an
+import receipt or an observation version. Each exclusion names a named
+observation or a live recognized leg.
+
+The source lines are the movement facets of the named observations. A line's
+one reported date is its facet's temporal value, and the comparison uses it
+under either date basis. The recognized legs are the legs of every Activity
+recognition that the accounting index has not reversed. Exclusions remove the
+named lines, their allocations and the named legs from the comparison. The
+engine compares the lines with every live leg's allocations through
+`compare_activity_allocations`, so offsetting omissions never net out.
+
+The claim is `Proposed` only when it has no reasons. Otherwise it is
+`PartiallySupported`. `ClaimReasonV1` reasons are:
+
+- `IncompleteInterval`: no named receipt reports `Complete` coverage of the
+  whole interval by the request's date basis.
+- `UnknownOpening` or `UnknownClosing`: the statement reports no single
+  balance at the end of the day before the interval, or at the end of its last
+  day.
+- `UnexplainedResidual`: the opening plus the source lines in the interval,
+  excluded lines included, is not the closing. `differences` holds the
+  closing minus that sum.
+- `MissingDateMapping`: a named line or balance, or a live leg on the account,
+  has no civil date by the request's basis. It leaves the comparison.
+- `MissingAllocation`, `UnexpectedAllocation`, `RepeatedIdentity` and
+  `DifferentTerms` each name one `EvidenceLineV1 { observation, facet }`.
+  They serialize as `{"MissingAllocation":{...}}`.
+- `UnsupportedLeg` names a live leg on the account, with a civil date inside
+  the interval, that allocates no source line, such as a leg an association
+  admitted. Excluding the leg removes the reason. It serializes as
+  `{"UnsupportedLeg":"<leg id>"}`; the reasons without a payload stay plain
+  strings.
+
+The claim records the request's basis, account, `cutoffs` and sorted
+evidence and exclusions, the account's unit and comparison version 1.
+`matched_allocations` lists every compared line in the interval that matched,
+with its source amount. `accounting_dependencies` names each live leg the
+claim compared, and its recognitions: a leg on the account inside the
+interval or without a civil date, or one that allocates a named observation.
+`decision_dependencies` is empty. The claim ID is a version 8 UUID derived
+from the request, so the same request at the same basis gives the same claim.
+
+`dependency_digest` is a SHA-256 over the comparison version, the account
+and interval, each named observation with its latest explicit revision, each
+compared leg by its stable leg ID with its account, unit, effective date,
+posting date, normalized amount and evidence allocations, the account's
+current catalog terms except its display name, and the receipt coverage the
+claim used. Recognition and posting IDs are not inputs, so an identity-only
+correction keeps the digest. Evaluation records the digest; deciding when a
+claim stops applying belongs to a later CUR-017 leaf.
 
 <a id="c10"></a>
 

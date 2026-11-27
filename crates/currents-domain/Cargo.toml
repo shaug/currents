@@ -11,6 +11,7 @@ workspace = true
 currents-types.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 # Freeze and replay segment plans through the real C05 adapter in tests.

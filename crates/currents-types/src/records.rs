@@ -117,14 +117,56 @@ choices!(ReconciliationStatus {
     Disputed,
     Superseded
 });
-// Why a claim is only partially supported (technical design section 6).
-choices!(ClaimReasonV1 {
+/// One source line: a facet of one observation version.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceLineV1 {
+    pub observation: RecordId,
+    pub facet: RecordId,
+}
+impl Schema for EvidenceLineV1 {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","additionalProperties":false,"required":["observation","facet"],"properties":{"observation":RecordId::schema(),"facet":RecordId::schema()}})
+    }
+}
+/// Why a claim is only partially supported (technical design section 6).
+/// A line reason names the exact source line it concerns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ClaimReasonV1 {
     UnknownOpening,
     IncompleteInterval,
     IncompatibleBalanceKinds,
     MissingDateMapping,
-    UnexplainedResidual
-});
+    UnexplainedResidual,
+    UnknownClosing,
+    /// A source line that no recognized leg allocates.
+    MissingAllocation(EvidenceLineV1),
+    /// A recognized leg in scope allocates a line the source does not report.
+    UnexpectedAllocation(EvidenceLineV1),
+    /// A line that the source reports, or legs allocate, more than once.
+    RepeatedIdentity(EvidenceLineV1),
+    /// A line whose account, date or amount differs from its allocation.
+    DifferentTerms(EvidenceLineV1),
+    /// A recognized leg in scope that allocates no source line, such as a
+    /// leg an association admitted.
+    UnsupportedLeg(LegId),
+}
+impl Schema for ClaimReasonV1 {
+    fn schema() -> serde_json::Value {
+        let variant = |name: &str, value: serde_json::Value| serde_json::json!({"type":"object","additionalProperties":false,"required":[name],"properties":{name:value}});
+        let line = |name: &str| variant(name, EvidenceLineV1::schema());
+        serde_json::json!({"oneOf":[
+            {"type":"string","enum":["UnknownOpening","IncompleteInterval","IncompatibleBalanceKinds","MissingDateMapping","UnexplainedResidual","UnknownClosing"]},
+            line("MissingAllocation"),
+            line("UnexpectedAllocation"),
+            line("RepeatedIdentity"),
+            line("DifferentTerms"),
+            variant("UnsupportedLeg", LegId::schema())
+        ]})
+    }
+}
 choices!(AuthorityKind {
     Owner,
     StandingRule,
