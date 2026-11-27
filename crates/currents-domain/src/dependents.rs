@@ -86,6 +86,16 @@ impl Change {
         self.net.insert(key, total);
         Ok(())
     }
+    /// Every account whose net change is nonzero on some date, in ID order.
+    pub(crate) fn changed_accounts(&self) -> Vec<AccountId> {
+        let changed: BTreeSet<_> = self
+            .net
+            .iter()
+            .filter(|(_, amount)| amount.coefficient != 0)
+            .map(|((account, ..), _)| *account)
+            .collect();
+        changed.into_iter().collect()
+    }
     /// The claim's account and date predicate sees a nonzero net change.
     fn in_scope(&self, claim: &ReconciliationClaimV1) -> Result<bool, EngineError> {
         let within = |day: &Day| match day {

@@ -63,9 +63,11 @@ pub(crate) fn validate_transition(
                 {
                     return Err(EngineError::invalid());
                 }
-                let plan = crate::correction::CorrectionEngine::correct_durable(
+                // A reinterpretation is derived again under the governing
+                // policy and unresolved account its revision records.
+                let plan = crate::correction::CorrectionEngine::readmit(
                     prior,
-                    revision.id,
+                    revision,
                     &CorrectionV1 {
                         active_recognition: revision.prior_recognition,
                         replacement: vec![replacement.clone()],

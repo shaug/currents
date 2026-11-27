@@ -74,7 +74,7 @@ impl ReplayEngine {
                 AuthoritativeRecordV1::RelationshipCapture(v) => Some(v.id),
                 AuthoritativeRecordV1::RelationshipParseRevision(v) => Some(v.id),
                 AuthoritativeRecordV1::RecognitionCorrectionRevision(v) => {
-                    if v.schema_version != 1 {
+                    if v.schema_version != v.remap_disposition.schema_version() {
                         return Err(EngineError::version());
                     }
                     Some(v.id)

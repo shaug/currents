@@ -287,15 +287,46 @@ dto!(RecognitionCorrectionRevisionV1 {
     reason: String,
     remap_disposition: RecognitionCorrectionRemapV1
 });
+/// What a correction does to its recognition's interpretation. The legs stay
+/// in both cases. A version-1 revision keeps the interpretation and changes
+/// identities only; a version-2 revision records a new interpretation.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RecognitionCorrectionRemapV1 {
     UnchangedStableLegs,
+    ReinterpretedStableLegs(StableLegsReinterpretationV1),
+}
+impl RecognitionCorrectionRemapV1 {
+    /// The revision schema version this disposition requires.
+    pub fn schema_version(&self) -> u32 {
+        match self {
+            Self::UnchangedStableLegs => 1,
+            Self::ReinterpretedStableLegs(_) => 2,
+        }
+    }
 }
 impl Schema for RecognitionCorrectionRemapV1 {
     fn schema() -> serde_json::Value {
-        serde_json::json!({"enum": ["UnchangedStableLegs"]})
+        serde_json::json!({"oneOf": [
+            {"const": "UnchangedStableLegs"},
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ReinterpretedStableLegs"],
+                "properties": {
+                    "ReinterpretedStableLegs": StableLegsReinterpretationV1::schema()
+                }
+            }
+        ]})
     }
 }
+// The new interpretation of a recognition whose legs stay: the exact
+// governing policy, the unresolved-equity account it names, if any, and every
+// account whose balance the correction moves on some date.
+dto!(StableLegsReinterpretationV1 {
+    governing_policy: PolicyReferenceV1,
+    unresolved_account: Option<AccountId>,
+    changed_accounts: Vec<AccountId>
+});
 // One transfer recognition that a segment replacement reversed and issued
 // again with fresh recognition and posting IDs and unchanged economics.
 dto!(SegmentReemissionV1 {

@@ -7628,8 +7628,68 @@
                   "type": "string"
                 },
                 "remap_disposition": {
-                  "enum": [
-                    "UnchangedStableLegs"
+                  "oneOf": [
+                    {
+                      "const": "UnchangedStableLegs"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ReinterpretedStableLegs": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "changed_accounts": {
+                              "items": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "maxItems": 16384,
+                              "type": "array"
+                            },
+                            "governing_policy": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "version": {
+                                  "maximum": 4294967295,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "version"
+                              ],
+                              "type": "object"
+                            },
+                            "unresolved_account": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "governing_policy",
+                            "unresolved_account",
+                            "changed_accounts"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "ReinterpretedStableLegs"
+                      ],
+                      "type": "object"
+                    }
                   ]
                 },
                 "replacement_recognition": {
@@ -41429,8 +41489,68 @@
                         "type": "string"
                       },
                       "remap_disposition": {
-                        "enum": [
-                          "UnchangedStableLegs"
+                        "oneOf": [
+                          {
+                            "const": "UnchangedStableLegs"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ReinterpretedStableLegs": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "changed_accounts": {
+                                    "items": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "maxItems": 16384,
+                                    "type": "array"
+                                  },
+                                  "governing_policy": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "version": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "version"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "unresolved_account": {
+                                    "anyOf": [
+                                      {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "governing_policy",
+                                  "unresolved_account",
+                                  "changed_accounts"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "ReinterpretedStableLegs"
+                            ],
+                            "type": "object"
+                          }
                         ]
                       },
                       "replacement_recognition": {
@@ -54959,8 +55079,68 @@
                         "type": "string"
                       },
                       "remap_disposition": {
-                        "enum": [
-                          "UnchangedStableLegs"
+                        "oneOf": [
+                          {
+                            "const": "UnchangedStableLegs"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ReinterpretedStableLegs": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "changed_accounts": {
+                                    "items": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "maxItems": 16384,
+                                    "type": "array"
+                                  },
+                                  "governing_policy": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "version": {
+                                        "maximum": 4294967295,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "version"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "unresolved_account": {
+                                    "anyOf": [
+                                      {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "governing_policy",
+                                  "unresolved_account",
+                                  "changed_accounts"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "ReinterpretedStableLegs"
+                            ],
+                            "type": "object"
+                          }
                         ]
                       },
                       "replacement_recognition": {

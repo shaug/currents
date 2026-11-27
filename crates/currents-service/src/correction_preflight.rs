@@ -27,7 +27,7 @@ pub fn verify_correction_preflight(
     let AccountingIntent::Correction(request) = &plan.accounting else {
         return Err(EngineError::invalid());
     };
-    if CorrectionEngine::correct_durable(prior, revision.id, request)? != *plan {
+    if CorrectionEngine::readmit(prior, revision, request)? != *plan {
         return Err(EngineError::invalid());
     }
     Writer::verify_correction_freeze(prior, plan, frozen)
