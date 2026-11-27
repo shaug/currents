@@ -35,13 +35,6 @@ struct Case<'a> {
     name: String,
 }
 
-/// One unit of pool work: the workspace doctests, or the test at an index.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Job {
-    Doctests,
-    Test(usize),
-}
-
 /// Test binaries that exercise only vendored code. Their result changes only
 /// when the vendored sources, their patches, the toolchain or the test itself
 /// change, so the CI `doubleentry` job runs them (`cargo xtask ticket CUR-005`)
@@ -174,6 +167,12 @@ impl Shard {
         self.index == 1
     }
 
+    /// The last shard runs the doctests, so that they do not add to the first
+    /// shard's native driver.
+    fn is_last(self) -> bool {
+        self.index == self.count
+    }
+
     /// This shard's items. The first `head` items, the longest, are dealt back
     /// and forth (1, 2, 2, 1, ...) so that every shard gets a fair share of
     /// them. The rest are dealt in turn (1, 2, 1, 2, ...), so neighboring tests,
@@ -206,25 +205,24 @@ fn key(case: &Case) -> String {
     format!("{} {}", case.binary.label, case.name)
 }
 
-/// The run order, and how many listed jobs lead it: the listed tests and
-/// doctests in list order, then the doctests if unlisted, then every other
-/// test in listing order.
-fn schedule(cases: &[Case], limits: &Limits) -> (Vec<Job>, usize) {
+/// The test run order, as indexes into `cases`, and how many listed tests lead
+/// it: the listed tests in list order, then every other test in listing order.
+fn schedule(cases: &[Case], limits: &Limits) -> (Vec<usize>, usize) {
     let unlisted = limits.listed.len();
-    let rank = |job: &Job| {
-        let rank = match *job {
-            Job::Doctests => limits.rank(DOCTESTS),
-            Job::Test(index) => cases.get(index).and_then(|case| limits.rank(&key(case))),
-        };
-        rank.unwrap_or(unlisted)
+    let rank = |index: &usize| {
+        cases
+            .get(*index)
+            .and_then(|case| limits.rank(&key(case)))
+            .unwrap_or(unlisted)
     };
-    let mut jobs: Vec<Job> = std::iter::once(Job::Doctests)
-        .chain((0..cases.len()).map(Job::Test))
-        .collect();
-    // A stable sort keeps unlisted jobs in their original order.
-    jobs.sort_by_key(rank);
-    let head = jobs.iter().take_while(|job| rank(job) < unlisted).count();
-    (jobs, head)
+    let mut tests: Vec<usize> = (0..cases.len()).collect();
+    // A stable sort keeps unlisted tests in their original order.
+    tests.sort_by_key(rank);
+    let head = tests
+        .iter()
+        .take_while(|index| rank(index) < unlisted)
+        .count();
+    (tests, head)
 }
 
 /// Worker count: `CURRENTS_TEST_JOBS` if set, else every available core.
@@ -324,8 +322,8 @@ fn pool<T: Sync, R: Send>(
 }
 
 /// Builds (or reuses) the workspace test binaries and runs this shard's part of
-/// the tests and doctests that `cargo test --workspace` runs, each test in its
-/// own process. `SEPARATE` binaries are left out. With `timings` (CI only), it
+/// the tests that `cargo test --workspace` runs, each test in its own process.
+/// The last shard also runs the doctests. `SEPARATE` binaries are left out. With `timings` (CI only), it
 /// prints when each test started and how long it took to stderr, which stays
 /// out of the evidence, and fails when a test runs past its time limit.
 pub(crate) fn run(
@@ -418,7 +416,6 @@ pub(crate) fn run(
 
     let stop = AtomicBool::new(false);
     let mut outputs = vec![String::new(); cases.len()];
-    let mut doctests = None;
     let mut failures = Vec::new();
     let mut over_limit = Vec::new();
     let mut check_limit = |test: &str, took: Duration| {
@@ -439,49 +436,44 @@ pub(crate) fn run(
         ]
     };
     let began = Instant::now();
+    // `cargo test --doc` holds the target directory's build lock until its last
+    // doctest finishes, so every test that starts cargo would wait behind it.
+    // The doctests therefore run alone, before this shard's tests.
+    let doctests = if shard.is_last() {
+        let result = output(program, &doc, &root(), rustc);
+        let took = began.elapsed();
+        if timings {
+            timing(DOCTESTS, Duration::ZERO, took);
+        }
+        check_limit(DOCTESTS, took);
+        let stdout = result.and_then(|out| recorded(program, &doc, &root(), rustc, &out))?;
+        Some(json!({"command": doc, "stdout_sha256": sha(stdout.as_bytes())}))
+    } else {
+        None
+    };
     pool(
         &work,
         workers,
         &stop,
-        |job| {
+        |index| {
             let started = Instant::now();
-            let result = match *job {
-                Job::Doctests => output(program, &doc, &root(), rustc),
-                Job::Test(index) => cases
-                    .get(index)
-                    .ok_or_else(|| "unknown test".to_owned())
-                    .and_then(|case| {
-                        let args = args(case);
-                        let args: Vec<_> = args.iter().map(String::as_str).collect();
-                        output(
-                            &case.binary.executable,
-                            &args,
-                            &case.binary.package_dir,
-                            rustc,
-                        )
-                    }),
-            };
-            (*job, started, started.elapsed(), result)
+            let result = cases
+                .get(*index)
+                .ok_or_else(|| "unknown test".to_owned())
+                .and_then(|case| {
+                    let args = args(case);
+                    let args: Vec<_> = args.iter().map(String::as_str).collect();
+                    output(
+                        &case.binary.executable,
+                        &args,
+                        &case.binary.package_dir,
+                        rustc,
+                    )
+                });
+            (*index, started, started.elapsed(), result)
         },
         // Evidence is recorded here, on the reporting thread, as results arrive.
-        |_, (job, started, took, result)| {
-            let index = match job {
-                Job::Doctests => {
-                    if timings {
-                        timing(DOCTESTS, started.duration_since(began), took);
-                    }
-                    check_limit(DOCTESTS, took);
-                    match result.and_then(|out| recorded(program, &doc, &root(), rustc, &out)) {
-                        Ok(stdout) => doctests = Some(stdout),
-                        Err(error) => {
-                            stop.store(true, Ordering::SeqCst);
-                            failures.push(error);
-                        }
-                    }
-                    return;
-                }
-                Job::Test(index) => index,
-            };
+        |_, (index, started, took, result)| {
             let Some(case) = cases.get(index) else {
                 return;
             };
@@ -533,13 +525,6 @@ pub(crate) fn run(
             over_limit.join("\n  ")
         ));
     }
-    let doctests = match doctests {
-        Some(stdout) => Some(json!({"command": doc, "stdout_sha256": sha(stdout.as_bytes())})),
-        None if work.contains(&Job::Doctests) => return Err("doctests did not run".into()),
-        // Another shard runs them.
-        None => None,
-    };
-
     let mut names: Vec<_> = cases.iter().map(key).collect();
     names.sort();
     let separate: Vec<_> = separate.iter().map(|binary| &binary.label).collect();
@@ -560,7 +545,7 @@ pub(crate) fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::{Binary, Case, Job, Limits, Shard, binaries, pool, schedule};
+    use super::{Binary, Case, Limits, Shard, binaries, pool, schedule};
     use std::{
         collections::BTreeSet,
         path::{Path, PathBuf},
@@ -573,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn schedule_starts_listed_jobs_in_list_order() {
+    fn schedule_starts_listed_tests_in_list_order() {
         let binary = Binary {
             executable: PathBuf::new(),
             package_dir: PathBuf::new(),
@@ -584,48 +569,25 @@ mod tests {
             name: name.into(),
         };
         let cases = [case("a"), case("slow"), case("b"), case("slowest")];
+        // The doctests entry sets only their limit; they are not pool work.
         let listed = limits(
             r#"{"default_limit_seconds": 30, "tests": [
                 {"test": "pkg/target slowest", "limit_seconds": 90, "reason": "r"},
                 {"test": "doctests", "limit_seconds": 60, "reason": "r"},
                 {"test": "pkg/target slow", "limit_seconds": 45, "reason": "r"}]}"#,
         );
-        assert_eq!(
-            schedule(&cases, &listed),
-            (
-                vec![
-                    Job::Test(3),
-                    Job::Doctests,
-                    Job::Test(1),
-                    Job::Test(0),
-                    Job::Test(2)
-                ],
-                3
-            )
-        );
-        // Unlisted doctests run right after the listed tests.
-        let tests_only = limits(
-            r#"{"default_limit_seconds": 30, "tests": [
-                {"test": "pkg/target b", "limit_seconds": 45, "reason": "r"}]}"#,
-        );
-        assert_eq!(
-            schedule(&cases, &tests_only),
-            (
-                vec![
-                    Job::Test(2),
-                    Job::Doctests,
-                    Job::Test(0),
-                    Job::Test(1),
-                    Job::Test(3)
-                ],
-                1
-            )
-        );
+        assert_eq!(schedule(&cases, &listed), (vec![3, 1, 0, 2], 2));
         let none = limits(r#"{"default_limit_seconds": 30, "tests": []}"#);
-        assert_eq!(
-            schedule(&cases[..1], &none),
-            (vec![Job::Doctests, Job::Test(0)], 0)
-        );
+        assert_eq!(schedule(&cases, &none), (vec![0, 1, 2, 3], 0));
+    }
+
+    #[test]
+    fn only_the_last_shard_runs_the_doctests() {
+        let last: Vec<bool> = (1..=3)
+            .map(|index| Shard { index, count: 3 }.is_last())
+            .collect();
+        assert_eq!(last, [false, false, true]);
+        assert!(Shard::ALL.is_last());
     }
 
     #[test]

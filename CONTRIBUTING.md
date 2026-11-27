@@ -38,9 +38,11 @@ Core and MSRV run the same tests as `cargo test --workspace`, except the
 vendored doubleentry suite in `crates/currents-storage/tests/cur_005.rs`. Each
 test runs in its own process on a pool sized to the machine's cores. Set
 `CURRENTS_TEST_JOBS` to change the pool size; `1` runs one test at a time.
-The pool runs `cargo test --doc` as one of its jobs.
-`CURRENTS_TEST_SHARD=K/N` runs part K of N of the schedule; CI splits Linux
-core and MSRV into three parts and macOS core into two, each on its own runner.
+`cargo test --doc` runs alone before the pool starts, because cargo holds the
+target directory's build lock until the last doctest finishes and every test
+that starts cargo would wait behind it. `CURRENTS_TEST_SHARD=K/N` runs part K
+of N of the schedule; CI splits Linux core and MSRV into three parts and macOS
+core into two, each on its own runner, and the last part runs the doctests.
 Nextest is not used.
 
 `docs/slow-tests.json` lists the tests (and `doctests`) that may take longer
