@@ -59,7 +59,7 @@ entry.
 
 The quality gate also rejects a function under `crates/` that calls
 `Command::new("cargo")` or `Command::new(env!("CARGO"))`, directly or through
-other functions in the same file, unless
+other functions or methods in the same file, unless
 `docs/nested-cargo-tests.json` lists that file and function with a reason, and
 it rejects entries whose function no longer starts cargo. CI job timeouts sit
 at about twice the slowest job in recent runs, so a job that doubles in time

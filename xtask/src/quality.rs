@@ -292,7 +292,10 @@ fn starts_cargo(syntax: &syn::File) -> BTreeSet<String> {
 struct CargoCalls {
     function: Option<String>,
     found: BTreeSet<String>,
-    /// Each function's calls by plain name, such as `helper(...)`.
+    /// Each function's calls by last name: `helper(...)`, `Fixture::build(...)`
+    /// and `fixture.build()` record `helper` and `build`. A call to an unrelated
+    /// function or method with the same name also counts, so the gate asks for
+    /// an entry rather than missing one.
     callees: BTreeMap<String, BTreeSet<String>>,
 }
 impl<'ast> syn::visit::Visit<'ast> for CargoCalls {
@@ -324,14 +327,22 @@ impl<'ast> syn::visit::Visit<'ast> for CargoCalls {
         if is_command_new && is_cargo {
             self.found.insert(function);
         } else if let syn::Expr::Path(path) = &*call.func
-            && let Some(name) = path.path.get_ident()
+            && let Some(name) = path.path.segments.last()
         {
             self.callees
                 .entry(function)
                 .or_default()
-                .insert(name.to_string());
+                .insert(name.ident.to_string());
         }
         syn::visit::visit_expr_call(self, call);
+    }
+    fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
+        let function = self.function.clone().unwrap_or_else(|| "<module>".into());
+        self.callees
+            .entry(function)
+            .or_default()
+            .insert(call.method.to_string());
+        syn::visit::visit_expr_method_call(self, call);
     }
     fn visit_macro(&mut self, mac: &'ast syn::Macro) {
         // syn leaves macro bodies unparsed; calls inside `assert!(...)`,
@@ -747,6 +758,8 @@ mod tests {
             fn wrapper() { assert!(helper(&[]).is_ok()); }
             #[test] fn through_two_helpers() { let _ = wrapper(); }
             #[test] fn through_none() { other_programs(); }
+            #[test] fn by_method(fixture: &Fixture) { fixture.build(); }
+            #[test] fn by_path(fixture: &Fixture) { Fixture::build(fixture); }
         "#;
         let found = starts_cargo(&syn::parse_file(source).unwrap());
         let found: Vec<_> = found.iter().map(String::as_str).collect();
@@ -754,6 +767,8 @@ mod tests {
             found,
             [
                 "build",
+                "by_method",
+                "by_path",
                 "helper",
                 "nested",
                 "plain",
