@@ -41,39 +41,7 @@ pub async fn synthetic_commit_verified_correction(
     prepared: currents_storage::PreparedCommit,
 ) -> Result<currents_storage::CommitReceipt, currents_storage::CommitFailure> {
     use currents_storage::CommitFailure::DefinitelyRolledBack;
-    if !prepared.evidence.is_empty() || prepared.result.commit.is_some() {
-        return Err(DefinitelyRolledBack(EngineError::invalid()));
-    }
-    let frozen_prefix = &prepared.frozen_batch.preconditions;
-    let trusted_tip = if let Some(existing) = writer
-        .command_result(prepared.result.command_id, prepared.result.digest)
-        .await
-        .map_err(DefinitelyRolledBack)?
-    {
-        // A settled retry refers to the original prior, not the new tip.
-        // C04 still requires exact persisted records and manifest on retry.
-        let Some(AuthoritativeRecordV1::FrozenAccountingManifest(manifest)) =
-            existing.records.last()
-        else {
-            return Err(DefinitelyRolledBack(EngineError::invalid()));
-        };
-        let mut submitted_result = prepared.result.clone();
-        submitted_result.commit = Some(existing.seq);
-        if existing.previous_digest != frozen_prefix.domain_digest
-            || existing.seq.0.checked_sub(1) != Some(frozen_prefix.through.0)
-            || &manifest.preconditions != frozen_prefix
-            || submitted_result != existing.command_result
-        {
-            return Err(DefinitelyRolledBack(EngineError::invalid()));
-        }
-        manifest.preconditions.clone()
-    } else {
-        writer
-            .audited_prefix()
-            .await
-            .map_err(DefinitelyRolledBack)?
-    };
-    let prior = crate::verified_prefix::rehydrate(writer, &trusted_tip)
+    let (trusted_tip, prior) = crate::verified_prefix::trusted_prior(writer, &prepared)
         .await
         .map_err(DefinitelyRolledBack)?;
     verify_correction_preflight(

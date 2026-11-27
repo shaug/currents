@@ -24,4 +24,10 @@ mod correction_preflight;
 pub use correction_preflight::synthetic_commit_verified_correction;
 pub use correction_preflight::verify_correction_preflight;
 
+mod segment_preflight;
+#[cfg(feature = "synthetic-test-fixtures")]
+#[doc(hidden)]
+pub use segment_preflight::synthetic_commit_verified_segment;
+pub use segment_preflight::verify_segment_preflight;
+
 mod verified_prefix;

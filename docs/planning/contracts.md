@@ -206,6 +206,32 @@ or forecast run names the account, its old opening or that opening's legs or
 postings. There is no command route, `OperationV1` variant or owner residual
 decision; the legacy `ReplaceAccountingSegment` stays unsupported.
 
+### CUR-016 segment commit checkpoint
+
+`verify_segment_preflight(prior, trusted_tip, request, plan, frozen)` accepts
+a segment replacement only when the prior state is exactly the trusted tip,
+the frozen batch names that tip, `SegmentEngine::replace` derives the same
+ready plan again from `request`, and `Writer::verify_segment_freeze` passes.
+That writer check requires one successor segment whose only closure is the
+retired opening and whose opening and backfill are the replacement entries in
+order, then compares the batch with a fresh C05 freeze of the plan's intent.
+It is read-only; C04 still checks the exact tip inside the write transaction.
+
+The feature-gated `synthetic_commit_verified_segment` rebuilds the prior from
+the same Writer's audited history, as the correction host path does, and
+commits only after that check. An exact retry uses the prior of the earlier
+commit, so it resolves to that commit; a reused command ID with other content
+is refused. Encrypted tests cover stale and altered plans, cancellation before
+COMMIT submission, retry, reopen, a fresh rebuild and a 2024 backfill on an
+account declared in 2026. History replayed through the commit before the
+replacement keeps the old records. There is still no command route or service
+dispatch.
+
+`cargo xtask ticket CUR-016` lists every CUR-016 test by package and target,
+runs each target and fails when a listed test is missing, renamed, ignored or
+failing, or when a target has a test the list does not name. Later CUR-016
+leaves add their tests to that list.
+
 <a id="c09"></a>
 
 ## C09: Queries/reconciliation, owners CUR-017, CUR-018, CUR-020

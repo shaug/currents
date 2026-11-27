@@ -1,4 +1,5 @@
 //! CUR-016 corrections against an actual committed and replayed accounting prefix.
+use currents_domain::segments::{SegmentEngine, SegmentPreviewV1, SegmentReplacementV1};
 use currents_service as service_api;
 use currents_types::*;
 #[path = "../../currents-domain/tests/support/recognition.rs"]
@@ -530,4 +531,741 @@ async fn cur_016_durable_correction_rebuilds_immutable_lineage() {
             .reversed
             .contains(&original_id)
     );
+}
+
+const ACCOUNT_A: u32 = 10;
+const ACCOUNT_B: u32 = 20;
+const EQUITY: u32 = 50;
+const EXPENSE: u32 = 30;
+const DIGEST: Digest = Digest([77; 32]);
+
+fn account(n: u32) -> AccountId {
+    AccountId(fixture::id(n).0)
+}
+
+/// The binding of evidence retained at genesis as observation `n`.
+fn retained(n: u32, value: i128) -> SourceFacetBindingV1 {
+    SourceFacetBindingV1 {
+        observation: fixture::id(n),
+        parse_product: fixture::id(n + 1),
+        facet: fixture::id(900),
+        amount: fixture::amount(value),
+    }
+}
+
+/// A posted draft on account `on` with its own value and booking dates.
+fn dated_draft(
+    source: SourceFacetBindingV1,
+    n: u32,
+    on: u32,
+    counter: u32,
+    effective: &str,
+    booking: &str,
+) -> ActivityRequestV1 {
+    let mut draft = fixture::posted(source, n, counter);
+    let (effective, booking) = (fixture::date(effective), fixture::date(booking));
+    let leg = &mut draft.legs[0].leg;
+    leg.account_id = account(on);
+    leg.effective = effective.clone();
+    leg.posting = booking.clone();
+    let terms = draft.financial.as_mut().unwrap();
+    terms.bookkeeping_date = booking.clone();
+    terms.postings[0].account_id = account(on);
+    for posting in &mut terms.postings {
+        posting.effective = effective.clone();
+        posting.posting = booking.clone();
+    }
+    draft
+}
+
+/// A posted opening of account `on`'s component at `cutoff`, naming `segment`.
+fn opening_draft(
+    source: SourceFacetBindingV1,
+    n: u32,
+    on: u32,
+    segment: u32,
+    cutoff: &str,
+) -> ActivityRequestV1 {
+    let mut draft = dated_draft(source.clone(), n, on, EQUITY, cutoff, cutoff);
+    draft.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: fixture::id(segment),
+        component_id: fixture::id(on + 1),
+        amount: source.amount,
+        cutoff: fixture::date(cutoff),
+        evidence: source,
+        included_activity: vec![],
+    });
+    draft
+}
+
+/// A replacement of segment 707 on account `on`: an opening from evidence
+/// `base` (draft `base + 10`, successor `base + 17`) and one backfill to the
+/// expense account from evidence `base + 100` (draft `base + 110`).
+fn replacement_request(
+    on: u32,
+    base: u32,
+    opening: (i128, &str),
+    backfill: (i128, &str, &str),
+) -> SegmentReplacementV1 {
+    SegmentReplacementV1 {
+        prior_segment: fixture::id(707),
+        opening: opening_draft(
+            retained(base, opening.0),
+            base + 10,
+            on,
+            base + 17,
+            opening.1,
+        ),
+        backfill: vec![dated_draft(
+            retained(base + 100, backfill.0),
+            base + 110,
+            on,
+            EXPENSE,
+            backfill.1,
+            backfill.2,
+        )],
+        approved_accounts: vec![account(on), account(EQUITY), account(EXPENSE)],
+    }
+}
+
+fn ready_plan(
+    state: &DomainState,
+    request: &SegmentReplacementV1,
+) -> (DecisionPlan, AccountingBatchV1) {
+    let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(state, request).unwrap() else {
+        panic!("the replacement must reconcile with the old opening");
+    };
+    let frozen = currents_accounting::AccountingAdapter::freeze(&plan.accounting, state).unwrap();
+    (*plan, frozen)
+}
+
+/// The commit input for `plan` under command `command`, naming every emitted
+/// record in the result.
+fn segment_commit(
+    plan: &DecisionPlan,
+    frozen: &AccountingBatchV1,
+    command: u32,
+    control: currents_storage::CommitControl,
+) -> currents_storage::PreparedCommit {
+    let records = plan
+        .records
+        .iter()
+        .map(|r| {
+            serde_json::from_value(serde_json::to_value(r).unwrap()["value"]["id"].clone()).unwrap()
+        })
+        .collect();
+    currents_storage::PreparedCommit {
+        evidence: vec![],
+        result: CommandResultV1 {
+            command_id: CommandId(fixture::id(command).0),
+            digest: DIGEST,
+            state: CommandState::Committed,
+            commit: None,
+            effects: EffectsV1 {
+                records,
+                accounts: vec![],
+                amounts: vec![],
+                invalidations: plan.invalidations.clone(),
+            },
+            health: vec![],
+        },
+        decision_plan: plan.clone(),
+        frozen_batch: frozen.clone(),
+        prior_head: frozen.preconditions.through,
+        decisions: vec![],
+        manifest_id: fixture::id(command + 1),
+        control: std::sync::Arc::new(control),
+    }
+}
+
+/// Account A anchored at 3,300 USD at the end of 2026-11-01 through the real
+/// encrypted service, with retained evidence for the replacement in the domain
+/// test `cur_016_1_replacement_proves_old_boundary`: a 3,400 USD balance at
+/// 2026-10-30 and a -100 USD movement on 2026-10-31.
+async fn anchored_a(path: &std::path::Path) -> (support::Fixture, DomainState) {
+    let evidence = [
+        (2900, 3300, "2026-11-01", ObservationKind::Balance),
+        (3000, 3400, "2026-10-30", ObservationKind::Balance),
+        (3100, -100, "2026-10-31", ObservationKind::Movement),
+    ];
+    let texts: Vec<_> = evidence
+        .iter()
+        .map(|(n, value, day, _)| format!("Synthetic evidence {n}: {value} USD on {day}"))
+        .collect();
+    let retained_evidence: Vec<_> = evidence
+        .iter()
+        .zip(&texts)
+        .map(|(&(n, value, day, kind), text)| RetainedEvidence {
+            n,
+            value,
+            day,
+            kind,
+            text,
+        })
+        .collect();
+    let (mut f, _) = bootstrap_with_evidence(path, &retained_evidence).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    let opening = opening_draft(retained(2900, 3300), 700, ACCOUNT_A, 707, "2026-11-01");
+    submit(
+        &mut f,
+        50_001,
+        currents_protocol::OperationV1::AdoptActivity(opening),
+    )
+    .await;
+    let old = refresh_financial(&mut f, None).await;
+    (f, old)
+}
+
+fn a_replacement() -> SegmentReplacementV1 {
+    replacement_request(
+        ACCOUNT_A,
+        3000,
+        (3400, "2026-10-30"),
+        (-100, "2026-10-31", "2026-10-31"),
+    )
+}
+
+/// The head, domain records and frozen native entries of a replayed state.
+type Replayed = (
+    CommitSeq,
+    Digest,
+    std::collections::BTreeMap<RecordId, AuthoritativeRecordV1>,
+    std::collections::BTreeMap<RecognitionId, Vec<FrozenEntryV1>>,
+    std::collections::BTreeSet<RecognitionId>,
+);
+fn replayed(state: &DomainState) -> Replayed {
+    let index = state.accounting.as_ref().unwrap();
+    (
+        state.through,
+        state.domain_digest,
+        state.records.clone(),
+        index.recognitions.clone(),
+        index.reversed.clone(),
+    )
+}
+
+/// Replays retained history through `through` into an empty encrypted
+/// destination, as recovery does, and returns the replayed state.
+async fn replay_through(
+    source: &currents_storage::HistoryReader,
+    through: CommitSeq,
+    destination: &currents_storage::EncryptedStore,
+) -> DomainState {
+    let empty = destination.writer().audited_prefix().await.unwrap();
+    assert_eq!(empty.through, CommitSeq(0));
+    let mut state = DomainState {
+        accounting: Some(AccountingIndexV1::empty(empty.native_head)),
+        ..DomainState::default()
+    };
+    let mut stream = source.stream_prefix(through).await.unwrap();
+    while let Some(commit) = stream.next().await.unwrap() {
+        let mut next = state.clone();
+        currents_domain::ReplayEngine::apply(&mut next, &commit).unwrap();
+        next.accounting = Some(
+            source
+                .rebuild_commit(destination, &state, &commit)
+                .await
+                .unwrap(),
+        );
+        currents_domain::recognition::RecognitionEngine::audit(&next).unwrap();
+        currents_domain::associations::IdentityEngine::audit(&next).unwrap();
+        state = next;
+    }
+    assert_eq!(state.through, through);
+    assert_eq!(
+        &destination.writer().audited_prefix().await.unwrap(),
+        &state.accounting.as_ref().unwrap().prefix
+    );
+    state
+}
+
+/// The segment on `component` that no successor names.
+fn active_segment(state: &DomainState, component: RecordId) -> Option<&AccountingSegmentV1> {
+    let segments: Vec<_> = state
+        .records
+        .values()
+        .filter_map(|r| match r {
+            AuthoritativeRecordV1::AccountingSegment(s) if s.component == component => Some(s),
+            _ => None,
+        })
+        .collect();
+    let mut tips = segments
+        .iter()
+        .filter(|s| !segments.iter().any(|n| n.prior_segment == Some(s.id)));
+    let tip = tips.next().copied();
+    assert!(
+        tips.next().is_none(),
+        "one component has one active segment"
+    );
+    tip
+}
+
+/// The cutoff of the opening that `segment` names.
+fn segment_cutoff(state: &DomainState, segment: &AccountingSegmentV1) -> TemporalValue {
+    state
+        .records
+        .values()
+        .find_map(|r| match r {
+            AuthoritativeRecordV1::ActivityAdoption(a)
+                if a.recognition == Some(segment.opening) =>
+            {
+                a.opening.as_ref().map(|o| o.cutoff.clone())
+            }
+            _ => None,
+        })
+        .unwrap()
+}
+
+/// Recognized (not reversed) native postings on `on`, with their value dates.
+fn recognized_postings(state: &DomainState, on: AccountId) -> Vec<(String, Amount)> {
+    let index = state.accounting.as_ref().unwrap();
+    index
+        .recognitions
+        .iter()
+        .filter(|(id, _)| !index.reversed.contains(id))
+        .flat_map(|(_, entries)| entries)
+        .flat_map(|entry| {
+            entry
+                .postings
+                .iter()
+                .filter(|p| p.original.account_id == on)
+                .map(|p| (entry.value_date.clone(), p.original.amount))
+        })
+        .collect()
+}
+
+fn total(postings: impl IntoIterator<Item = (String, Amount)>) -> Amount {
+    postings
+        .into_iter()
+        .try_fold(fixture::amount(0), |sum, (_, amount)| {
+            sum.checked_add(&amount)
+        })
+        .unwrap()
+        .normalized()
+        .unwrap()
+}
+
+/// Submits through the verified host path and expects a refusal before any
+/// native operation, with both heads unchanged and no settled command.
+async fn refused(
+    path: &std::path::Path,
+    request: &SegmentReplacementV1,
+    prepared: currents_storage::PreparedCommit,
+) {
+    let store = open(path).await;
+    let before = store.writer().audited_prefix().await.unwrap();
+    let control = prepared.control.clone();
+    let command = prepared.result.command_id;
+    let outcome =
+        currents_service::synthetic_commit_verified_segment(store.writer(), request, prepared)
+            .await;
+    assert!(matches!(
+        outcome,
+        Err(currents_storage::CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(control.completed_operations(), 0);
+    assert_eq!(store.writer().audited_prefix().await.unwrap(), before);
+    assert!(
+        store
+            .writer()
+            .command_result(command, DIGEST)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_016_segment_commit_reopens_and_rebuilds() {
+    use currents_service::{ReplayCoordinator, synthetic_commit_verified_segment};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("segment-commit.db");
+    let (mut f, old) = anchored_a(&path).await;
+    let request = a_replacement();
+    let (plan, frozen) = ready_plan(&old, &request);
+    assert_eq!(frozen.operations.len(), 3);
+
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let before = store.writer().audited_prefix().await.unwrap();
+    assert_eq!(&before, &old.accounting.as_ref().unwrap().prefix);
+    let receipt = synthetic_commit_verified_segment(
+        store.writer(),
+        &request,
+        segment_commit(&plan, &frozen, 51_000, Default::default()),
+    )
+    .await
+    .expect("a ready replacement commits through the verified writer path");
+    let after = store.writer().audited_prefix().await.unwrap();
+    assert_eq!(receipt.commit, CommitSeq(before.through.0 + 1));
+    assert_eq!(after.through, receipt.commit);
+    assert_eq!(after.native_head, receipt.native_head);
+    assert_ne!(after.native_head, before.native_head);
+    let committed = store.history().audit_report().await.unwrap();
+    store.close().await.unwrap();
+
+    // Close and reopen: recovery replays the replacement from retained history.
+    f.service = f.reopen().await;
+    let reopened = refresh_financial(&mut f, None).await;
+    assert_eq!(&reopened.accounting.as_ref().unwrap().prefix, &after);
+    for (id, record) in &old.records {
+        assert_eq!(reopened.records.get(id), Some(record));
+    }
+    for record in &plan.records {
+        assert!(reopened.records.values().any(|r| r == record));
+    }
+    let successor = active_segment(&reopened, fixture::id(ACCOUNT_A + 1)).unwrap();
+    assert_eq!(successor.id, fixture::id(3017));
+    assert_eq!(successor.prior_segment, Some(fixture::id(707)));
+    assert_eq!(
+        segment_cutoff(&reopened, successor),
+        fixture::date("2026-10-30")
+    );
+    let index = reopened.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&RecognitionId(fixture::id(703).0)));
+    assert_eq!(
+        total(recognized_postings(&reopened, account(ACCOUNT_A))),
+        fixture::amount(3300)
+    );
+    f.service.close().await.unwrap();
+
+    // A fresh rebuild into a new encrypted file, then a replay of that file.
+    let store = open(&path).await;
+    assert_eq!(store.history().audit_report().await.unwrap(), committed);
+    let rebuilt_path = dir.path().join("segment-rebuild.db");
+    let report = ReplayCoordinator::rebuild(store.history(), open(&rebuilt_path).await)
+        .await
+        .expect("replay re-admits the segment replacement");
+    store.close().await.unwrap();
+    assert_eq!(report, committed);
+    let rebuilt = open(&rebuilt_path).await;
+    assert_eq!(rebuilt.writer().audited_prefix().await.unwrap(), after);
+    let witness = open(&dir.path().join("segment-witness.db")).await;
+    let replayed_rebuild = replay_through(&rebuilt.history(), receipt.commit, &witness).await;
+    witness.close().await.unwrap();
+    rebuilt.close().await.unwrap();
+    assert_eq!(replayed(&replayed_rebuild), replayed(&reopened));
+}
+
+#[tokio::test]
+async fn cur_016_segment_commit_rejects_stale_or_altered_plans() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("segment-reject.db");
+    let (mut f, old) = anchored_a(&path).await;
+    let request = a_replacement();
+    let (plan, frozen) = ready_plan(&old, &request);
+    f.service.close().await.unwrap();
+
+    // A balanced frozen batch that differs from the one derived again.
+    let mut wrong = plan.accounting.clone();
+    let AccountingIntent::Correction(correction) = &mut wrong else {
+        panic!("a replacement retires the old opening");
+    };
+    let postings = &mut correction.replacement[1].postings;
+    postings[0].amount.coefficient -= 1;
+    postings[1].amount.coefficient += 1;
+    let wrong_frozen = currents_accounting::AccountingAdapter::freeze(&wrong, &old)
+        .expect("balanced wrong economics pass native shape checks");
+    assert_eq!(wrong_frozen.preconditions, frozen.preconditions);
+    assert_ne!(wrong_frozen, frozen);
+    refused(
+        &path,
+        &request,
+        segment_commit(&plan, &wrong_frozen, 51_010, Default::default()),
+    )
+    .await;
+
+    // Plans whose records changed after preview, with the original batch.
+    let mut changed_amount = plan.clone();
+    let mut changed_segment = plan.clone();
+    for record in &mut changed_amount.records {
+        if let AuthoritativeRecordV1::Recognition(r) = record
+            && r.id == RecognitionId(fixture::id(3113).0)
+        {
+            r.postings[0].amount.coefficient -= 1;
+            r.postings[1].amount.coefficient += 1;
+        }
+    }
+    for record in &mut changed_segment.records {
+        if let AuthoritativeRecordV1::AccountingSegment(s) = record {
+            s.approved_accounts.pop();
+        }
+    }
+    for (n, changed) in [(51_020, changed_amount), (51_030, changed_segment)] {
+        assert_ne!(changed, plan);
+        refused(
+            &path,
+            &request,
+            segment_commit(&changed, &frozen, n, Default::default()),
+        )
+        .await;
+    }
+
+    // A plan prepared at an older head. An unrelated import advances the
+    // head; the same replacement is still ready there.
+    f.service = f.reopen().await;
+    refresh_financial(&mut f, None).await;
+    publish_legacy(&mut f, 220, "1", "2026-11-03").await;
+    let newer = refresh_financial(&mut f, None).await;
+    assert_eq!(newer.through, CommitSeq(old.through.0 + 1));
+    ready_plan(&newer, &request);
+    f.service.close().await.unwrap();
+    refused(
+        &path,
+        &request,
+        segment_commit(&plan, &frozen, 51_040, Default::default()),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn cur_016_segment_cancel_and_retry() {
+    use currents_accounting::test_fixtures::{ClosureFault, fault_control};
+    use currents_service::synthetic_commit_verified_segment;
+    use currents_storage::CommitFailure;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("segment-retry.db");
+    let (f, old) = anchored_a(&path).await;
+    let request = a_replacement();
+    let (plan, frozen) = ready_plan(&old, &request);
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let writer = store.writer();
+    let before = writer.audited_prefix().await.unwrap();
+
+    // Cancel after native entries start and before COMMIT submission.
+    let prepared = segment_commit(
+        &plan,
+        &frozen,
+        52_000,
+        fault_control(ClosureFault::PauseBeforeCommit),
+    );
+    let control = prepared.control.clone();
+    let cancel = async {
+        while control.completed_operations() == 0 {
+            tokio::task::yield_now().await;
+        }
+        assert!(control.request_cancel());
+    };
+    let (outcome, ()) = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        tokio::join!(
+            synthetic_commit_verified_segment(writer, &request, prepared),
+            cancel
+        )
+    })
+    .await
+    .expect("synthetic cancellation checkpoint not reached");
+    assert!(matches!(
+        outcome,
+        Err(CommitFailure::DefinitelyRolledBack(EngineError {
+            class: ErrorClass::Canceled,
+            ..
+        }))
+    ));
+    assert_eq!(writer.audited_prefix().await.unwrap(), before);
+    store.close().await.unwrap();
+    let store = open(&path).await;
+    let writer = store.writer();
+    assert_eq!(writer.audited_prefix().await.unwrap(), before);
+    let command = CommandId(fixture::id(52_000).0);
+    assert!(
+        writer
+            .command_result(command, DIGEST)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // The identical command commits once; a second submission resolves to it.
+    let identical = || segment_commit(&plan, &frozen, 52_000, Default::default());
+    let first = synthetic_commit_verified_segment(writer, &request, identical())
+        .await
+        .expect("the identical command commits after cancellation");
+    let retry = synthetic_commit_verified_segment(writer, &request, identical())
+        .await
+        .expect("an identical retry resolves the settled commit");
+    assert_eq!(first.commit, CommitSeq(before.through.0 + 1));
+    assert_eq!(
+        (retry.commit, retry.domain_digest, &retry.native_head),
+        (first.commit, first.domain_digest, &first.native_head)
+    );
+    let committed = writer.audited_prefix().await.unwrap();
+    assert_eq!(committed.through, first.commit);
+
+    // The same command ID with different content: other draft identities over
+    // the same evidence form another ready plan at the same prior.
+    let mut other = a_replacement();
+    other.opening = opening_draft(retained(3000, 3400), 3510, ACCOUNT_A, 3517, "2026-10-30");
+    other.backfill[0] = dated_draft(
+        retained(3100, -100),
+        3610,
+        ACCOUNT_A,
+        EXPENSE,
+        "2026-10-31",
+        "2026-10-31",
+    );
+    let (other_plan, other_frozen) = ready_plan(&old, &other);
+    assert_ne!(other_plan, plan);
+    let reused = || segment_commit(&other_plan, &other_frozen, 52_000, Default::default());
+    assert!(matches!(
+        synthetic_commit_verified_segment(writer, &other, reused()).await,
+        Err(CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert!(matches!(
+        writer.commit(reused()).await,
+        Err(CommitFailure::DefinitelyRolledBack(_))
+    ));
+    let mut other_digest = identical();
+    other_digest.result.digest = Digest([78; 32]);
+    assert!(matches!(
+        synthetic_commit_verified_segment(writer, &request, other_digest).await,
+        Err(CommitFailure::DefinitelyRolledBack(_))
+    ));
+    assert_eq!(writer.audited_prefix().await.unwrap(), committed);
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_016_3_2024_backfill_after_2026_declaration() {
+    use currents_protocol::{OperationV1, TrustedClock};
+    use currents_service::synthetic_commit_verified_segment;
+    let journey: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/journeys/s4/date-floor.json"
+    ))
+    .unwrap();
+    let text = |pointer: &str| journey.pointer(pointer).unwrap().as_str().unwrap();
+    let value = |pointer: &str| i128::from(journey.pointer(pointer).unwrap().as_i64().unwrap());
+    assert_eq!(text("/account"), "B");
+    let b = account(ACCOUNT_B);
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("date-floor.db");
+    let evidence = [
+        RetainedEvidence {
+            n: 2900,
+            value: value("/opening/amount"),
+            day: text("/opening/cutoff"),
+            kind: ObservationKind::Balance,
+            text: "Synthetic account B balance at the 2026 opening",
+        },
+        RetainedEvidence {
+            n: 3000,
+            value: value("/replacement/amount"),
+            day: text("/replacement/cutoff"),
+            kind: ObservationKind::Balance,
+            text: "Synthetic account B balance at the 2024 opening",
+        },
+        RetainedEvidence {
+            n: 3100,
+            value: value("/backfill/amount"),
+            day: text("/backfill/effective"),
+            kind: ObservationKind::Movement,
+            text: "Synthetic account B movement in 2024",
+        },
+    ];
+    let (mut f, _) = bootstrap_with_evidence(&path, &evidence).await;
+    let declared_at: RecordedInstant =
+        serde_json::from_value(journey["declared_at"].clone()).unwrap();
+    f.clock
+        .advance(declared_at.0.unix_timestamp() - f.clock.now().unix_timestamp());
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    let mut declaration = fixture::catalog();
+    declaration.revision_id = fixture::id(ACCOUNT_B + 2);
+    declaration.catalog.account_id = b;
+    declaration.catalog.component_id = fixture::id(ACCOUNT_B + 1);
+    declaration.catalog.display_name = "Synthetic account B".into();
+    declaration.ownership.account_id = b;
+    submit(
+        &mut f,
+        11_100,
+        OperationV1::SetAccountCatalogComplete(declaration),
+    )
+    .await;
+    refresh_financial(&mut f, None).await;
+    let opening = opening_draft(
+        retained(2900, value("/opening/amount")),
+        700,
+        ACCOUNT_B,
+        707,
+        text("/opening/cutoff"),
+    );
+    submit(&mut f, 53_000, OperationV1::AdoptActivity(opening)).await;
+    let old = refresh_financial(&mut f, None).await;
+    assert!(
+        old.records.values().any(|r| matches!(r,
+            AuthoritativeRecordV1::Decision(d)
+                if d.adopted_result.contains(&fixture::id(ACCOUNT_B + 2))
+                    && d.recorded_time == declared_at)),
+        "account B is declared at the journey's 2026 instant"
+    );
+
+    let request = replacement_request(
+        ACCOUNT_B,
+        3000,
+        (value("/replacement/amount"), text("/replacement/cutoff")),
+        (
+            value("/backfill/amount"),
+            text("/backfill/effective"),
+            text("/backfill/booking"),
+        ),
+    );
+    let (plan, frozen) = ready_plan(&old, &request);
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let receipt = synthetic_commit_verified_segment(
+        store.writer(),
+        &request,
+        segment_commit(&plan, &frozen, 53_010, Default::default()),
+    )
+    .await
+    .expect("the native date floor admits 2024 entries after a 2026 declaration");
+    assert_eq!(receipt.commit, CommitSeq(old.through.0 + 1));
+    let source = store.history();
+    let component = fixture::id(ACCOUNT_B + 1);
+
+    // History through the commit before the replacement keeps the old belief.
+    let earlier = open(&dir.path().join("before-replacement.db")).await;
+    let before = replay_through(&source, old.through, &earlier).await;
+    earlier.close().await.unwrap();
+    assert_eq!(before.records, old.records);
+    let segment = active_segment(&before, component).unwrap();
+    assert_eq!(segment.id, fixture::id(707));
+    assert_eq!(
+        segment_cutoff(&before, segment),
+        fixture::date(text("/opening/cutoff"))
+    );
+    assert!(
+        recognized_postings(&before, b)
+            .iter()
+            .all(|(day, _)| !day.starts_with("2024")),
+        "B has no recognized posting dated in 2024 before the replacement"
+    );
+
+    // History through the replacement shows the corrected belief.
+    let later = open(&dir.path().join("through-replacement.db")).await;
+    let after = replay_through(&source, receipt.commit, &later).await;
+    later.close().await.unwrap();
+    store.close().await.unwrap();
+    let segment = active_segment(&after, component).unwrap();
+    assert_eq!(segment.id, fixture::id(3017));
+    assert_eq!(
+        segment_cutoff(&after, segment),
+        fixture::date(text("/replacement/cutoff"))
+    );
+    let as_of = text("/expected/as_of");
+    assert_eq!(
+        total(
+            recognized_postings(&after, b)
+                .into_iter()
+                .filter(|(day, _)| day.as_str() <= as_of)
+        ),
+        fixture::amount(value("/expected/balance"))
+    );
+    let index = after.accounting.as_ref().unwrap();
+    let [backfill] = index.recognitions[&RecognitionId(fixture::id(3113).0)].as_slice() else {
+        panic!("one native backfill entry");
+    };
+    assert_eq!(backfill.value_date, text("/backfill/effective"));
+    assert_eq!(backfill.booking_date, text("/backfill/booking"));
 }

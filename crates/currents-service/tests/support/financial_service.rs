@@ -207,6 +207,30 @@ pub(super) async fn bootstrap(path: &Path) -> (Fixture, NativeHead) {
     bootstrap_with_balance(path, false).await
 }
 pub(super) async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixture, NativeHead) {
+    let opening = [RetainedEvidence {
+        n: 250,
+        value: -96,
+        day: "2026-11-01",
+        kind: ObservationKind::Balance,
+        text: "synthetic opening balance",
+    }];
+    bootstrap_with_evidence(path, if balance { &opening } else { &[] }).await
+}
+/// One synthetic observation with a dated facet and retained content.
+pub(super) struct RetainedEvidence<'a> {
+    pub(super) n: u32,
+    pub(super) value: i128,
+    pub(super) day: &'a str,
+    pub(super) kind: ObservationKind,
+    pub(super) text: &'a str,
+}
+/// The genesis commit also retains each observation, its parse product and its
+/// content. Trusted synthetic history, as in CUR013; the file adapter only
+/// emits movements.
+pub(super) async fn bootstrap_with_evidence(
+    path: &Path,
+    evidence: &[RetainedEvidence<'_>],
+) -> (Fixture, NativeHead) {
     let f = Fixture::at_path(path.to_path_buf()).await;
     let empty = f.prefix().await.native_head;
     f.service.close().await.unwrap();
@@ -231,21 +255,22 @@ pub(super) async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixtu
         }
     }
     let mut staged = Vec::new();
-    if balance {
-        // Trusted synthetic history, as in CUR013; the file adapter only emits movements.
-        fixture::evidence(&mut fixture, 250, -96, None);
-        let bytes = "synthetic opening balance";
+    for item in evidence {
+        let n = item.n;
+        fixture::evidence(&mut fixture, n, item.value, None);
+        let bytes = item.text;
         let content = store.stage(bytes.as_bytes()).await.unwrap();
         let Some(AuthoritativeRecordV1::ObservationVersion(o)) =
-            fixture.records.get_mut(&fixture::id(250))
+            fixture.records.get_mut(&fixture::id(n))
         else {
             panic!()
         };
         o.content_digest = content.digest();
         o.sanitized_representation = bytes.into();
-        o.semantic_kind = ObservationKind::Balance;
+        o.semantic_kind = item.kind;
+        o.temporal = fixture::date(item.day);
         records.push(AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {
-            id: fixture::id(252),
+            id: fixture::id(n + 2),
             source: o.source.clone(),
             adapter_version: "cur015-synthetic-history/1".into(),
             parser_version: "1".into(),
@@ -263,13 +288,14 @@ pub(super) async fn bootstrap_with_balance(path: &Path, balance: bool) -> (Fixtu
             }],
         }));
         let Some(AuthoritativeRecordV1::AddressedParseProduct(p)) =
-            fixture.records.get_mut(&fixture::id(251))
+            fixture.records.get_mut(&fixture::id(n + 1))
         else {
             panic!()
         };
-        p.product.facets[0].kind = ObservationKind::Balance;
-        records.push(fixture.records[&fixture::id(250)].clone());
-        records.push(fixture.records[&fixture::id(251)].clone());
+        p.product.facets[0].kind = item.kind;
+        p.product.facets[0].temporal = fixture::date(item.day);
+        records.push(fixture.records[&fixture::id(n)].clone());
+        records.push(fixture.records[&fixture::id(n + 1)].clone());
         staged.push(content);
     }
     let units = records
