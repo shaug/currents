@@ -498,10 +498,13 @@ impl AccountingAdapter {
                 AuthoritativeRecordV1::RecognitionCorrectionRevision(revision),
                 body @ ..,
                 AuthoritativeRecordV1::FrozenAccountingManifest(_),
-            ] if matches!(
+            ] if (matches!(
                 revision.remap_disposition,
                 RecognitionCorrectionRemapV1::ReplacedLegs { .. }
-            ) || body.len() == 1 =>
+            ) || body.len() == 1)
+                && !body.iter().any(|r| {
+                    matches!(r, AuthoritativeRecordV1::RecognitionCorrectionRevision(_))
+                }) =>
             {
                 let replacement = body.iter().find_map(|record| match record {
                     AuthoritativeRecordV1::Recognition(r)
@@ -515,12 +518,7 @@ impl AccountingAdapter {
             }
             _ => None,
         };
-        let revisions = commit
-            .records
-            .iter()
-            .filter(|r| matches!(r, AuthoritativeRecordV1::RecognitionCorrectionRevision(_)))
-            .count();
-        if let Some((revision, replacement)) = corrected.filter(|_| revisions == 1) {
+        if let Some((revision, replacement)) = corrected {
             let Some(
                 [
                     FrozenNativeOperationV1::Entry(reversal),
