@@ -1466,6 +1466,10 @@ fn deposited() -> DomainState {
 /// A 96 USD card purchase on 2026-11-03, adopted to expense account A.
 /// Its recognition is `CARD_PURCHASE + 13`.
 fn card_purchase() -> DomainState {
+    let (state, source) = card_source();
+    bought(&state, source, None)
+}
+fn card_source() -> (DomainState, SourceFacetBindingV1) {
     let mut state = reinterpretable();
     let source = dated(
         &mut state,
@@ -1474,12 +1478,38 @@ fn card_purchase() -> DomainState {
         "2026-11-03",
         ObservationKind::Movement,
     );
+    (state, source)
+}
+/// The card purchase of `source`, consuming `prior_pending` when given.
+fn bought(
+    state: &DomainState,
+    source: SourceFacetBindingV1,
+    prior_pending: Option<RecordId>,
+) -> DomainState {
     let mut request = posted(source, CARD_PURCHASE + 10, EXPENSE);
     at(&mut request, "2026-11-03");
     request.legs[0].leg.account_id = account(CARD);
     request.financial.as_mut().unwrap().postings[0].account_id = account(CARD);
-    let plan = RecognitionEngine::adopt(&state, &request).unwrap();
-    admit(&state, &planned(&state, &plan)).unwrap()
+    request.prior_pending = prior_pending;
+    let plan = RecognitionEngine::adopt(state, &request).unwrap();
+    admit(state, &planned(state, &plan)).unwrap()
+}
+/// A pending card authorization `n` for `source` on `day`.
+fn authorize(state: &DomainState, source: SourceFacetBindingV1, n: u32, day: &str) -> DomainState {
+    let mut hold = pending(source, n);
+    hold.legs[0].leg.account_id = account(CARD);
+    hold.legs[0].leg.effective = date(day);
+    hold.legs[0].leg.posting = date(day);
+    let plan = RecognitionEngine::adopt(state, &hold).unwrap();
+    recorded(state, plan.records)
+}
+/// The card purchase after its pending 96 USD authorization `AUTHORIZATION`,
+/// which the purchase consumes.
+const AUTHORIZATION: u32 = CARD_PURCHASE - 10;
+fn authorized_card_purchase() -> DomainState {
+    let (state, source) = card_source();
+    let state = authorize(&state, source.clone(), AUTHORIZATION, "2026-11-03");
+    bought(&state, source, Some(id(AUTHORIZATION)))
 }
 /// Recognition `original` again with fresh identities from `base`: its first
 /// (external) posting as it was, then one posting per `(account, amount)`.
@@ -2303,4 +2333,126 @@ fn cur_016_leg_guards() {
         good.batch,
     );
     refused(&corrected, &replayed);
+}
+
+// Leg corrections of a purchase that consumed its pending authorization: the
+// replacement names the authorization as its pending adoption, and the same
+// commit releases the retired purchase's consumption.
+fn pending_correction(base: u32, day: &str, source: &SourceFacetBindingV1) -> LegCorrection {
+    let mut correction = leg_correction(base, day, &[(source, -96, EXPENSE)]);
+    correction.1.prior_pending = Some(id(AUTHORIZATION));
+    correction
+}
+
+#[test]
+fn cur_016_leg_pending_date_correction() {
+    let state = authorized_card_purchase();
+    assert!(RecognitionEngine::pending(&state).unwrap().is_empty());
+    let source = binding_of(&state, CARD_PURCHASE);
+    let correction = pending_correction(NEW_ADOPTION, "2026-11-02", &source);
+    let plan = legs_ready(&state, &correction);
+    let good = planned(&state, &plan);
+    let corrected = admit(&state, &good).unwrap();
+    // The authorization stays consumed, now by the replacement.
+    assert!(RecognitionEngine::pending(&corrected).unwrap().is_empty());
+    let AuthoritativeRecordV1::ActivityAdoption(new) = &corrected.records[&id(NEW_ADOPTION)] else {
+        panic!("the new adoption is retained")
+    };
+    assert_eq!(new.prior_pending, Some(id(AUTHORIZATION)));
+    assert_eq!(
+        dated_postings(&corrected, CARD),
+        vec![("2026-11-02".to_string(), amount(-96))]
+    );
+    // Replay through the earlier commit still shows the old purchase, which
+    // consumed the authorization.
+    assert_eq!(
+        dated_postings(&state, CARD),
+        vec![("2026-11-03".to_string(), amount(-96))]
+    );
+    old_purchase_kept(&state, &corrected);
+    let AuthoritativeRecordV1::ActivityAdoption(old) = &corrected.records[&id(OLD_ADOPTION)] else {
+        panic!("the old adoption is retained")
+    };
+    assert_eq!(old.prior_pending, Some(id(AUTHORIZATION)));
+
+    // Without the authorization the replacement is refused, and replay
+    // refuses a commit whose new adoption drops it.
+    let mut dropped = correction.clone();
+    dropped.1.prior_pending = None;
+    assert!(replace_legs(&state, &dropped).is_err());
+    let mut records = plan.records.clone();
+    for record in &mut records {
+        if let AuthoritativeRecordV1::ActivityAdoption(a) = record {
+            a.prior_pending = None;
+        }
+    }
+    replay_refused(
+        &state,
+        &candidate(&state, records, &plan.invalidations, good.batch),
+    );
+
+    // The replacement is the live tip: a second leg correction takes the
+    // consumption over again.
+    let (again, adoption) = pending_correction(8910, "2026-11-03", &source);
+    let again = currents_domain::correction::CorrectionRequestV1 {
+        active_recognition: recognition(NEW_ADOPTION + 3),
+        ..again
+    };
+    let plan = match currents_domain::correction::CorrectionEngine::replace_legs(
+        &corrected,
+        id(8990),
+        &again,
+        &adoption,
+    ) {
+        Ok(currents_domain::correction::CorrectionPreviewV1::Ready(plan)) => *plan,
+        other => panic!("expected a ready plan: {other:?}"),
+    };
+    let twice = admit(&corrected, &planned(&corrected, &plan)).unwrap();
+    assert!(RecognitionEngine::pending(&twice).unwrap().is_empty());
+}
+
+#[test]
+fn cur_016_leg_pending_second_consumer_refused() {
+    let state = authorized_card_purchase();
+    let source = binding_of(&state, CARD_PURCHASE);
+    // A replacement cannot move the consumption to another authorization.
+    let (state, other) = {
+        let mut state = state;
+        let other = dated(
+            &mut state,
+            8970,
+            -96,
+            "2026-11-04",
+            ObservationKind::Movement,
+        );
+        (state, other)
+    };
+    let state = authorize(&state, other, 8980, "2026-11-04");
+    let mut elsewhere = pending_correction(NEW_ADOPTION, "2026-11-02", &source);
+    elsewhere.1.prior_pending = Some(id(8980));
+    assert!(replace_legs(&state, &elsewhere).is_err());
+
+    let plan = legs_ready(
+        &state,
+        &pending_correction(NEW_ADOPTION, "2026-11-02", &source),
+    );
+    let corrected = admit(&state, &planned(&state, &plan)).unwrap();
+    // A second purchase that names the consumed authorization is refused; it
+    // may consume the other one.
+    let mut later = corrected.clone();
+    let fresh = dated(
+        &mut later,
+        8950,
+        -96,
+        "2026-11-04",
+        ObservationKind::Movement,
+    );
+    let mut second = posted(fresh, 8960, EXPENSE);
+    at(&mut second, "2026-11-04");
+    second.legs[0].leg.account_id = account(CARD);
+    second.financial.as_mut().unwrap().postings[0].account_id = account(CARD);
+    second.prior_pending = Some(id(AUTHORIZATION));
+    assert!(RecognitionEngine::adopt(&later, &second).is_err());
+    second.prior_pending = Some(id(8980));
+    RecognitionEngine::adopt(&later, &second).unwrap();
 }

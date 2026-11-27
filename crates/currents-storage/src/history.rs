@@ -341,7 +341,7 @@ impl Writer {
                 if bytes.len() > staging::CHUNK {
                     return Err(EngineError::invalid());
                 }
-                let meta = crate::references::describe(item)?;
+                let meta = crate::references::describe_in(&items, item)?;
                 if meta.prefixes.iter().any(|p| *p > next.0) {
                     return Err(EngineError::invalid());
                 }
@@ -657,7 +657,9 @@ impl HistoryStream {
             let actual: Vec<u8> = row.try_get("canonical").map_err(|_| schema::failure())?;
             let digest: Vec<u8> = row.try_get("digest").map_err(|_| schema::failure())?;
             let kind: String = row.try_get("kind").map_err(|_| schema::failure())?;
-            let meta = crate::references::describe(item).map_err(|error| match error.class {
+            let meta = crate::references::describe_in(&items, item).map_err(|error| match error
+                .class
+            {
                 // Supported stored records are authority, not repairable caller input.
                 // Preserve unsupported-version and any other distinct error classes.
                 ErrorClass::InvalidReference => schema::failure(),

@@ -98,6 +98,25 @@ fn reinterpretation(
     request
 }
 
+/// The purchase of legacy evidence 200 again from `n` on 2026-11-02,
+/// consuming `prior_pending` when given.
+fn moved_purchase(n: u32, prior_pending: Option<RecordId>) -> ActivityRequestV1 {
+    let mut replacing = fixture::posted(legacy_binding(200), n, 30);
+    let day = fixture::date("2026-11-02");
+    for item in &mut replacing.legs {
+        item.leg.effective = day.clone();
+        item.leg.posting = day.clone();
+    }
+    let terms = replacing.financial.as_mut().unwrap();
+    terms.bookkeeping_date = day.clone();
+    for posting in &mut terms.postings {
+        posting.effective = day.clone();
+        posting.posting = day.clone();
+    }
+    replacing.prior_pending = prior_pending;
+    replacing
+}
+
 /// Commit `prepared` through the encrypted writer while the service is closed.
 async fn commit(f: &mut support::Fixture, path: &std::path::Path, prepared: PreparedCommit) {
     f.service.close().await.unwrap();
@@ -277,18 +296,7 @@ async fn cur_016_leg_correction_encrypted_commit() {
     let initial = refresh_financial(&mut f, None).await;
 
     // New legs move the purchase from 2026-11-01 to 2026-11-02.
-    let mut replacing = fixture::posted(legacy_binding(200), 9800, 30);
-    let day = fixture::date("2026-11-02");
-    for item in &mut replacing.legs {
-        item.leg.effective = day.clone();
-        item.leg.posting = day.clone();
-    }
-    let terms = replacing.financial.as_mut().unwrap();
-    terms.bookkeeping_date = day.clone();
-    for posting in &mut terms.postings {
-        posting.effective = day.clone();
-        posting.posting = day.clone();
-    }
+    let replacing = moved_purchase(9800, None);
     let replacement = fixture::recognized(&replacing);
     let mut request = CorrectionRequestV1 {
         active_recognition: original,
@@ -352,6 +360,73 @@ async fn cur_016_leg_correction_encrypted_commit() {
         .unwrap();
     let head = store.writer().audited_prefix().await.unwrap().native_head;
     let fresh = open(&dir.path().join("leg-rebuild.db")).await;
+    let report = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(report.native_head, head);
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_016_leg_pending_encrypted_commit() {
+    use currents_domain::recognition::RecognitionEngine;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("leg-pending.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
+    // A pending authorization, then the purchase that consumes it.
+    let hold = fixture::pending(legacy_binding(200), 9700);
+    submit(&mut f, 57_001, OperationV1::AdoptActivity(hold.clone())).await;
+    refresh_financial(&mut f, None).await;
+    let mut purchase = fixture::posted(legacy_binding(200), 300, 30);
+    purchase.prior_pending = Some(hold.adoption_id);
+    let original = purchase.financial.as_ref().unwrap().recognition_id;
+    submit(&mut f, 57_002, OperationV1::AdoptActivity(purchase.clone())).await;
+    let initial = refresh_financial(&mut f, None).await;
+    assert!(RecognitionEngine::pending(&initial).unwrap().is_empty());
+
+    // The date correction's new adoption takes over the consumption.
+    let replacing = moved_purchase(9800, Some(hold.adoption_id));
+    let request = CorrectionRequestV1 {
+        active_recognition: original,
+        replacement: vec![fixture::recognized(&replacing)],
+        remapping: vec![],
+        reason: "Correct the purchase date".into(),
+    };
+    let CorrectionPreviewV1::Ready(plan) =
+        CorrectionEngine::replace_legs(&initial, fixture::id(57_010), &request, &replacing)
+            .unwrap()
+    else {
+        panic!("no organization depends on the purchase");
+    };
+    commit(&mut f, &path, prepared(&initial, *plan, 57_010).unwrap()).await;
+    let current = refresh_financial(&mut f, None).await;
+    assert!(RecognitionEngine::pending(&current).unwrap().is_empty());
+    assert!(
+        current
+            .accounting
+            .as_ref()
+            .unwrap()
+            .reversed
+            .contains(&original)
+    );
+    assert_eq!(
+        current.records.get(&purchase.adoption_id),
+        initial.records.get(&purchase.adoption_id)
+    );
+
+    // History through the earlier commit still holds the old purchase, and a
+    // fresh rebuild re-admits the correction.
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .history()
+        .verify_checkpoint(initial.through, initial.domain_digest)
+        .await
+        .unwrap();
+    let head = store.writer().audited_prefix().await.unwrap().native_head;
+    let fresh = open(&dir.path().join("leg-pending-rebuild.db")).await;
     let report = ReplayCoordinator::rebuild(store.history(), fresh)
         .await
         .unwrap();

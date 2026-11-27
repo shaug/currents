@@ -235,6 +235,40 @@ impl Metadata {
         self.reference(&["FinancialLeg"], &v["economic_leg"], None);
     }
 }
+/// Describe `item`, one of a commit's `items`. Each pending adoption is
+/// consumed once. A leg correction's new adoption takes over the consumption
+/// of the adoption it retires: in the commit of the `ReplacedLegs` revision
+/// that names it, it refers to the existing consumption instead of defining
+/// it again.
+pub(crate) fn describe_in(
+    items: &[AuthoritativeRecordV1],
+    item: &AuthoritativeRecordV1,
+) -> Result<Metadata, EngineError> {
+    let mut m = describe(item)?;
+    let AuthoritativeRecordV1::ActivityAdoption(a) = item else {
+        return Ok(m);
+    };
+    let replaces = |record: &AuthoritativeRecordV1| {
+        matches!(record, AuthoritativeRecordV1::RecognitionCorrectionRevision(r)
+            if matches!(r.remap_disposition,
+                RecognitionCorrectionRemapV1::ReplacedLegs { replacement_adoption, .. }
+                    if replacement_adoption == a.id))
+    };
+    if a.prior_pending.is_some() && items.iter().any(replaces) {
+        let at = m
+            .definitions
+            .iter()
+            .position(|d| d.kind == "PendingConsumption")
+            .ok_or_else(EngineError::invalid)?;
+        let consumption = m.definitions.remove(at);
+        m.references.push(Reference {
+            kinds: vec![consumption.kind],
+            id: consumption.id,
+            version: Some(consumption.version),
+        });
+    }
+    Ok(m)
+}
 pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, EngineError> {
     let json = serde_json::to_value(record).map_err(|_| EngineError::invalid())?;
     let kind = json["kind"].as_str().ok_or_else(EngineError::invalid)?;
