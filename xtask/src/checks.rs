@@ -420,6 +420,12 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_replacement_rejects_bad_drafts",
             "cur_016_replay_readmits_only_the_exact_plan",
             "cur_016_replacement_refuses_cross_account_and_dependents",
+            "cur_016_1_cross_account_backfill",
+            "cur_016_1_post_cutoff_activity_untouched",
+            "cur_016_1_old_inclusion_map_moves",
+            "cur_016_1_partial_or_changed_reemission_refused",
+            "cur_016_1_cross_account_residual_blocks",
+            "cur_016_1_cross_account_replay",
         ],
     ),
     (
@@ -432,6 +438,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_segment_commit_rejects_stale_or_altered_plans",
             "cur_016_segment_cancel_and_retry",
             "cur_016_3_2024_backfill_after_2026_declaration",
+            "cur_016_1_encrypted_cross_account_commit",
         ],
     ),
     (

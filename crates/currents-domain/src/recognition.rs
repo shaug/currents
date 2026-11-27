@@ -402,6 +402,9 @@ fn monetary(
                 }
                 ControlRoleV1::OpeningEquity if terms.opening.is_some() => {}
                 ControlRoleV1::OpeningEquity => return Err(EngineError::invalid()),
+                ControlRoleV1::Clearing
+                    if terms.opening.is_none()
+                        && clearing_allowed(state, terms.recognition_id, mode) => {}
                 // Complete associations own quantified clearing/payroll terms;
                 // enabling catalog roles does not relax the old activity route.
                 ControlRoleV1::Clearing | ControlRoleV1::TaxPrepayment => {
@@ -471,6 +474,19 @@ fn monetary(
         bookkeeping_date: terms.bookkeeping_date.clone(),
         date_policy: terms.date_policy.clone(),
     }))
+}
+/// A backfilled transfer leg posts to clearing. Only a segment replacement,
+/// which joins that leg to a transfer family, may add one. Retained history
+/// keeps it only while an association revision names its recognition.
+fn clearing_allowed(state: &DomainState, recognition: RecognitionId, mode: Admission) -> bool {
+    match mode {
+        Admission::Ordinary => false,
+        Admission::Replacement => true,
+        Admission::Audit => state.records.values().any(|r| {
+            matches!(r, AuthoritativeRecordV1::AssociationRevision(a)
+                if a.recognitions.contains(&recognition))
+        }),
+    }
 }
 pub(crate) fn restore(
     state: &DomainState,
@@ -549,6 +565,16 @@ fn consumed(
     let mut owners = BTreeMap::<(RecordId, RecordId), Vec<&ActivityAdoptionV1>>::new();
     let mut legs = BTreeSet::new();
     let mut recognitions = BTreeSet::new();
+    // A replaced opening no longer owns its inclusion map; the replacement
+    // moved each of those facts to a backfill or to the new opening.
+    let retired: BTreeSet<RecordId> = state
+        .records
+        .values()
+        .filter_map(|r| match r {
+            AuthoritativeRecordV1::AccountingSegment(s) => s.prior_segment,
+            _ => None,
+        })
+        .collect();
     for a in adoptions {
         for leg in &a.legs {
             if !legs.insert(*leg) {
@@ -586,12 +612,12 @@ fn consumed(
                 return Err(EngineError::invalid());
             }
         }
-        for source in a
-            .facets
-            .iter()
-            .map(|f| &f.source)
-            .chain(a.opening.iter().flat_map(|o| o.included_activity.iter()))
-        {
+        for source in a.facets.iter().map(|f| &f.source).chain(
+            a.opening
+                .iter()
+                .filter(|o| !retired.contains(&o.segment_id))
+                .flat_map(|o| o.included_activity.iter()),
+        ) {
             owners.entry(fact(state, source)?).or_default().push(a);
         }
     }
@@ -809,11 +835,21 @@ fn prospective(state: &DomainState, records: &[AuthoritativeRecordV1]) -> Domain
 /// Plan the posted drafts of one segment replacement against the same prior
 /// prefix. Identities and evidence ownership are checked across the drafts
 /// and against retained history; the replacement checks dates and accounts.
+/// The `retired` opening adoption no longer owns its inclusion map. The
+/// `added` identities the replacement adds beyond its drafts must differ from
+/// every draft identity and from each other.
 pub(crate) fn adopt_drafts<'a>(
     state: &DomainState,
     requests: impl IntoIterator<Item = &'a ActivityRequestV1>,
+    retired: RecordId,
+    added: &[RecordId],
 ) -> Result<Vec<(Vec<AuthoritativeRecordV1>, RecognitionV1)>, EngineError> {
     let mut all = RecognitionEngine::audit(state)?;
+    for adoption in &mut all {
+        if let Some(opening) = adoption.opening.as_mut().filter(|_| adoption.id == retired) {
+            opening.included_activity.clear();
+        }
+    }
     let mut records = Vec::new();
     let mut ids = BTreeSet::new();
     let mut planned = Vec::new();
@@ -840,6 +876,9 @@ pub(crate) fn adopt_drafts<'a>(
         records.extend(draft.records.iter().cloned());
         all.push(draft.adoption);
         planned.push((draft.records, recognition));
+    }
+    if added.iter().any(|id| !ids.insert(*id)) {
+        return Err(duplicate());
     }
     consumed(&prospective(state, &records), &all)?;
     Ok(planned)

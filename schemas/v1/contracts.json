@@ -7820,6 +7820,53 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "SegmentReemission"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "original": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "replacement": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "segment": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "segment",
+                "original",
+                "replacement"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "ReconciliationClaim"
             },
             "value": {
@@ -41574,6 +41621,53 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "SegmentReemission"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "original": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "replacement": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "segment": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "segment",
+                      "original",
+                      "replacement"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "ReconciliationClaim"
                   },
                   "value": {
@@ -55043,6 +55137,53 @@
                       "replacement_closure",
                       "approved_accounts",
                       "residual_disposition"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "SegmentReemission"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "original": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "replacement": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "segment": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "segment",
+                      "original",
+                      "replacement"
                     ],
                     "type": "object"
                   }

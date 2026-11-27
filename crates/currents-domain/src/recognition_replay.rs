@@ -181,7 +181,8 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::RelationshipParseRevision(_)
             | AuthoritativeRecordV1::AssociationRevision(_)
             | AuthoritativeRecordV1::PendingExpiry(_)
-            | AuthoritativeRecordV1::AccountingSegment(_) => true,
+            | AuthoritativeRecordV1::AccountingSegment(_)
+            | AuthoritativeRecordV1::SegmentReemission(_) => true,
             AuthoritativeRecordV1::FinancialLeg(l) => !l.allocations.is_empty(),
             AuthoritativeRecordV1::Recognition(r) => {
                 !r.evidence_allocations.is_empty() || !r.leg_ids.is_empty()

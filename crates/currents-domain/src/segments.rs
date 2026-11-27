@@ -1,5 +1,6 @@
 //! Evidence-supported openings and one-component segment replacement.
 use crate::{
+    associations::IdentityEngine,
     catalog::{CatalogEngine, incomplete},
     recognition::{adopt_drafts, fact, restore},
 };
@@ -139,7 +140,7 @@ pub(crate) fn initial(
                 return Err(incomplete());
             };
             let index = state.accounting.as_ref().ok_or_else(incomplete)?;
-            if anchor.replacement_closure != [prior.opening]
+            if anchor.replacement_closure.first() != Some(&prior.opening)
                 || !index.reversed.contains(&prior.opening)
             {
                 return Err(EngineError::invalid());
@@ -269,6 +270,33 @@ pub struct SegmentReplacementV1 {
     pub backfill: Vec<ActivityRequestV1>,
     /// Exactly the accounts the plan touches.
     pub approved_accounts: Vec<AccountId>,
+    /// Transfer families that a backfilled leg joins, one new revision each.
+    pub transfers: Vec<TransferJoinV1>,
+    /// One re-emission for each current recognition of each joined family.
+    /// With the old opening, their originals are the closure the request names.
+    pub reemissions: Vec<ReemissionV1>,
+}
+/// A backfilled leg that joins an existing transfer family.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransferJoinV1 {
+    /// The fresh ID of the family's new revision.
+    pub revision: RecordId,
+    /// The family's current revision, which the new one follows.
+    pub prior_revision: RecordId,
+    /// The backfilled leg that the new revision adds.
+    pub leg: LegId,
+    /// The relationship fact that places the leg in this family: a posted
+    /// movement in the family's own capture source and group.
+    pub source: CapturedFacetBindingV1,
+}
+/// A transfer recognition reversed once and issued again with fresh
+/// recognition and posting IDs and unchanged economics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReemissionV1 {
+    /// The fresh ID of the history record that links the two.
+    pub id: RecordId,
+    pub original: RecognitionId,
+    pub replacement: RecognitionV1,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SegmentPreviewV1 {
@@ -277,10 +305,127 @@ pub enum SegmentPreviewV1 {
     /// No plan exists: the owner must resolve the difference.
     UnresolvedResidual(Amount),
 }
+fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError> {
+    let component = state
+        .records
+        .values()
+        .find_map(|r| match r {
+            AuthoritativeRecordV1::AccountComponent(c) if c.account_id == account => Some(c),
+            _ => None,
+        })
+        .ok_or_else(incomplete)?;
+    Ok(matches!(
+        CatalogEngine::current(state, component.id)?.origin,
+        AccountOriginV1::Internal(control) if control.role == ControlRoleV1::Clearing
+    ))
+}
+/// The joined leg's relationship evidence decides its family. The fact is a
+/// posted movement with the leg's date and amount, from the same capture
+/// source and group as every fact the family already holds, and no current
+/// family revision allocates it.
+fn join_evidence(
+    state: &DomainState,
+    heads: &BTreeMap<RecordId, AssociationRevisionV1>,
+    head: &AssociationRevisionV1,
+    join: &TransferJoinV1,
+    leg: &FinancialLegV1,
+) -> Result<(), EngineError> {
+    let invalid = EngineError::invalid;
+    let unit = leg.movement.unit_id;
+    let fact = IdentityEngine::captured_facet(state, &join.source, unit)?;
+    if fact.status != RelationshipSourceStatusV1::Posted
+        || fact.role != RelationshipFacetRoleV1::Movement
+        || fact.effective != leg.effective
+        || fact.amount != leg.movement.normalized()?
+        || head.captured_allocations.is_empty()
+    {
+        return Err(invalid());
+    }
+    let source = |capture: RecordId| match state.records.get(&capture) {
+        Some(AuthoritativeRecordV1::RelationshipCapture(c)) => Ok(&c.source),
+        _ => Err(invalid()),
+    };
+    let joined_source = source(join.source.capture)?;
+    for edge in &head.captured_allocations {
+        let held = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
+        if source(edge.source.capture)? != joined_source || held.group != fact.group {
+            return Err(invalid());
+        }
+    }
+    if crate::associations::held_facts(state, heads.values())?.contains(&fact.fact_key) {
+        return Err(invalid());
+    }
+    Ok(())
+}
+/// The new revision of a joined family: the backfilled leg, its evidence and
+/// its recognition added, every current recognition replaced by its
+/// re-emission.
+fn joined_revision(
+    head: &AssociationRevisionV1,
+    join: &TransferJoinV1,
+    leg: &FinancialLegV1,
+    recognition: RecognitionId,
+    reemissions: &[ReemissionV1],
+) -> Result<AssociationRevisionV1, EngineError> {
+    let mut residuals = BTreeMap::new();
+    for amount in &head.residuals {
+        if residuals.insert(amount.unit_id, *amount).is_some() {
+            return Err(EngineError::invalid());
+        }
+    }
+    let unit = leg.movement.unit_id;
+    let residual = residuals.entry(unit).or_insert(Amount::new(0, 0, unit)?);
+    *residual = residual.checked_add(&leg.movement)?;
+    let again = |id: &RecognitionId| {
+        reemissions
+            .iter()
+            .find(|r| r.original == *id)
+            .map(|r| r.replacement.id)
+            .ok_or_else(EngineError::invalid)
+    };
+    Ok(AssociationRevisionV1 {
+        id: join.revision,
+        schema_version: 1,
+        root: head.root,
+        prior_revision: Some(head.id),
+        kind: head.kind,
+        legs: head.legs.iter().copied().chain([join.leg]).collect(),
+        allocations: head.allocations.clone(),
+        captured_allocations: head
+            .captured_allocations
+            .iter()
+            .cloned()
+            .chain([CapturedFacetAllocationV1 {
+                source: join.source.clone(),
+                leg: join.leg,
+                allocated: leg.movement,
+                mode: FacetAllocationModeV1::Additive,
+            }])
+            .collect(),
+        recognitions: head
+            .recognitions
+            .iter()
+            .map(again)
+            .chain([Ok(recognition)])
+            .collect::<Result<_, _>>()?,
+        residuals: residuals
+            .values()
+            .map(|a| a.normalized())
+            .collect::<Result<_, _>>()?,
+        superseded_adoptions: head.superseded_adoptions.clone(),
+        survivor: head.survivor,
+        retired_recognitions: head.recognitions.clone(),
+        interpretation: head.interpretation.clone(),
+        governing_policy: head.governing_policy.clone(),
+    })
+}
 pub struct SegmentEngine;
 impl SegmentEngine {
-    /// Preview a replacement against an exact validated prefix. A ready plan
-    /// reverses the old opening, then adds the new opening and each backfill.
+    /// Preview a replacement against an exact validated prefix. The engine
+    /// derives the closure: the old opening, and the current recognitions of
+    /// each transfer family that a backfilled leg joins. A ready plan reverses
+    /// the old opening, adds the new opening and each backfill, then reverses
+    /// each transfer recognition once and issues it again.
     pub fn replace(
         state: &DomainState,
         request: &SegmentReplacementV1,
@@ -291,6 +436,8 @@ impl SegmentEngine {
             || index.prefix.domain_digest != state.domain_digest
             || index.prefix.native_head.semantics_version != 1
             || request.backfill.len() > 4096
+            || request.transfers.len() > 1024
+            || request.reemissions.len() > 4096
         {
             return Err(invalid());
         }
@@ -319,11 +466,6 @@ impl SegmentEngine {
         let Some(old_basis) = old.opening.as_ref().filter(|o| o.segment_id == prior.id) else {
             return Err(invalid());
         };
-        // Each movement the old opening included would need its own place in
-        // the new history; this leaf does not map them.
-        if !old_basis.included_activity.is_empty() {
-            return Err(EngineError::version());
-        }
         let old_cutoff = civil(&old_basis.cutoff)?;
         let Some(AuthoritativeRecordV1::Recognition(old_opening)) =
             state.records.get(&RecordId(prior.opening.0))
@@ -341,7 +483,6 @@ impl SegmentEngine {
         };
         if component.id != c.id
             || new_cutoff > old_cutoff
-            || !basis.included_activity.is_empty()
             || state.records.contains_key(&basis.segment_id)
         {
             return Err(invalid());
@@ -355,7 +496,8 @@ impl SegmentEngine {
         };
         for draft in &request.backfill {
             let terms = draft.financial.as_ref().ok_or_else(invalid)?;
-            // Later CUR-016 leaves own closures across external accounts.
+            // A backfill's legs are on the anchored account. Its money reaches
+            // another external account only by joining a transfer family.
             if draft.legs.iter().any(|l| l.leg.account_id != c.account_id) {
                 return Err(EngineError::version());
             }
@@ -374,8 +516,8 @@ impl SegmentEngine {
                 within(source_time(state, source, ObservationKind::Movement)?)?;
             }
         }
-        // Later leaves re-emit other recognitions; none may sit at or before
-        // the old cutoff on this account.
+        // Ordinary adoption refuses activity at or before the cutoff, so the
+        // old opening is the only recognition there that the closure takes.
         for (id, entries) in &index.recognitions {
             if *id == prior.opening || index.reversed.contains(id) {
                 continue;
@@ -389,12 +531,85 @@ impl SegmentEngine {
                 }
             }
         }
+        // Each joined family adds its current recognitions to the closure.
+        let heads = crate::associations::current_heads(state)?;
+        let mut joined = Vec::new();
+        let mut derived = BTreeSet::new();
+        let mut roots = BTreeSet::new();
+        for join in &request.transfers {
+            let head = heads
+                .values()
+                .find(|h| h.id == join.prior_revision)
+                .ok_or_else(invalid)?;
+            // Payroll and duplicate families are outside this replacement.
+            if head.kind != RelationshipKind::Transfer {
+                return Err(EngineError::version());
+            }
+            let mut drafts = request
+                .backfill
+                .iter()
+                .filter(|d| d.legs.iter().any(|l| l.leg.id == join.leg));
+            let (Some(draft), None) = (drafts.next(), drafts.next()) else {
+                return Err(invalid());
+            };
+            let [leg] = draft.legs.as_slice() else {
+                return Err(invalid());
+            };
+            if !roots.insert(head.root) || joined.iter().any(|(_, l, _)| *l == &leg.leg) {
+                return Err(invalid());
+            }
+            derived.extend(head.recognitions.iter().copied());
+            join_evidence(state, &heads, head, join, &leg.leg)?;
+            joined.push((join, &leg.leg, head));
+        }
+        // The request names exactly the derived closure, each recognition once.
+        let mut named = BTreeSet::new();
+        for again in &request.reemissions {
+            if !named.insert(again.original) {
+                return Err(invalid());
+            }
+        }
+        if named != derived {
+            return Err(invalid());
+        }
+        // Each re-emission is an identity-only correction of its original.
+        let mut originals = Vec::new();
+        let mut reissues = Vec::new();
+        for again in &request.reemissions {
+            let Some(AuthoritativeRecordV1::Recognition(original)) =
+                state.records.get(&RecordId(again.original.0))
+            else {
+                return Err(incomplete());
+            };
+            // Activity on the account after the old cutoff keeps its IDs.
+            if original
+                .postings
+                .iter()
+                .any(|p| p.account_id == c.account_id)
+            {
+                return Err(EngineError::version());
+            }
+            let reissue = CorrectionV1 {
+                active_recognition: again.original,
+                replacement: vec![again.replacement.clone()],
+                remapping: vec![],
+                reason: "Issue a transfer recognition again for a replaced segment".into(),
+            };
+            crate::correction::CorrectionEngine::correct(state, &reissue)?;
+            originals.push(original);
+            reissues.push(reissue);
+        }
         // Later leaves invalidate dependent records. Until then, refuse any
-        // that names the account, the old opening or its legs.
+        // that names the account, a recognition in the closure or its legs.
         let named: BTreeSet<String> = [c.account_id.0, prior.opening.0, old.id.0, old.event_id.0]
             .into_iter()
             .chain(old.legs.iter().map(|l| l.0))
             .chain(old_opening.postings.iter().map(|p| p.id.0))
+            .chain(originals.iter().flat_map(|r| {
+                std::iter::once(r.id.0)
+                    .chain(r.leg_ids.iter().map(|l| l.0))
+                    .chain(r.postings.iter().map(|p| p.id.0))
+            }))
             .map(|id| id.to_string())
             .collect();
         for record in state.records.values() {
@@ -411,15 +626,95 @@ impl SegmentEngine {
                 return Err(EngineError::version());
             }
         }
+        // Each fact the old opening included moves exactly once: to a
+        // backfill's sources or to the new opening's inclusion map.
+        let mut moved = Vec::new();
+        for source in basis.included_activity.iter().chain(
+            request
+                .backfill
+                .iter()
+                .flat_map(|d| d.legs.iter().flat_map(|l| &l.sources)),
+        ) {
+            moved.push(fact(state, source)?);
+        }
+        for source in &old_basis.included_activity {
+            let key = fact(state, source)?;
+            if moved.iter().filter(|m| **m == key).count() != 1 {
+                return Err(invalid());
+            }
+        }
+        // Every identity the plan adds beyond the drafts is fresh.
+        let added: Vec<RecordId> = request
+            .transfers
+            .iter()
+            .map(|j| j.revision)
+            .chain(request.reemissions.iter().flat_map(|r| {
+                [r.id, RecordId(r.replacement.id.0)]
+                    .into_iter()
+                    .chain(r.replacement.postings.iter().map(|p| p.id))
+            }))
+            .collect();
+        for id in &added {
+            if id.0.is_nil()
+                || state.records.contains_key(id)
+                || index.recognitions.contains_key(&RecognitionId(id.0))
+                || index
+                    .recognitions
+                    .values()
+                    .flatten()
+                    .flat_map(|e| &e.postings)
+                    .any(|p| p.original.id == *id)
+            {
+                return Err(invalid());
+            }
+        }
         let drafts = adopt_drafts(
             state,
             std::iter::once(&request.opening).chain(&request.backfill),
+            old.id,
+            &added,
         )?;
+        // A draft posts to clearing exactly when its leg joins a transfer
+        // family, against a clearing account that family already uses.
+        let mut revisions = Vec::new();
+        for (_, recognition) in &drafts {
+            let mut cleared = false;
+            for p in &recognition.postings {
+                cleared |= clearing(state, p.account_id)?;
+            }
+            let join = joined
+                .iter()
+                .find(|(_, leg, _)| recognition.leg_ids.contains(&leg.id));
+            match (join, recognition.postings.as_slice()) {
+                (None, _) if !cleared => {}
+                (Some((join, leg, head)), [anchor, counter])
+                    if anchor.account_id == c.account_id
+                        && clearing(state, counter.account_id)?
+                        && originals.iter().any(|r| {
+                            head.recognitions.contains(&r.id)
+                                && r.postings
+                                    .iter()
+                                    .any(|p| p.account_id == counter.account_id)
+                        }) =>
+                {
+                    revisions.push(joined_revision(
+                        head,
+                        join,
+                        leg,
+                        recognition.id,
+                        &request.reemissions,
+                    )?);
+                }
+                _ => return Err(invalid()),
+            }
+        }
         let mut touched: BTreeSet<_> = old_opening.postings.iter().map(|p| p.account_id).collect();
         touched.extend(
             drafts
                 .iter()
-                .flat_map(|(_, r)| &r.postings)
+                .map(|(_, r)| r)
+                .chain(request.reemissions.iter().map(|r| &r.replacement))
+                .flat_map(|r| &r.postings)
                 .map(|p| p.account_id),
         );
         let approved: BTreeSet<_> = request.approved_accounts.iter().copied().collect();
@@ -442,6 +737,12 @@ impl SegmentEngine {
         if residual.coefficient != 0 {
             return Ok(SegmentPreviewV1::UnresolvedResidual(residual));
         }
+        let invalidations = [prior.id, RecordId(prior.opening.0)]
+            .into_iter()
+            .chain(old.legs.iter().map(|l| RecordId(l.0)))
+            .chain(joined.iter().map(|(join, _, _)| join.prior_revision))
+            .chain(request.reemissions.iter().map(|r| RecordId(r.original.0)))
+            .collect();
         let (records, replacement): (Vec<_>, Vec<_>) = drafts.into_iter().unzip();
         let Some((opening, backfill)) = replacement.split_first() else {
             return Err(invalid());
@@ -452,24 +753,49 @@ impl SegmentEngine {
             prior_segment: Some(prior.id),
             opening: opening.id,
             included_activity: backfill.iter().map(|r| r.id).collect(),
-            replacement_closure: vec![prior.opening],
+            replacement_closure: std::iter::once(prior.opening)
+                .chain(request.reemissions.iter().map(|r| r.original))
+                .collect(),
             approved_accounts: request.approved_accounts.clone(),
             residual_disposition: SourceValue::Absent,
         };
         let mut records: Vec<_> = records.into_iter().flatten().collect();
+        records.extend(
+            request
+                .reemissions
+                .iter()
+                .map(|r| AuthoritativeRecordV1::Recognition(r.replacement.clone())),
+        );
+        records.extend(
+            revisions
+                .into_iter()
+                .map(AuthoritativeRecordV1::AssociationRevision),
+        );
         records.push(AuthoritativeRecordV1::AccountingSegment(successor));
+        records.extend(request.reemissions.iter().map(|r| {
+            AuthoritativeRecordV1::SegmentReemission(SegmentReemissionV1 {
+                id: r.id,
+                schema_version: 1,
+                segment: basis.segment_id,
+                original: r.original,
+                replacement: r.replacement.id,
+            })
+        }));
+        let retire = CorrectionV1 {
+            active_recognition: prior.opening,
+            replacement,
+            remapping: vec![],
+            reason: "Replace the segment opening at an earlier proven boundary".into(),
+        };
+        let accounting = if request.reemissions.is_empty() {
+            AccountingIntent::Correction(retire)
+        } else {
+            AccountingIntent::Corrections(std::iter::once(retire).chain(reissues).collect())
+        };
         Ok(SegmentPreviewV1::Ready(Box::new(DecisionPlan {
             records,
-            invalidations: [prior.id, RecordId(prior.opening.0)]
-                .into_iter()
-                .chain(old.legs.iter().map(|l| RecordId(l.0)))
-                .collect(),
-            accounting: AccountingIntent::Correction(CorrectionV1 {
-                active_recognition: prior.opening,
-                replacement,
-                remapping: vec![],
-                reason: "Replace the segment opening at an earlier proven boundary".into(),
-            }),
+            invalidations,
+            accounting,
         })))
     }
 }
@@ -500,6 +826,37 @@ pub(crate) fn readmit(
         };
         restore(next, owner)
     };
+    // Each joined family's new revision adds the backfilled leg and its
+    // relationship evidence last.
+    let mut transfers = Vec::new();
+    let mut reemissions = Vec::new();
+    for record in &commit.records {
+        match record {
+            AuthoritativeRecordV1::AssociationRevision(r) => {
+                let leg = *r.legs.last().ok_or_else(invalid)?;
+                let edge = r.captured_allocations.last().filter(|e| e.leg == leg);
+                transfers.push(TransferJoinV1 {
+                    revision: r.id,
+                    prior_revision: r.prior_revision.ok_or_else(invalid)?,
+                    leg,
+                    source: edge.ok_or_else(invalid)?.source.clone(),
+                });
+            }
+            AuthoritativeRecordV1::SegmentReemission(link) => {
+                let Some(AuthoritativeRecordV1::Recognition(again)) =
+                    next.records.get(&RecordId(link.replacement.0))
+                else {
+                    return Err(invalid());
+                };
+                reemissions.push(ReemissionV1 {
+                    id: link.id,
+                    original: link.original,
+                    replacement: again.clone(),
+                });
+            }
+            _ => {}
+        }
+    }
     let request = SegmentReplacementV1 {
         prior_segment: successor.prior_segment.ok_or_else(invalid)?,
         opening: draft(successor.opening)?,
@@ -509,6 +866,8 @@ pub(crate) fn readmit(
             .map(|id| draft(*id))
             .collect::<Result<_, _>>()?,
         approved_accounts: successor.approved_accounts.clone(),
+        transfers,
+        reemissions,
     };
     let SegmentPreviewV1::Ready(plan) = SegmentEngine::replace(prior, &request)? else {
         return Err(invalid());

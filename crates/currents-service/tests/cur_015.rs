@@ -171,7 +171,6 @@ mod association_fixtures;
 #[allow(dead_code)]
 mod fixture;
 use std::path::Path;
-use support::Fixture;
 type EconomicEntry = (RecognitionId, String, String, Vec<FrozenPostingV1>);
 async fn real_service_transfer(order: Option<[usize; 3]>, remap: bool) -> Vec<EconomicEntry> {
     real_service_transfer_mode(order, remap, false).await
@@ -510,40 +509,6 @@ async fn cur_015_1_separate_arrival_permutations_rebuild_same_economic_postings(
     }
 }
 
-async fn publish_relationship_rows(f: &mut Fixture, n: u32, rows: Vec<RelationshipSourceRowV1>) {
-    let context = ImportContextV1 {
-        receipt_id: fixture::id(n),
-        source: SourceIdentityV1 {
-            source: "synthetic".into(),
-            connection_id: fixture::id(900),
-            device_id: None,
-        },
-        captured_at: serde_json::from_str("\"2026-11-01T00:00:00Z\"").unwrap(),
-        received_at: serde_json::from_str("\"2026-11-02T00:00:00Z\"").unwrap(),
-        coverage: vec![],
-        row_ids: vec![],
-    };
-    let capture = currents_acquisition::identity::RelationshipSourceParser::capture(
-        currents_acquisition::capture::BoundedEvidence::new(
-            "relationship.json",
-            serde_json::to_vec(&rows).unwrap(),
-            context,
-        )
-        .unwrap(),
-        fixture::id(n + 1),
-    )
-    .unwrap();
-    let evidence = ImportEvidence::new_relationship(capture).unwrap();
-    let import = evidence.request();
-    refresh_financial(f, Some(evidence)).await;
-    submit(
-        f,
-        12000 + u128::from(n),
-        currents_protocol::OperationV1::PublishImport(import),
-    )
-    .await;
-    refresh_financial(f, None).await;
-}
 #[tokio::test]
 async fn cur_015_2_real_service_payroll_retains_five_facets_and_owner_tax_choice() {
     use currents_protocol::OperationV1;

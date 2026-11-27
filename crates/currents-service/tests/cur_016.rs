@@ -1,7 +1,12 @@
 //! CUR-016 corrections against an actual committed and replayed accounting prefix.
-use currents_domain::segments::{SegmentEngine, SegmentPreviewV1, SegmentReplacementV1};
+use currents_domain::segments::{
+    SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
+};
 use currents_service as service_api;
 use currents_types::*;
+#[path = "../../currents-domain/tests/support/associations.rs"]
+#[allow(dead_code)]
+mod association_fixtures;
 #[path = "../../currents-domain/tests/support/recognition.rs"]
 #[allow(dead_code)]
 mod fixture;
@@ -10,6 +15,8 @@ mod fixture;
 mod support;
 #[path = "support/financial_service.rs"]
 mod support_financial;
+#[path = "../../currents-domain/tests/support/transfers.rs"]
+mod transfers;
 use support_financial::*;
 
 #[tokio::test]
@@ -625,6 +632,8 @@ fn replacement_request(
             backfill.2,
         )],
         approved_accounts: vec![account(on), account(EQUITY), account(EXPENSE)],
+        transfers: vec![],
+        reemissions: vec![],
     }
 }
 
@@ -1268,4 +1277,131 @@ async fn cur_016_3_2024_backfill_after_2026_declaration() {
     };
     assert_eq!(backfill.value_date, text("/backfill/effective"));
     assert_eq!(backfill.booking_date, text("/backfill/booking"));
+}
+
+const COUNTER: u32 = 60;
+const CLEARING: u32 = 80;
+
+/// Account A's replacement from `a_replacement`'s evidence, except that the
+/// 2026-10-31 send of 1,000 USD to clearing joins the transfer family in
+/// which counterpart C's receipt (recognition 1610) is already recognized.
+fn cross_account_request(state: &DomainState) -> SegmentReplacementV1 {
+    let mut request = replacement_request(
+        ACCOUNT_A,
+        3000,
+        (4300, "2026-10-30"),
+        (-1000, "2026-10-31", "2026-10-31"),
+    );
+    request.backfill[0].financial.as_mut().unwrap().postings[1].account_id = account(CLEARING);
+    request.approved_accounts = vec![
+        account(ACCOUNT_A),
+        account(EQUITY),
+        account(CLEARING),
+        account(COUNTER),
+    ];
+    request.transfers = vec![TransferJoinV1 {
+        revision: fixture::id(3500),
+        prior_revision: fixture::id(1650),
+        leg: LegId(fixture::id(3111).0),
+        source: transfers::row_fact(fixture::id(1501), "send-a"),
+    }];
+    request.reemissions = vec![transfers::reemission(state, 1610, 3600)];
+    request
+}
+
+#[tokio::test]
+async fn cur_016_1_encrypted_cross_account_commit() {
+    use currents_protocol::OperationV1;
+    use currents_service::{ReplayCoordinator, synthetic_commit_verified_segment};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cross-account.db");
+    let evidence = [
+        RetainedEvidence {
+            n: 2900,
+            value: 3300,
+            day: "2026-11-01",
+            kind: ObservationKind::Balance,
+            text: "Synthetic account A balance at the old opening",
+        },
+        RetainedEvidence {
+            n: 3000,
+            value: 4300,
+            day: "2026-10-30",
+            kind: ObservationKind::Balance,
+            text: "Synthetic account A balance at the new opening",
+        },
+        RetainedEvidence {
+            n: 3100,
+            value: -1000,
+            day: "2026-10-31",
+            kind: ObservationKind::Movement,
+            text: "Synthetic account A send to account C",
+        },
+    ];
+    let (mut f, _) = bootstrap_with_evidence(&path, &evidence).await;
+    let (template, _) = association_fixtures::transfer_request();
+    declare_template(&mut f, &template).await;
+    let opening = opening_draft(retained(2900, 3300), 700, ACCOUNT_A, 707, "2026-11-01");
+    submit(&mut f, 54_000, OperationV1::AdoptActivity(opening)).await;
+    refresh_financial(&mut f, None).await;
+    let rows = transfers::cross_account_rows();
+    publish_relationship_rows(&mut f, 1500, rows.clone()).await;
+    let receipt = transfers::clearing_family(fixture::id(1501), &rows, 1600, &[(COUNTER, 1)]);
+    submit(&mut f, 54_001, OperationV1::AssociateLegsComplete(receipt)).await;
+    let old = refresh_financial(&mut f, None).await;
+
+    let request = cross_account_request(&old);
+    let (plan, frozen) = ready_plan(&old, &request);
+    assert_eq!(frozen.operations.len(), 5);
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    let before = store.writer().audited_prefix().await.unwrap();
+    let receipt = synthetic_commit_verified_segment(
+        store.writer(),
+        &request,
+        segment_commit(&plan, &frozen, 54_010, Default::default()),
+    )
+    .await
+    .expect("a cross-account replacement commits through the verified writer path");
+    let after = store.writer().audited_prefix().await.unwrap();
+    assert_eq!(receipt.commit, CommitSeq(before.through.0 + 1));
+    assert_eq!(after.native_head, receipt.native_head);
+    let committed = store.history().audit_report().await.unwrap();
+    store.close().await.unwrap();
+
+    // Reopen: recovery replays the replacement and both audits pass.
+    f.service = f.reopen().await;
+    let reopened = refresh_financial(&mut f, None).await;
+    assert_eq!(&reopened.accounting.as_ref().unwrap().prefix, &after);
+    for (id, record) in &old.records {
+        assert_eq!(reopened.records.get(id), Some(record));
+    }
+    currents_domain::associations::IdentityEngine::audit(&reopened).unwrap();
+    let by_date = |state: &DomainState, n: u32| {
+        let mut postings = recognized_postings(state, account(n));
+        postings.sort_by(|a, b| a.0.cmp(&b.0));
+        postings
+    };
+    assert_eq!(by_date(&reopened, COUNTER), by_date(&old, COUNTER));
+    assert_eq!(
+        total(recognized_postings(&reopened, account(ACCOUNT_A))),
+        fixture::amount(3300)
+    );
+    assert_eq!(
+        total(recognized_postings(&reopened, account(CLEARING))),
+        fixture::amount(0)
+    );
+    f.service.close().await.unwrap();
+
+    // A fresh rebuild into a new encrypted file reaches the same native head.
+    let store = open(&path).await;
+    let rebuilt_path = dir.path().join("cross-account-rebuild.db");
+    let report = ReplayCoordinator::rebuild(store.history(), open(&rebuilt_path).await)
+        .await
+        .expect("replay re-admits the cross-account replacement");
+    store.close().await.unwrap();
+    assert_eq!(report, committed);
+    let rebuilt = open(&rebuilt_path).await;
+    assert_eq!(rebuilt.writer().audited_prefix().await.unwrap(), after);
+    rebuilt.close().await.unwrap();
 }

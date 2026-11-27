@@ -76,11 +76,7 @@ pub(crate) fn initial(
                 .push(existing.clone());
         }
     }
-    let mut heads = BTreeMap::new();
-    for (root, revisions) in &families {
-        let chain = IdentityEngine::revision_chain(revisions, *root)?;
-        heads.insert(*root, chain.last().ok_or_else(invalid)?.clone());
-    }
+    let heads = crate::associations::current_heads(state)?;
     let previous = heads.get(&revision.root);
     match (previous, revision.prior_revision) {
         (None, None) if revision.retired_recognitions.is_empty() => {}
@@ -419,13 +415,10 @@ pub(crate) fn initial(
     }
     // Only current family heads own capacity. Immutable prior snapshots stay
     // available for history/replay, but never consume capacity a second time.
-    for existing in heads.values().filter(|v| v.root != revision.root) {
-        for edge in &existing.captured_allocations {
-            let fact = IdentityEngine::retained_facet(state, &edge.source, edge.allocated.unit_id)?;
-            if capacity.contains_key(&fact.fact_key) {
-                return Err(invalid());
-            }
-        }
+    let held =
+        crate::associations::held_facts(state, heads.values().filter(|v| v.root != revision.root))?;
+    if capacity.keys().any(|key| held.contains(key)) {
+        return Err(invalid());
     }
     let accounting = if revision.retired_recognitions.is_empty() {
         AccountingIntent::Recognitions(request.recognitions.clone())

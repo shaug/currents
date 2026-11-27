@@ -71,8 +71,12 @@ impl Writer {
         plan: &DecisionPlan,
         supplied: &AccountingBatchV1,
     ) -> Result<(), EngineError> {
-        let AccountingIntent::Correction(correction) = &plan.accounting else {
-            return Err(EngineError::invalid());
+        // The first correction retires the old opening for the new opening and
+        // backfill; each later one issues one transfer recognition again.
+        let corrections = match &plan.accounting {
+            AccountingIntent::Correction(correction) => std::slice::from_ref(correction),
+            AccountingIntent::Corrections(corrections) => corrections.as_slice(),
+            _ => return Err(EngineError::invalid()),
         };
         let mut segments = plan.records.iter().filter_map(|record| match record {
             AuthoritativeRecordV1::AccountingSegment(segment) => Some(segment),
@@ -81,13 +85,20 @@ impl Writer {
         let (Some(successor), None) = (segments.next(), segments.next()) else {
             return Err(EngineError::invalid());
         };
+        let Some((retire, reemissions)) = corrections.split_first() else {
+            return Err(EngineError::invalid());
+        };
         let entries: Vec<_> = std::iter::once(successor.opening)
             .chain(successor.included_activity.iter().copied())
             .collect();
         if successor.prior_segment.is_none()
-            || successor.replacement_closure != [correction.active_recognition]
-            || !correction.remapping.is_empty()
-            || !correction.replacement.iter().map(|r| r.id).eq(entries)
+            || !corrections
+                .iter()
+                .map(|c| c.active_recognition)
+                .eq(successor.replacement_closure.iter().copied())
+            || corrections.iter().any(|c| !c.remapping.is_empty())
+            || !retire.replacement.iter().map(|r| r.id).eq(entries)
+            || reemissions.iter().any(|c| c.replacement.len() != 1)
             || &currents_accounting::AccountingAdapter::freeze(&plan.accounting, prior)? != supplied
         {
             return Err(EngineError::invalid());
