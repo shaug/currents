@@ -1,5 +1,5 @@
 diff --git a/src/store/sql/write/authority.rs b/src/store/sql/write/authority.rs
-index 7b6c160..80cf0e3 100644
+index 776eb51..4bb902e 100644
 --- a/src/store/sql/write/authority.rs
 +++ b/src/store/sql/write/authority.rs
 @@ -10,6 +10,8 @@ use crate::{
@@ -166,7 +166,7 @@ index 7b6c160..80cf0e3 100644
          sqlx::query("INSERT INTO currents_commits(seq,previous_digest,digest,canonical,checkpoint,command_id) VALUES(?,?,?,?,?,?)").bind(seq).bind(previous).bind(digest).bind(canonical).bind(&self.checkpoint).bind(command).execute(&mut *self.session.tx).await.map_err(|e|self.session.fail(e))?;
          Ok(())
      }
-@@ -262,6 +323,16 @@ impl CurrentsAuthorityTransaction<'_> {
+@@ -301,6 +362,16 @@ impl CurrentsAuthorityTransaction<'_> {
      /// # Errors
      /// Returns the underlying transaction failure without exposing arbitrary SQL.
      pub async fn commit(self) -> Result<(), StoreError> {

@@ -607,3 +607,66 @@ async fn caller_sequence_overflow_remains_invalid_reference() {
     );
     store.close().await.unwrap();
 }
+
+// Lookups run before the item loop, but a stored commit still reports the
+// first failing item: a bad reference before an unsupported descriptor is an
+// integrity failure, and the reverse order still asks for an upgrade.
+async fn stored_failures_keep_item_order(reference_first: bool) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("order.db");
+    let store = open(&path).await;
+    let first = baseline(&store).await;
+    let AuthoritativeRecordV1::Commitment(mut commitment) = fixture("Commitment") else {
+        unreachable!()
+    };
+    commitment.id = CommitmentId(id(90_000).0);
+    let targeting = |target: u128| {
+        AuthoritativeRecordV1::Review(ReviewRecordV1 {
+            id: id(80_002),
+            targets: vec![id(target)],
+            disposition: ReviewDisposition::Accepted,
+            reason: String::new(),
+        })
+    };
+    let mut valid = input(1);
+    valid.records.push(review(80_001));
+    let (reference_at, unsupported_at) = if reference_first { (1, 2) } else { (2, 1) };
+    let mut records = vec![
+        (reference_at, targeting(80_001)),
+        (
+            unsupported_at,
+            AuthoritativeRecordV1::Commitment(commitment.clone()),
+        ),
+    ];
+    records.sort_by_key(|(position, _)| *position);
+    valid
+        .records
+        .extend(records.into_iter().map(|(_, record)| record));
+    let (store, mut commit) = accepted_boundary(store, &path, &first, valid).await;
+    commitment.settlement = SettlementRuleV1::HolidayCalendar(PolicyReferenceV1 {
+        id: id(1),
+        version: 1,
+    });
+    commit.records[reference_at] = targeting(9_999);
+    commit.records[unsupported_at] = AuthoritativeRecordV1::Commitment(commitment);
+    let pool = tamper_pool(&path).await;
+    rewrite_item(&pool, &mut commit, reference_at, false).await;
+    rewrite_item(&pool, &mut commit, unsupported_at, false).await;
+    pool.close().await;
+    let class = if reference_first {
+        ErrorClass::IntegrityFailure
+    } else {
+        ErrorClass::UnsupportedVersion
+    };
+    assert_read_and_reopen_error(store, &path, class).await;
+}
+
+#[tokio::test]
+async fn stored_reference_failure_precedes_later_unsupported_descriptor() {
+    stored_failures_keep_item_order(true).await;
+}
+
+#[tokio::test]
+async fn stored_unsupported_descriptor_precedes_later_reference_failure() {
+    stored_failures_keep_item_order(false).await;
+}

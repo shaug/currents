@@ -2004,11 +2004,11 @@
     },
     "src/store/sql/write/authority.rs": {
       "upstream_sha256": null,
-      "patched_sha256": "b65ea83a2dabb4e95c47c8d69eceaf31444a86db61b0a16f007421c49785caa2"
+      "patched_sha256": "235a433c186ac9da4af4fc94baaf441cc64a413d76769f0e8488ce135d818e2f"
     }
   },
   "initialization_patch_sha256": "a18e357c5b74ef67daa7a25bf962141d6d0a9851a9825c864f9783845bf8f544",
-  "authority_patch_sha256": "3c3ce9d852f04e1fdf40c4e7e18f7d72fb834d947729e121720d45c1852b6668",
-  "multi_operation_patch_sha256": "3a271ba4fd08b83557b2ec2218bd41818ef33b5ceb6a9c74a736857da29398b9",
+  "authority_patch_sha256": "2fa398459f0f30bc7808fd1cea1161af2db922cb033683a33e4f12151c72f1b8",
+  "multi_operation_patch_sha256": "7142958c0cde9f7ea8247d98f07f2ed66ab8a5a9229100a8b7899d1f7ce1d965",
   "qualification_worker_patch_sha256": "9746091455853f64c4741f5739b999403871a3c74e5f5c82c055e8932ad06ad5"
 }

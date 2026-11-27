@@ -210,6 +210,16 @@ impl AuthorityTransaction<'_> {
             .await
             .map_err(|_| EngineError::invalid())
     }
+    /// Many `definition` lookups in one statement, answered in probe order.
+    pub async fn definitions(
+        &mut self,
+        probes: &[(&str, &str, Option<i64>)],
+    ) -> Result<Vec<Option<i64>>, EngineError> {
+        self.inner
+            .definitions(probes)
+            .await
+            .map_err(|_| EngineError::invalid())
+    }
     pub async fn dataset_record(&mut self, id: &str) -> Result<Option<Vec<u8>>, EngineError> {
         self.inner
             .dataset_record(id)

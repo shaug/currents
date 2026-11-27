@@ -237,6 +237,45 @@ impl CurrentsAuthorityTransaction<'_> {
     ) -> Result<Option<i64>, StoreError> {
         sqlx::query_scalar("SELECT version FROM currents_definitions WHERE kind=? AND id=? AND (? IS NULL OR version=?) ORDER BY version LIMIT 1").bind(kind).bind(id).bind(version).bind(version).fetch_optional(&mut *self.session.tx).await.map_err(|e|self.session.fail(e))
     }
+    /// Answer many `definition` lookups in one statement. The result holds, for
+    /// each `(kind, id, version)` probe in order, what `definition` returns.
+    /// The probes are bound as one JSON value; no caller text reaches the SQL.
+    ///
+    /// # Errors
+    /// Returns the underlying transaction failure without exposing arbitrary SQL.
+    pub async fn definitions(
+        &mut self,
+        probes: &[(&str, &str, Option<i64>)],
+    ) -> Result<Vec<Option<i64>>, StoreError> {
+        let mut json = String::from("[");
+        for (index, (kind, id, version)) in probes.iter().enumerate() {
+            if index > 0 {
+                json.push(',');
+            }
+            json.push('[');
+            json_string(&mut json, kind);
+            json.push(',');
+            json_string(&mut json, id);
+            json.push(',');
+            match version {
+                Some(version) => json.push_str(&version.to_string()),
+                None => json.push_str("null"),
+            }
+            json.push(']');
+        }
+        json.push(']');
+        let found: Vec<Option<i64>> = sqlx::query_scalar(
+            "SELECT (SELECT d.version FROM currents_definitions AS d WHERE d.kind=json_extract(p.value,'$[0]') AND d.id=json_extract(p.value,'$[1]') AND (json_extract(p.value,'$[2]') IS NULL OR d.version=json_extract(p.value,'$[2]')) ORDER BY d.version LIMIT 1) FROM json_each(?) AS p ORDER BY p.key",
+        )
+        .bind(json)
+        .fetch_all(&mut *self.session.tx)
+        .await
+        .map_err(|e| self.session.fail(e))?;
+        if found.len() != probes.len() {
+            return Err(integrity("definition lookup count", None));
+        }
+        Ok(found)
+    }
     /// Read the canonical dataset declaration inside this transaction.
     ///
     /// # Errors
@@ -348,4 +387,17 @@ impl CurrentsAuthorityTransaction<'_> {
             .await
             .map_err(StoreError::outcome_unknown)
     }
+}
+/// Append `value` as a JSON string: quote, backslash and control characters escaped.
+fn json_string(out: &mut String, value: &str) {
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if u32::from(c) < 0x20 => out.push_str(&format!("\\u{:04x}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
 }
