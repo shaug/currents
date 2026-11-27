@@ -55,7 +55,7 @@ class WorkflowContract(unittest.TestCase):
                                "CURRENTS_TEST_SHARD": shard[gate]}
             # About twice each job's slowest time in recent runs.
             self.assertEqual(self.jobs[gate]["timeout-minutes"],
-                             {"core": 25, "msrv": 25, "docs": 10, "privacy": 5}[gate])
+                             {"core": 35, "msrv": 35, "docs": 10, "privacy": 5}[gate])
             self.assertEqual(self.jobs[gate]["steps"][-1], step)
         # The core job runs the workspace build and tests on every event, so the
         # quality job never repeats them, including on push.
