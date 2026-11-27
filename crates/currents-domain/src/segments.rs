@@ -775,12 +775,10 @@ impl SegmentEngine {
                 .into_iter()
                 .chain(retired_revisions.clone()),
         )?;
-        let claims = match dependents::assess(state, &change)? {
-            Dependents::Claims(claims) => claims,
-            Dependents::NeedsOrganizationDecision(questions) => {
-                return Ok(SegmentPreviewV1::NeedsOrganizationDecision(questions));
-            }
-        };
+        let Dependents { claims, questions } = dependents::assess(state, &change)?;
+        if !questions.is_empty() {
+            return Ok(SegmentPreviewV1::NeedsOrganizationDecision(questions));
+        }
         let invalidations = [prior.id, RecordId(prior.opening.0)]
             .into_iter()
             .chain(old.legs.iter().map(|l| RecordId(l.0)))

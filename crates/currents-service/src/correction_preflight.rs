@@ -17,9 +17,10 @@ pub fn verify_correction_preflight(
     {
         return Err(EngineError::invalid());
     }
+    // The plan derived again holds exactly the plan's records.
     let [
         AuthoritativeRecordV1::RecognitionCorrectionRevision(revision),
-        AuthoritativeRecordV1::Recognition(_),
+        records @ ..,
     ] = plan.records.as_slice()
     else {
         return Err(EngineError::invalid());
@@ -27,7 +28,7 @@ pub fn verify_correction_preflight(
     let AccountingIntent::Correction(request) = &plan.accounting else {
         return Err(EngineError::invalid());
     };
-    if CorrectionEngine::readmit(prior, revision, request)? != *plan {
+    if CorrectionEngine::readmit(prior, revision, request, records)? != *plan {
         return Err(EngineError::invalid());
     }
     Writer::verify_correction_freeze(prior, plan, frozen)

@@ -489,12 +489,36 @@ impl AccountingAdapter {
         batch: Option<&AccountingBatchV1>,
         index: &AccountingIndexV1,
     ) -> Result<(), EngineError> {
-        if let [
-            AuthoritativeRecordV1::RecognitionCorrectionRevision(revision),
-            AuthoritativeRecordV1::Recognition(replacement),
-            AuthoritativeRecordV1::FrozenAccountingManifest(_),
-        ] = commit.records.as_slice()
-        {
+        // A correction commit starts with its one revision and ends with its
+        // manifest. A stable-leg correction holds only its replacement between
+        // them; a leg correction also holds the new adoption's records and
+        // organization successors.
+        let corrected = match commit.records.as_slice() {
+            [
+                AuthoritativeRecordV1::RecognitionCorrectionRevision(revision),
+                body @ ..,
+                AuthoritativeRecordV1::FrozenAccountingManifest(_),
+            ] if (matches!(
+                revision.remap_disposition,
+                RecognitionCorrectionRemapV1::ReplacedLegs { .. }
+            ) || body.len() == 1)
+                && !body.iter().any(|r| {
+                    matches!(r, AuthoritativeRecordV1::RecognitionCorrectionRevision(_))
+                }) =>
+            {
+                let replacement = body.iter().find_map(|record| match record {
+                    AuthoritativeRecordV1::Recognition(r)
+                        if r.id == revision.replacement_recognition =>
+                    {
+                        Some(r)
+                    }
+                    _ => None,
+                });
+                replacement.map(|replacement| (revision, replacement))
+            }
+            _ => None,
+        };
+        if let Some((revision, replacement)) = corrected {
             let Some(
                 [
                     FrozenNativeOperationV1::Entry(reversal),

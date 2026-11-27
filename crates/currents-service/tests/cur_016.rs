@@ -196,14 +196,15 @@ async fn cur_016_2_replayed_retirement_blocks_correction() {
     reject(|r| r.replacement.clear());
     reject(|r| r.replacement.push(r.replacement[0].clone()));
     reject(|r| {
-        r.remapping.push(AssociationV1 {
+        r.remapping.push(OrganizationRecordV1 {
             id: fixture::id(9600),
-            kind: RelationshipKind::Duplicate,
-            legs: vec![],
+            version: 2,
+            kind: OrganizationKind::Note,
+            targets: vec![],
+            parent: None,
+            text: "Requires a leg correction".into(),
             allocations: vec![],
-            survivor: None,
-            corrections: vec![r.active_recognition],
-            reason: "Requires explicit remapping support".into(),
+            supersedes: Some(fixture::id(9603)),
         })
     });
     reject(|r| r.replacement[0].postings[0].account_id = AccountId(fixture::id(9601).0));

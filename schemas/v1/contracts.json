@@ -7689,6 +7689,33 @@
                         "ReinterpretedStableLegs"
                       ],
                       "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ReplacedLegs": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "replacement_adoption": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "retired_adoption": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "retired_adoption",
+                            "replacement_adoption"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "ReplacedLegs"
+                      ],
+                      "type": "object"
                     }
                   ]
                 },
@@ -36318,41 +36345,22 @@
                             "maxItems": 16384,
                             "type": "array"
                           },
-                          "corrections": {
-                            "items": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "maxItems": 16384,
-                            "type": "array"
-                          },
                           "id": {
                             "format": "uuid",
                             "type": "string"
                           },
                           "kind": {
                             "enum": [
-                              "Lifecycle",
-                              "Transfer",
-                              "Payroll",
-                              "Duplicate",
-                              "Overlap"
+                              "Party",
+                              "Alias",
+                              "Category",
+                              "Tag",
+                              "Note",
+                              "ReportingAllocation"
                             ],
                             "type": "string"
                           },
-                          "legs": {
-                            "items": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "maxItems": 16384,
-                            "type": "array"
-                          },
-                          "reason": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "survivor": {
+                          "parent": {
                             "anyOf": [
                               {
                                 "format": "uuid",
@@ -36362,16 +36370,45 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "supersedes": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "targets": {
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "text": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          "version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
                           }
                         },
                         "required": [
                           "id",
+                          "version",
                           "kind",
-                          "legs",
+                          "targets",
+                          "parent",
+                          "text",
                           "allocations",
-                          "survivor",
-                          "corrections",
-                          "reason"
+                          "supersedes"
                         ],
                         "type": "object"
                       },
@@ -36951,41 +36988,22 @@
                               "maxItems": 16384,
                               "type": "array"
                             },
-                            "corrections": {
-                              "items": {
-                                "format": "uuid",
-                                "type": "string"
-                              },
-                              "maxItems": 16384,
-                              "type": "array"
-                            },
                             "id": {
                               "format": "uuid",
                               "type": "string"
                             },
                             "kind": {
                               "enum": [
-                                "Lifecycle",
-                                "Transfer",
-                                "Payroll",
-                                "Duplicate",
-                                "Overlap"
+                                "Party",
+                                "Alias",
+                                "Category",
+                                "Tag",
+                                "Note",
+                                "ReportingAllocation"
                               ],
                               "type": "string"
                             },
-                            "legs": {
-                              "items": {
-                                "format": "uuid",
-                                "type": "string"
-                              },
-                              "maxItems": 16384,
-                              "type": "array"
-                            },
-                            "reason": {
-                              "maxLength": 1048576,
-                              "type": "string"
-                            },
-                            "survivor": {
+                            "parent": {
                               "anyOf": [
                                 {
                                   "format": "uuid",
@@ -36995,16 +37013,45 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "supersedes": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "targets": {
+                              "items": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "maxItems": 16384,
+                              "type": "array"
+                            },
+                            "text": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
                             }
                           },
                           "required": [
                             "id",
+                            "version",
                             "kind",
-                            "legs",
+                            "targets",
+                            "parent",
+                            "text",
                             "allocations",
-                            "survivor",
-                            "corrections",
-                            "reason"
+                            "supersedes"
                           ],
                           "type": "object"
                         },
@@ -41548,6 +41595,33 @@
                             },
                             "required": [
                               "ReinterpretedStableLegs"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ReplacedLegs": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "replacement_adoption": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "retired_adoption": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "retired_adoption",
+                                  "replacement_adoption"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "ReplacedLegs"
                             ],
                             "type": "object"
                           }
@@ -55138,6 +55212,33 @@
                             },
                             "required": [
                               "ReinterpretedStableLegs"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "ReplacedLegs": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "replacement_adoption": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "retired_adoption": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "retired_adoption",
+                                  "replacement_adoption"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "ReplacedLegs"
                             ],
                             "type": "object"
                           }

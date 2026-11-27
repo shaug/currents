@@ -438,6 +438,11 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_reinterpretation_keeps_organization",
             "cur_016_4_20001_operations_fail_visibly",
             "cur_016_4_commit_record_limit",
+            "cur_016_leg_provider_revision",
+            "cur_016_leg_date_correction",
+            "cur_016_leg_split",
+            "cur_016_leg_split_asks_organization_remap",
+            "cur_016_leg_guards",
         ],
     ),
     (
@@ -464,6 +469,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_2_live_tip_can_be_corrected_again_without_a_supersession_cycle",
             "cur_016_2_refund_is_a_new_economic_event_not_a_native_reversal",
             "cur_016_2_reinterpreted_tip_chain",
+            "cur_016_leg_correction_encrypted_commit",
         ],
     ),
 ];

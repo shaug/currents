@@ -294,6 +294,39 @@ pub fn monetary_state() -> DomainState {
     state
 }
 
+/// The activity recognition that posted `request` derives: its postings,
+/// its legs' allocations, and a scope over its civil effective dates.
+pub fn recognized(request: &ActivityRequestV1) -> RecognitionV1 {
+    let terms = request.financial.as_ref().unwrap();
+    let days: Vec<Date> = terms
+        .postings
+        .iter()
+        .filter_map(|p| match p.effective {
+            TemporalValue::Date { civil, .. } => Some(civil),
+            _ => None,
+        })
+        .collect();
+    RecognitionV1 {
+        id: terms.recognition_id,
+        lineage: terms.lineage,
+        postings: terms.postings.clone(),
+        kind: RecognitionKind::Activity,
+        evidence_allocations: request
+            .legs
+            .iter()
+            .flat_map(|l| l.leg.allocations.clone())
+            .collect(),
+        leg_ids: request.event.legs.clone(),
+        scope: DateScope {
+            start: days.iter().min().copied(),
+            end: days.iter().max().copied(),
+            basis: DateBasis::Effective,
+        },
+        bookkeeping_date: terms.bookkeeping_date.clone(),
+        date_policy: terms.date_policy.clone(),
+    }
+}
+
 pub fn posted(binding: SourceFacetBindingV1, n: u32, counter: u32) -> ActivityRequestV1 {
     let mut request = pending(binding.clone(), n);
     request.status = ActivityStatusV1::Posted;

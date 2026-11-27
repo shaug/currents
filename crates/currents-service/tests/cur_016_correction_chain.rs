@@ -1,6 +1,6 @@
 //! Separate CUR-016_2 acceptance of append-only compensation and new refunds.
 use currents_accounting::AccountingAdapter;
-use currents_domain::correction::{CorrectionEngine, CorrectionRequestV1};
+use currents_domain::correction::{CorrectionEngine, CorrectionPreviewV1, CorrectionRequestV1};
 use currents_protocol::OperationV1;
 use currents_service as service_api;
 use currents_service::{ReplayCoordinator, synthetic_commit_verified_correction};
@@ -209,6 +209,154 @@ async fn cur_016_2_reinterpreted_tip_chain() {
         }),
     );
     assert!(RecognitionEngine::audit(&forged).is_err());
+}
+
+#[tokio::test]
+async fn cur_016_leg_correction_encrypted_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("leg-correction.db");
+    let (mut f, _) = bootstrap(&path).await;
+    declare_template(&mut f, &fixture::monetary_state()).await;
+    publish_legacy(&mut f, 200, "1", "2026-11-01").await;
+    let purchase = fixture::posted(legacy_binding(200), 300, 30);
+    let original = purchase.financial.as_ref().unwrap().recognition_id;
+    let adoption = purchase.adoption_id;
+    let old_leg = RecordId(purchase.legs[0].leg.id.0);
+    submit(&mut f, 56_001, OperationV1::AdoptActivity(purchase)).await;
+    let adopted = refresh_financial(&mut f, None).await;
+
+    // A note on the purchase's leg commits with no accounting effect.
+    let note = OrganizationRecordV1 {
+        id: fixture::id(56_005),
+        version: 1,
+        kind: OrganizationKind::Note,
+        targets: vec![old_leg],
+        parent: None,
+        text: "Office supplies".into(),
+        allocations: vec![],
+        supersedes: None,
+    };
+    let plan = DecisionPlan {
+        records: vec![AuthoritativeRecordV1::Organization(note.clone())],
+        invalidations: vec![],
+        accounting: AccountingIntent::NoEffect(NoEffectV1 {
+            reason: "Synthetic organization".into(),
+        }),
+    };
+    let frozen_batch = AccountingAdapter::freeze(&plan.accounting, &adopted).unwrap();
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .writer()
+        .commit(PreparedCommit {
+            evidence: vec![],
+            result: CommandResultV1 {
+                command_id: CommandId(fixture::id(56_006).0),
+                digest: Digest([72; 32]),
+                state: CommandState::Committed,
+                commit: None,
+                effects: EffectsV1 {
+                    records: vec![note.id],
+                    accounts: vec![],
+                    amounts: vec![],
+                    invalidations: vec![],
+                },
+                health: vec![],
+            },
+            decision_plan: plan,
+            frozen_batch,
+            prior_head: adopted.through,
+            decisions: vec![],
+            manifest_id: fixture::id(56_007),
+            control: Arc::new(CommitControl::default()),
+        })
+        .await
+        .unwrap();
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let initial = refresh_financial(&mut f, None).await;
+
+    // New legs move the purchase from 2026-11-01 to 2026-11-02.
+    let mut replacing = fixture::posted(legacy_binding(200), 9800, 30);
+    let day = fixture::date("2026-11-02");
+    for item in &mut replacing.legs {
+        item.leg.effective = day.clone();
+        item.leg.posting = day.clone();
+    }
+    let terms = replacing.financial.as_mut().unwrap();
+    terms.bookkeeping_date = day.clone();
+    for posting in &mut terms.postings {
+        posting.effective = day.clone();
+        posting.posting = day.clone();
+    }
+    let replacement = fixture::recognized(&replacing);
+    let mut request = CorrectionRequestV1 {
+        active_recognition: original,
+        replacement: vec![replacement.clone()],
+        remapping: vec![],
+        reason: "Correct the purchase date".into(),
+    };
+    let revision = fixture::id(56_010);
+    assert!(matches!(
+        CorrectionEngine::replace_legs(&initial, revision, &request, &replacing).unwrap(),
+        CorrectionPreviewV1::NeedsOrganizationDecision(_)
+    ));
+    // The note's successor moves to the new leg in the same commit.
+    let successor = OrganizationRecordV1 {
+        id: fixture::id(56_008),
+        version: 2,
+        targets: vec![RecordId(replacing.legs[0].leg.id.0)],
+        supersedes: Some(note.id),
+        ..note.clone()
+    };
+    request.remapping = vec![successor.clone()];
+    let CorrectionPreviewV1::Ready(plan) =
+        CorrectionEngine::replace_legs(&initial, revision, &request, &replacing).unwrap()
+    else {
+        panic!("the note has its successor");
+    };
+    commit(&mut f, &path, prepared(&initial, *plan, 56_010).unwrap()).await;
+    let current = refresh_financial(&mut f, None).await;
+    let index = current.accounting.as_ref().unwrap();
+    assert!(index.reversed.contains(&original));
+    assert!(!index.reversed.contains(&replacement.id));
+    let [entry] = index.recognitions[&replacement.id].as_slice() else {
+        panic!("one native entry")
+    };
+    assert_eq!(entry.value_date, "2026-11-02");
+    for key in [adoption, note.id] {
+        assert_eq!(current.records.get(&key), initial.records.get(&key));
+    }
+    assert_eq!(
+        current.records.get(&successor.id),
+        Some(&AuthoritativeRecordV1::Organization(successor.clone()))
+    );
+    assert!(matches!(current.records.get(&revision),
+    Some(AuthoritativeRecordV1::RecognitionCorrectionRevision(r))
+        if r.schema_version == 3
+            && r.remap_disposition == RecognitionCorrectionRemapV1::ReplacedLegs {
+                retired_adoption: adoption,
+                replacement_adoption: replacing.adoption_id,
+            }));
+    use currents_domain::recognition::RecognitionEngine;
+    RecognitionEngine::audit(&current).unwrap();
+
+    // History through the earlier commit still holds the old belief, and a
+    // fresh rebuild re-admits the correction.
+    f.service.close().await.unwrap();
+    let store = open(&path).await;
+    store
+        .history()
+        .verify_checkpoint(initial.through, initial.domain_digest)
+        .await
+        .unwrap();
+    let head = store.writer().audited_prefix().await.unwrap().native_head;
+    let fresh = open(&dir.path().join("leg-rebuild.db")).await;
+    let report = ReplayCoordinator::rebuild(store.history(), fresh)
+        .await
+        .unwrap();
+    assert_eq!(report.native_head, head);
+    store.close().await.unwrap();
 }
 
 #[tokio::test]
