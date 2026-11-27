@@ -2,7 +2,7 @@
 //! caller-selected Activity lines it uses.
 use crate::activity_predicate::ActivityPredicateV1;
 use crate::catalog::incomplete;
-use crate::dependencies::{self, ActivityScope};
+use crate::dependencies::{self, ActivityInputs, ActivityScope};
 use currents_types::{
     AccountId, AccountScope, AccountingIntent, Amount, AuthoritativeRecordV1, ClaimDispositionV1,
     ClaimReasonV1, Date, DateBasis, DecisionKind, DecisionPlan, Digest, DomainCommitV1,
@@ -115,6 +115,34 @@ pub fn compare_activity_allocations(
 /// The version of the Activity comparison a claim records.
 pub const ACTIVITY_COMPARISON_VERSION: u32 = 1;
 
+/// Whether a recorded claim still applies at a state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClaimApplicabilityV1 {
+    Current,
+    /// The claim no longer applies, for each listed reason.
+    Invalidated(Vec<InvalidationReasonV1>),
+}
+
+/// An input of a claim that changed after the claim recorded it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InvalidationReasonV1 {
+    /// A live recognized leg in the claim's accounts and dates was added or
+    /// removed.
+    ScopeActivity,
+    /// A named observation has a later explicit revision.
+    EvidenceRevision,
+    /// The account's catalog terms, other than its display name, changed.
+    AccountMapping,
+    /// Whether the named receipts report the interval complete changed.
+    Coverage,
+    /// A relationship the claim compared changed. Activity claims compare
+    /// none; relationship claims will.
+    Relationship,
+    /// A segment replacement or correction invalidated the claim when it
+    /// committed (CUR-016).
+    RetiredDependency,
+}
+
 pub struct ReconciliationEngine;
 
 impl ReconciliationEngine {
@@ -150,8 +178,7 @@ impl ReconciliationEngine {
     }
 
     /// Confirm a `Proposed` claim for its scope. `digest` must be the digest
-    /// the claim recorded, and the digest computed at `state` must still
-    /// equal it.
+    /// the claim recorded, and the claim must still apply at `state`.
     pub fn confirm(
         state: &DomainState,
         claim: RecordId,
@@ -161,7 +188,9 @@ impl ReconciliationEngine {
         if Self::lifecycle(state, claim)? != ReconciliationStatus::Proposed {
             return Err(EngineError::invalid());
         }
-        if digest != recorded.dependency_digest || current_digest(state, recorded)? != digest {
+        if digest != recorded.dependency_digest
+            || Self::applicability(state, claim)? != ClaimApplicabilityV1::Current
+        {
             return Err(dependencies::stale());
         }
         disposition(
@@ -232,6 +261,38 @@ impl ReconciliationEngine {
             }
         }
         Ok(decided.unwrap_or(recorded.status))
+    }
+
+    /// Whether the claim still applies at `state`. It stops applying from
+    /// the commit whose result invalidated it, and wherever the dependency
+    /// digest computed at `state` differs from the one it recorded. Neither
+    /// changes the claim record or its lifecycle status.
+    pub fn applicability(
+        state: &DomainState,
+        claim: RecordId,
+    ) -> Result<ClaimApplicabilityV1, EngineError> {
+        let recorded = Self::claim(state, claim)?;
+        let mut reasons = match recorded.kind {
+            ReconciliationKindV1::Activity
+                if recorded.comparison_version == ACTIVITY_COMPARISON_VERSION =>
+            {
+                let scope = ActivityScope::new(
+                    &recorded.scope,
+                    &recorded.cutoffs,
+                    &recorded.evidence_dependencies,
+                )?;
+                ActivityInputs::read(state, &scope)?.changes(state, &scope, recorded)?
+            }
+            _ => return Err(EngineError::version()),
+        };
+        if state.claim_invalidated(claim) {
+            reasons.push(InvalidationReasonV1::RetiredDependency);
+        }
+        Ok(if reasons.is_empty() {
+            ClaimApplicabilityV1::Current
+        } else {
+            ClaimApplicabilityV1::Invalidated(reasons)
+        })
     }
 
     fn claim(state: &DomainState, id: RecordId) -> Result<&ReconciliationClaimV1, EngineError> {
@@ -306,23 +367,6 @@ fn disposition(
         AuthoritativeRecordV1::ReconciliationDisposition(record),
         "Decide a reconciliation claim",
     ))
-}
-
-/// The dependency digest of `claim`'s scope at `state`.
-fn current_digest(
-    state: &DomainState,
-    claim: &ReconciliationClaimV1,
-) -> Result<Digest, EngineError> {
-    match claim.kind {
-        ReconciliationKindV1::Activity
-            if claim.comparison_version == ACTIVITY_COMPARISON_VERSION =>
-        {
-            let scope =
-                ActivityScope::new(&claim.scope, &claim.cutoffs, &claim.evidence_dependencies)?;
-            dependencies::activity_digest(state, &scope, claim.comparison_version)
-        }
-        _ => Err(EngineError::version()),
-    }
 }
 
 /// A named statement: its movement lines and its reported balances.
@@ -408,7 +452,7 @@ fn activity(
     let statement = Statement::read(state, &evidence)?;
     for id in &exclusions {
         let names_line = statement.lines.iter().any(|(l, ..)| l.observation == *id);
-        let names_leg = legs.iter().any(|live| RecordId(live.leg.id.0) == *id);
+        let names_leg = legs.iter().any(|leg| RecordId(leg.id.0) == *id);
         if !names_line && !names_leg {
             return Err(EngineError::invalid());
         }
@@ -439,14 +483,14 @@ fn activity(
     // Every allocation of a live recognized leg. The comparison selects the
     // ones in scope; it needs the others to find repeated identities.
     let mut allocations = Vec::new();
+    // The claim names legs, not recognitions: an identity-only correction
+    // replaces a recognition and keeps its legs, so the claim still applies.
     let mut accounting = BTreeSet::new();
     let mut unmapped = statement.unmapped();
     let mut unsupported = Vec::new();
-    for live in &legs {
-        let leg = live.leg;
+    for &leg in &legs {
         if scope.relevant(leg) {
             accounting.insert(RecordId(leg.id.0));
-            accounting.extend(live.recognitions.iter().map(|r| RecordId(r.0)));
         }
         if excluded(RecordId(leg.id.0)) {
             continue;
@@ -554,11 +598,8 @@ fn activity(
         scope: vec![scope.account],
         unit,
         cutoffs: request.cutoffs.clone(),
-        dependency_digest: dependencies::activity_digest(
-            state,
-            &scope,
-            ACTIVITY_COMPARISON_VERSION,
-        )?,
+        dependency_digest: ActivityInputs::read(state, &scope)?
+            .digest(&scope, ACTIVITY_COMPARISON_VERSION)?,
         evidence_dependencies: evidence,
         decision_dependencies: vec![],
         accounting_dependencies: accounting.into_iter().collect(),

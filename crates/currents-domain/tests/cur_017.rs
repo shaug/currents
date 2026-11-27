@@ -1,9 +1,13 @@
 //! CUR-017 reconciliation claim records, activity coverage evaluation, and
-//! recording, confirming and replaying claims.
+//! recording, confirming and replaying claims, and when a claim stops
+//! applying.
 use currents_accounting::AccountingAdapter;
 use currents_domain::ReplayEngine;
 use currents_domain::catalog::CatalogEngine;
-use currents_domain::reconciliation::ReconciliationEngine;
+use currents_domain::recognition::RecognitionEngine;
+use currents_domain::reconciliation::{
+    ClaimApplicabilityV1, InvalidationReasonV1, ReconciliationEngine,
+};
 use currents_types::*;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
@@ -132,6 +136,14 @@ impl World {
         savings.catalog.display_name = "Synthetic savings".into();
         let plan = CatalogEngine::set_complete(&state, &savings).unwrap();
         fixture::apply(&mut state, &plan);
+        // Native accounts, B among them, so adoptions can post.
+        let index = state.accounting.as_mut().unwrap();
+        let mut savings = index.accounts[&account(ACCOUNT_A)].clone();
+        savings.account_id = account(ACCOUNT_B);
+        index.accounts.insert(savings.account_id, savings);
+        for mapping in index.accounts.values_mut() {
+            mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
+        }
         let mut world = Self {
             state,
             lines: BTreeMap::new(),
@@ -461,8 +473,13 @@ fn cur_017_1_complete_coverage_is_proposed() {
             allocation(world.line("reversal"), -100),
         ]
     );
-    // The claim names the three recognitions and three legs it compared.
-    assert_eq!(claim.accounting_dependencies.len(), 6);
+    // The claim names the three legs it compared, and no recognition.
+    let mut legs: Vec<_> = ["debit", "deposit", "reversal"]
+        .iter()
+        .map(|name| RecordId(world.leg_of(name).0))
+        .collect();
+    legs.sort();
+    assert_eq!(claim.accounting_dependencies, legs);
 }
 
 #[test]
@@ -651,11 +668,9 @@ fn cur_017_activity_digest_ignores_posting_ids() {
     let corrected = world.evaluate(&world.request());
     assert_eq!(corrected.status, ReconciliationStatus::Proposed);
     assert_eq!(corrected.dependency_digest, claim.dependency_digest);
-    assert!(corrected.accounting_dependencies.contains(&id(7000)));
-    assert!(
-        !corrected
-            .accounting_dependencies
-            .contains(&RecordId(original.id.0))
+    assert_eq!(
+        corrected.accounting_dependencies,
+        claim.accounting_dependencies
     );
 
     // A recognized line's amount changes.
@@ -1144,5 +1159,265 @@ fn cur_017_replay_rejects_forged_confirmation() {
     refused(
         &world.state,
         &proposed(&world.state, &plan, DecisionKind::Reconciliation),
+    );
+}
+
+// Claim applicability. K is the November activity claim on A, recorded and
+// confirmed. A claim stops applying from the commit that changes an input in
+// its scope.
+
+fn applicability(state: &DomainState, claim: RecordId) -> ClaimApplicabilityV1 {
+    ReconciliationEngine::applicability(state, claim).unwrap()
+}
+
+fn invalidated(reason: InvalidationReasonV1) -> ClaimApplicabilityV1 {
+    ClaimApplicabilityV1::Invalidated(vec![reason])
+}
+
+impl World {
+    /// `World::complete` with K recorded and confirmed.
+    fn confirmed() -> (Self, ReconciliationClaimV1) {
+        let mut world = Self::complete();
+        let k = world.record(&world.request());
+        let plan = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap();
+        world.commit(&plan);
+        (world, k)
+    }
+
+    /// The adoption plan that recognizes a new `value` line on account `on`
+    /// dated `day`, from observation `n`, which no claim names.
+    fn adoption(&mut self, n: u32, on: u32, value: i128, day: &str) -> DecisionPlan {
+        let line = self.observe(n, ObservationKind::Movement, value, date(day));
+        let binding = SourceFacetBindingV1 {
+            observation: line.observation,
+            parse_product: id(n + 1),
+            facet: line.facet,
+            amount: amount(value),
+        };
+        let mut request = fixture::posted(binding, n + 10, EXPENSE);
+        for item in &mut request.legs {
+            item.leg.account_id = account(on);
+            item.leg.effective = date(day);
+            item.leg.posting = date(day);
+        }
+        let terms = request.financial.as_mut().unwrap();
+        terms.bookkeeping_date = date(day);
+        terms.postings[0].account_id = account(on);
+        for posting in &mut terms.postings {
+            posting.effective = date(day);
+            posting.posting = date(day);
+        }
+        RecognitionEngine::adopt(&self.state, &request).unwrap()
+    }
+
+    /// Commit `plan` with one decision of `kind`.
+    fn commit_as(&mut self, plan: &DecisionPlan, kind: DecisionKind) {
+        let commit = proposed(&self.state, plan, kind);
+        self.state = admit(&self.state, &commit).unwrap();
+    }
+
+    /// Commit revision `n` of A's catalog after `change`.
+    fn revise_catalog(&mut self, n: u32, change: &dyn Fn(&mut SetAccountCatalogV1)) {
+        let current = CatalogEngine::current(&self.state, id(ACCOUNT_A + 1)).unwrap();
+        let mut request = fixture::catalog();
+        request.revision_id = id(n);
+        request.prior_revision = Some(current.id);
+        request.catalog = current.catalog;
+        change(&mut request.catalog);
+        let plan = CatalogEngine::set_complete(&self.state, &request).unwrap();
+        self.commit_as(&plan, DecisionKind::Catalog);
+    }
+
+    /// The leg that allocates the statement line `name`.
+    fn leg_of(&self, name: &str) -> LegId {
+        let line = self.line(name);
+        self.state
+            .records
+            .values()
+            .find_map(|record| match record {
+                AuthoritativeRecordV1::FinancialLeg(l)
+                    if l.allocations
+                        .iter()
+                        .any(|a| a.observation == line.observation) =>
+                {
+                    Some(l.id)
+                }
+                _ => None,
+            })
+            .unwrap()
+    }
+}
+
+#[test]
+fn cur_017_3_backdated_posting_invalidates() {
+    let (mut world, k) = World::confirmed();
+    let at_confirmation = world.state.clone();
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // A new 25 USD purchase on A posted 2026-11-12, from a line K never named.
+    let plan = world.adoption(3500, ACCOUNT_A, -25, "2026-11-12");
+    assert!(!plan.invalidations.contains(&k.id));
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::ScopeActivity)
+    );
+    // The claim record and its confirmation keep their contents.
+    assert_eq!(bytes(&world.state, k.id), bytes(&at_confirmation, k.id));
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::ConfirmedForScope
+    );
+    // The history through K's confirmation still reports K current.
+    assert_eq!(
+        applicability(&at_confirmation, k.id),
+        ClaimApplicabilityV1::Current
+    );
+    assert_eq!(
+        lifecycle(&at_confirmation, k.id),
+        ReconciliationStatus::ConfirmedForScope
+    );
+}
+
+#[test]
+fn cur_017_3_outside_scope_keeps_claim() {
+    // A line on A posted 2026-12-02, after K's interval.
+    let (mut world, k) = World::confirmed();
+    let plan = world.adoption(3500, ACCOUNT_A, -25, "2026-12-02");
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // A line on B posted 2026-11-12, inside K's interval.
+    let (mut world, k) = World::confirmed();
+    let plan = world.adoption(3500, ACCOUNT_B, -25, "2026-11-12");
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+}
+
+#[test]
+fn cur_017_3_cosmetic_tag_keeps_claim() {
+    let (mut world, k) = World::confirmed();
+    // An organization tag on a leg K compared.
+    let leg = world.leg_of("debit");
+    assert!(k.accounting_dependencies.contains(&RecordId(leg.0)));
+    let tag = OrganizationRecordV1 {
+        id: id(3600),
+        version: 1,
+        kind: OrganizationKind::Tag,
+        targets: vec![RecordId(leg.0)],
+        parent: None,
+        text: "groceries".into(),
+        allocations: vec![],
+        supersedes: None,
+    };
+    let plan = DecisionPlan {
+        records: vec![AuthoritativeRecordV1::Organization(tag)],
+        invalidations: vec![],
+        accounting: AccountingIntent::NoEffect(NoEffectV1 {
+            reason: "Tag a leg".into(),
+        }),
+    };
+    world.commit_as(&plan, DecisionKind::Organization);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // A new display name for A.
+    world.revise_catalog(3610, &|catalog| {
+        catalog.display_name = "Everyday checking".into();
+    });
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+}
+
+#[test]
+fn cur_017_input_changes_invalidate() {
+    // A revised version of the deposit line K named.
+    let (mut world, k) = World::confirmed();
+    let deposit = world.line("deposit").observation;
+    world.observe(3700, ObservationKind::Movement, 100, date("2026-11-12"));
+    let Some(AuthoritativeRecordV1::ObservationVersion(revision)) =
+        world.state.records.get_mut(&id(3700))
+    else {
+        unreachable!()
+    };
+    revision.prior_version = Some(deposit);
+    world.advance();
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::EvidenceRevision)
+    );
+
+    // A new source alias on A's catalog entry.
+    let (mut world, k) = World::confirmed();
+    world.revise_catalog(3710, &|catalog| {
+        catalog.aliases.push(SourceAliasV1 {
+            source: source(),
+            original_id: "checking-0042".into(),
+        });
+    });
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::AccountMapping)
+    );
+
+    // The named receipt now reports November partial.
+    let (mut world, k) = World::confirmed();
+    let mut coverage = journey()["coverage"].clone();
+    coverage["status"] = json!("Partial");
+    world.receipt(RECEIPT, &coverage);
+    world.advance();
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::Coverage)
+    );
+}
+
+#[test]
+fn cur_017_replay_rejects_claim_invalidation_elsewhere() {
+    let (mut world, k) = World::confirmed();
+    let mut plan = world.adoption(3500, ACCOUNT_A, -25, "2026-11-12");
+    plan.invalidations.push(k.id);
+    refused(
+        &world.state,
+        &proposed(&world.state, &plan, DecisionKind::Interpretation),
+    );
+    // The same adoption without the invalidation is admitted.
+    plan.invalidations.clear();
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert!(!world.state.claim_invalidated(k.id));
+}
+
+#[test]
+fn cur_017_invalidated_claim_cannot_be_confirmed() {
+    let mut world = World::complete();
+    let k = world.record(&world.request());
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::Proposed
+    );
+    let plan = world.adoption(3500, ACCOUNT_A, -25, "2026-11-12");
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::ScopeActivity)
+    );
+    let error = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap_err();
+    assert_eq!(error.class, ErrorClass::StaleBasis);
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::Proposed
     );
 }

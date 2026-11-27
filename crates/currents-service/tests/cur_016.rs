@@ -1,4 +1,7 @@
 //! CUR-016 corrections against an actual committed and replayed accounting prefix.
+use currents_domain::reconciliation::{
+    ClaimApplicabilityV1, InvalidationReasonV1, ReconciliationEngine,
+};
 use currents_domain::segments::{
     SegmentEngine, SegmentPreviewV1, SegmentReplacementV1, TransferJoinV1,
 };
@@ -1656,6 +1659,21 @@ async fn cur_016_backfill_invalidates_claim_in_scope() {
     assert!(!at_claims.claim_invalidated(history.k1));
     assert!(replaced.claim_invalidated(history.k1));
     assert!(!replaced.claim_invalidated(history.k2));
+    // K1 stops applying from the replacement, which retired its inputs.
+    let applicability =
+        |state: &DomainState, key| ReconciliationEngine::applicability(state, key).unwrap();
+    assert_eq!(
+        applicability(&at_claims, history.k1),
+        ClaimApplicabilityV1::Current
+    );
+    let ClaimApplicabilityV1::Invalidated(reasons) = applicability(&replaced, history.k1) else {
+        panic!("K1 no longer applies");
+    };
+    assert!(reasons.contains(&InvalidationReasonV1::RetiredDependency));
+    assert_eq!(
+        applicability(&replaced, history.k2),
+        ClaimApplicabilityV1::Current
+    );
     for key in [history.k1, history.k2] {
         assert_eq!(
             serde_json::to_vec(&replaced.records[&key]).unwrap(),
