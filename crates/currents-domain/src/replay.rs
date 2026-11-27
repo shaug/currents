@@ -122,6 +122,9 @@ impl ReplayEngine {
         state.dataset_policies = projection.dataset_policies;
         state.through = commit.seq;
         state.domain_digest = commit.digest;
+        state
+            .invalidated
+            .extend(commit.command_result.effects.invalidations.iter().copied());
         Ok(())
     }
 }

@@ -1405,3 +1405,194 @@ async fn cur_016_1_encrypted_cross_account_commit() {
     assert_eq!(rebuilt.writer().audited_prefix().await.unwrap(), after);
     rebuilt.close().await.unwrap();
 }
+
+// Claims on account A: K1 covers 2026-10-01 to 2026-10-31 with status
+// Matched, K2 covers 2026-11-05 to 2026-11-30. Both have empty explicit
+// dependency lists.
+const K1: u32 = 4001;
+const K2: u32 = 4002;
+
+fn claim_on_a(n: u32, start: &str, end: &str) -> AuthoritativeRecordV1 {
+    let fixtures: Vec<AuthoritativeRecordV1> =
+        serde_json::from_str(include_str!("../../../fixtures/contracts/v1/records.json")).unwrap();
+    let Some(AuthoritativeRecordV1::ReconciliationClaim(mut claim)) = fixtures
+        .into_iter()
+        .find(|r| matches!(r, AuthoritativeRecordV1::ReconciliationClaim(_)))
+    else {
+        panic!("claim fixture missing");
+    };
+    let civil = |day: &str| {
+        let TemporalValue::Date { civil, .. } = fixture::date(day) else {
+            panic!("civil date")
+        };
+        Some(civil)
+    };
+    claim.id = fixture::id(n);
+    claim.scope = vec![account(ACCOUNT_A)];
+    claim.cutoffs = DateScope {
+        start: civil(start),
+        end: civil(end),
+        basis: DateBasis::Effective,
+    };
+    claim.status = ReconciliationStatus::Matched;
+    AuthoritativeRecordV1::ReconciliationClaim(claim)
+}
+
+/// A history where K1 and K2 commit after A's anchor, then the replacement
+/// `a_replacement` commits through the verified writer path.
+struct Invalidated {
+    path: std::path::PathBuf,
+    /// The state at the claims' commit.
+    claimed: DomainState,
+    replaced: CommitSeq,
+}
+async fn invalidated_a(dir: &std::path::Path) -> Invalidated {
+    use currents_service::synthetic_commit_verified_segment;
+    let path = dir.join("claims.db");
+    let (mut f, old) = anchored_a(&path).await;
+    f.service.close().await.unwrap();
+
+    // The claims commit with no accounting effect, as their owner will.
+    let plan = DecisionPlan {
+        records: vec![
+            claim_on_a(K1, "2026-10-01", "2026-10-31"),
+            claim_on_a(K2, "2026-11-05", "2026-11-30"),
+        ],
+        invalidations: vec![],
+        accounting: AccountingIntent::NoEffect(NoEffectV1 {
+            reason: "Synthetic reconciliation claims".into(),
+        }),
+    };
+    let frozen = currents_accounting::AccountingAdapter::freeze(&plan.accounting, &old).unwrap();
+    let store = open(&path).await;
+    store
+        .writer()
+        .commit(segment_commit(&plan, &frozen, 52_000, Default::default()))
+        .await
+        .unwrap();
+    store.close().await.unwrap();
+    f.service = f.reopen().await;
+    let claimed = refresh_financial(&mut f, None).await;
+    assert_eq!(claimed.through, CommitSeq(old.through.0 + 1));
+    f.service.close().await.unwrap();
+
+    let request = a_replacement();
+    let (plan, frozen) = ready_plan(&claimed, &request);
+    let store = open(&path).await;
+    let receipt = synthetic_commit_verified_segment(
+        store.writer(),
+        &request,
+        segment_commit(&plan, &frozen, 52_010, Default::default()),
+    )
+    .await
+    .expect("a replacement with claims in its scope commits");
+    store.close().await.unwrap();
+    Invalidated {
+        path,
+        claimed,
+        replaced: receipt.commit,
+    }
+}
+
+#[tokio::test]
+async fn cur_016_backfill_invalidates_claim_in_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = invalidated_a(dir.path()).await;
+    let store = open(&history.path).await;
+    let commit = store
+        .history()
+        .read_prefix(history.replaced)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    let invalidations = &commit.command_result.effects.invalidations;
+    assert!(invalidations.contains(&fixture::id(K1)));
+    assert!(!invalidations.contains(&fixture::id(K2)));
+
+    let witness = open(&dir.path().join("through-claims.db")).await;
+    let at_claims = replay_through(&store.history(), history.claimed.through, &witness).await;
+    witness.close().await.unwrap();
+    let witness = open(&dir.path().join("through-replacement.db")).await;
+    let replaced = replay_through(&store.history(), history.replaced, &witness).await;
+    witness.close().await.unwrap();
+    store.close().await.unwrap();
+
+    assert_eq!(
+        at_claims.claim_status(fixture::id(K1)),
+        Some(ReconciliationStatus::Matched)
+    );
+    assert_eq!(
+        replaced.claim_status(fixture::id(K1)),
+        Some(ReconciliationStatus::Invalidated)
+    );
+    assert_eq!(
+        replaced.claim_status(fixture::id(K2)),
+        Some(ReconciliationStatus::Matched)
+    );
+    for kept in [K1, K2] {
+        let key = fixture::id(kept);
+        assert_eq!(
+            serde_json::to_vec(&replaced.records[&key]).unwrap(),
+            serde_json::to_vec(&history.claimed.records[&key]).unwrap()
+        );
+    }
+}
+
+#[tokio::test]
+async fn cur_016_replay_checks_invalidations() {
+    use currents_service::ReplayCoordinator;
+    let dir = tempfile::tempdir().unwrap();
+    let history = invalidated_a(dir.path()).await;
+
+    // A fresh rebuild reports the same invalidated claims.
+    let store = open(&history.path).await;
+    let witness = open(&dir.path().join("source-witness.db")).await;
+    let source = replay_through(&store.history(), history.replaced, &witness).await;
+    witness.close().await.unwrap();
+    let rebuilt_path = dir.path().join("rebuilt.db");
+    ReplayCoordinator::rebuild(store.history(), open(&rebuilt_path).await)
+        .await
+        .expect("replay re-admits the invalidations");
+    let rebuilt = open(&rebuilt_path).await;
+    let witness = open(&dir.path().join("rebuilt-witness.db")).await;
+    let again = replay_through(&rebuilt.history(), history.replaced, &witness).await;
+    witness.close().await.unwrap();
+    rebuilt.close().await.unwrap();
+    assert!(source.invalidated.contains(&fixture::id(K1)));
+    assert_eq!(again.invalidated, source.invalidated);
+    for claim in [K1, K2] {
+        let key = fixture::id(claim);
+        assert_eq!(again.claim_status(key), source.claim_status(key));
+    }
+
+    // Replay rejects a commit whose recorded invalidations add or omit a claim.
+    let stored = store
+        .history()
+        .read_prefix(history.replaced)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    store.close().await.unwrap();
+    let mut added = stored.clone();
+    added
+        .command_result
+        .effects
+        .invalidations
+        .push(fixture::id(K2));
+    let mut omitted = stored.clone();
+    omitted
+        .command_result
+        .effects
+        .invalidations
+        .retain(|id| *id != fixture::id(K1));
+    let mut exact = history.claimed.clone();
+    currents_domain::ReplayEngine::apply(&mut exact, &stored).unwrap();
+    for tampered in [added, omitted] {
+        let mut prior = history.claimed.clone();
+        assert!(currents_domain::ReplayEngine::apply(&mut prior, &tampered).is_err());
+        assert_eq!(prior.through, history.claimed.through);
+        assert_eq!(prior.invalidated, history.claimed.invalidated);
+    }
+}

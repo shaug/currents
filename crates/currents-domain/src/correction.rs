@@ -1,4 +1,5 @@
 //! Proposals for corrections to an accepted recognition.
+use crate::dependents::{self, Change, Dependents};
 use currents_types::{
     AccountingIndexV1, AccountingIntent, ActivityAdoptionV1, ActivityStatusV1,
     AuthoritativeRecordV1, DecisionPlan, DomainState, EngineError, RecognitionCorrectionRemapV1,
@@ -78,6 +79,8 @@ impl CorrectionEngine {
     }
     /// Produce an append-only revision for the standalone identity correction slice.
     /// Dispatch remains disabled; dependency-aware remapping is not yet implemented.
+    /// The plan invalidates every claim that sees the change or names the
+    /// retired recognition or its postings.
     pub fn correct_durable(
         state: &DomainState,
         revision_id: RecordId,
@@ -109,8 +112,6 @@ impl CorrectionEngine {
         if state.records.values().any(|record| match record {
             AuthoritativeRecordV1::Association(_)
             | AuthoritativeRecordV1::Allocation(_)
-            | AuthoritativeRecordV1::ReconciliationClaim(_)
-            | AuthoritativeRecordV1::Organization(_)
             | AuthoritativeRecordV1::OccurrenceMatch(_)
             | AuthoritativeRecordV1::ForecastRun(_) => true,
             AuthoritativeRecordV1::AssociationRevision(a) => {
@@ -139,6 +140,13 @@ impl CorrectionEngine {
         }) {
             return Err(EngineError::version());
         }
+        // The legs stay, so organization on them stays current. Claims that
+        // see the change or name the retired recognition are invalidated.
+        let change = Change::new(state, std::slice::from_ref(request), [], [])?;
+        let Dependents::Claims(claims) = dependents::assess(state, &change)? else {
+            return Err(EngineError::invalid());
+        };
+        plan.invalidations.extend(claims);
         plan.records.insert(
             0,
             AuthoritativeRecordV1::RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1 {

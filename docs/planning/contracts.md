@@ -140,7 +140,7 @@ continue to reject. See [qualification and limits](../qualification/associations
 
 Files: `crates/currents-domain/src/{recognition,segments,correction}.rs`.
 
-`SetAccountCatalogV1 { account_id, component_id:RecordId, account_class, unit_id, normal_sign, aliases, lifecycle, display_name }` supports create/update of domain catalog under preview; immutable native paths/unit codes/classes cannot be silently changed. `CatalogEngine::set(state:&DomainState,request:&SetAccountCatalogV1)->Result<DecisionPlan,EngineError>` produces a metadata-only native declaration plan when needed; separate financial preview follows committed declaration head. `RecognitionRequestV1 { leg_ids, facet_allocations, postings, native_dates, interpretation, authority_basis }`; `CorrectionRequestV1 { active_recognition, replacement, remapping, reason }`; `SegmentRequestV1 { component, prior_segment, opening, included_activity, replacement_closure, approved_accounts, residual_disposition }` holds recognition IDs only and has no route; the replacement preview takes the drafts instead (see the CUR-016 segment replacement checkpoint). `RecognitionEngine::recognize(state:&DomainState,request:RecognitionRequestV1)->Result<DecisionPlan,EngineError>`; `CorrectionEngine::correct(state,&CorrectionRequestV1)->Result<DecisionPlan,EngineError>`; `SegmentEngine::replace(state:&DomainState,request:&SegmentReplacementV1)->Result<SegmentPreviewV1,EngineError>`. Each enforces facet and leg ownership, whole-entry closure, explicit dates, supported anchors, no overlapping segments, no silent residual plug; atomically invalidates dependent claims, organization mapping, matches and basis calculations.
+`SetAccountCatalogV1 { account_id, component_id:RecordId, account_class, unit_id, normal_sign, aliases, lifecycle, display_name }` supports create/update of domain catalog under preview; immutable native paths/unit codes/classes cannot be silently changed. `CatalogEngine::set(state:&DomainState,request:&SetAccountCatalogV1)->Result<DecisionPlan,EngineError>` produces a metadata-only native declaration plan when needed; separate financial preview follows committed declaration head. `RecognitionRequestV1 { leg_ids, facet_allocations, postings, native_dates, interpretation, authority_basis }`; `CorrectionRequestV1 { active_recognition, replacement, remapping, reason }`; `SegmentRequestV1 { component, prior_segment, opening, included_activity, replacement_closure, approved_accounts, residual_disposition }` holds recognition IDs only and has no route; the replacement preview takes the drafts instead (see the CUR-016 segment replacement checkpoint). `RecognitionEngine::recognize(state:&DomainState,request:RecognitionRequestV1)->Result<DecisionPlan,EngineError>`; `CorrectionEngine::correct(state,&CorrectionRequestV1)->Result<DecisionPlan,EngineError>`; `SegmentEngine::replace(state:&DomainState,request:&SegmentReplacementV1)->Result<SegmentPreviewV1,EngineError>`. Each enforces facet and leg ownership, whole-entry closure, explicit dates, supported anchors, no overlapping segments, no silent residual plug; atomically invalidates dependent claims and guards organization mapping. It refuses a change that occurrence matches, basis results, saved forecast runs or review records depend on, until CUR-026, CUR-022, CUR-027 and CUR-020 define their correction rules.
 
 
 ### CUR013 complete additive command route
@@ -199,12 +199,11 @@ second replacement of a replaced segment, a successor that names itself and
 any history with two active segments for one component. Ordinary adoption
 still refuses activity at or before every opening cutoff.
 
-Until later CUR-016 leaves merge, the preview refuses a backfill leg on
-another external account, and a replacement when a reconciliation claim,
-organization record, review record or forecast run names the account, a
-recognition in the closure, or that recognition's legs or postings. There is
-no command route, `OperationV1` variant or owner residual decision; the legacy
-`ReplaceAccountingSegment` stays unsupported.
+The preview refuses a backfill leg on another external account unless it
+joins a transfer family (see the cross-account closure checkpoint).
+Dependent records follow the CUR-016 dependent invalidation checkpoint. There
+is no command route, `OperationV1` variant or owner residual decision; the
+legacy `ReplaceAccountingSegment` stays unsupported.
 
 ### CUR-016 cross-account closure checkpoint
 
@@ -254,6 +253,38 @@ family revision retires the original and names the re-emission, the original
 is reversed, and the two recognitions differ only in their IDs. CUR-015
 association records are never rewritten. Payroll and duplicate families,
 changed transfer economics and other association revisions remain refused.
+
+### CUR-016 dependent invalidation checkpoint
+
+A segment replacement and a durable identity correction each assess the
+records that depend on them. The change is the plan's corrections: each
+reverses its active recognition and adds its replacements. Its net posting
+change is kept by account, unit, effective date and posting date. A
+replacement retires the prior segment, the old opening's adoption, event and
+legs, each joined family's prior revision, and every reversed recognition
+with its postings. A correction retires only the corrected recognition and
+its postings; its legs stay.
+
+A reconciliation claim is invalidated when the net change on one of its scope
+accounts is nonzero on a date inside its cutoffs, by the claim's own date
+basis, or when its evidence, decision, exclusion or matched-allocation
+identities name a retired identity. A posting date that is not a civil date
+counts as inside every range. A claim that is already invalidated is skipped.
+The plan lists each invalidated claim in record order after its other
+invalidations, so the command result's effects list it too. The claim record
+is never rewritten. `DomainState::claim_status` reports `Invalidated` from the
+commit whose result invalidated the claim, and the record's own status before
+it. Replay derives the plan again and rejects a segment or correction commit
+whose recorded invalidations differ.
+
+Organization records on legs that stay keep their targets. A replacement that
+retires a leg that an organization record targets returns
+`SegmentPreviewV1::NeedsOrganizationDecision`, which lists each record and
+leg, and no plan. An organization record that names another retired identity
+refuses the change. So does a review record, forecast run, occurrence match,
+allocation or association that names an account the change touches or a
+retired identity. The durable correction keeps refusing any forecast run,
+occurrence match, allocation or association in the dataset.
 
 ### CUR-016 segment commit checkpoint
 

@@ -1,6 +1,6 @@
 //! Foundational record shapes. Domain validation and replay belong to their owners.
 use crate::{schema::Schema, *};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 choices!(UnitKind {
     Currency,
     Security,
@@ -345,6 +345,21 @@ pub struct DomainState {
     pub accounting: Option<AccountingIndexV1>,
     pub records: BTreeMap<RecordId, AuthoritativeRecordV1>,
     pub through: CommitSeq,
+    /// Every record a committed result invalidated through this prefix.
+    pub invalidated: BTreeSet<RecordId>,
+}
+impl DomainState {
+    /// A claim's status at this prefix: `Invalidated` from the commit whose
+    /// result invalidated it, otherwise the status its record holds.
+    pub fn claim_status(&self, id: RecordId) -> Option<ReconciliationStatus> {
+        let Some(AuthoritativeRecordV1::ReconciliationClaim(claim)) = self.records.get(&id) else {
+            return None;
+        };
+        if self.invalidated.contains(&id) {
+            return Some(ReconciliationStatus::Invalidated);
+        }
+        Some(claim.status)
+    }
 }
 impl Schema for Health {
     fn schema() -> serde_json::Value {
