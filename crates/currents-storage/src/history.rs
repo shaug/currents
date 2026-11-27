@@ -7,7 +7,6 @@ use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use std::collections::BTreeMap;
 
 const MAX_COMMIT: usize = 64 * 1_048_576;
-const MAX_ITEMS: usize = 20_000;
 const MAX_OBSERVATIONS: usize = 10_000;
 // Shared with the private schema query-plan regression so it explains the reader SQL.
 pub(crate) const ITEM_REFERENCE_COUNT: &str =
@@ -95,7 +94,7 @@ fn item_counts_within_limits(
     records: &[AuthoritativeRecordV1],
     decisions: &[DecisionEnvelopeV1],
 ) -> bool {
-    records.len().saturating_add(decisions.len()) <= MAX_ITEMS
+    records.len().saturating_add(decisions.len()) <= MAX_COMMIT_ITEMS
         && records
             .iter()
             .filter(|r| matches!(r, AuthoritativeRecordV1::ObservationVersion(_)))

@@ -59,6 +59,11 @@ dto!(AccountingExpectationsV1 {
     native_operation_count: CommitSeq,
     financial_entry_count: CommitSeq
 });
+/// C05 caps one atomic closure at this many native operations.
+pub const MAX_CLOSURE_OPERATIONS: usize = 20_000;
+/// C04 caps one commit at this many records and decision envelopes. A commit
+/// with native operations also holds its frozen manifest record.
+pub const MAX_COMMIT_ITEMS: usize = 20_000;
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountingBatchV1 {

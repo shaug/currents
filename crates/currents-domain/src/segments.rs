@@ -308,6 +308,18 @@ pub enum SegmentPreviewV1 {
     /// Organization records target a leg the replacement retires. No plan
     /// exists: the owner must decide what each record now organizes.
     NeedsOrganizationDecision(Vec<OrganizationQuestionV1>),
+    /// The closure needs more native operations than one atomic C05 closure
+    /// may hold. No plan exists, and the limit does not change.
+    TooLarge {
+        operations: usize,
+        limit: usize,
+    },
+    /// The commit would hold more records, its frozen manifest included, than
+    /// one C04 commit may hold. No plan exists, and the limit does not change.
+    TooManyRecords {
+        records: usize,
+        limit: usize,
+    },
 }
 fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError> {
     let component = state
@@ -439,7 +451,6 @@ impl SegmentEngine {
         if index.prefix.through != state.through
             || index.prefix.domain_digest != state.domain_digest
             || index.prefix.native_head.semantics_version != 1
-            || request.backfill.len() > 4096
             || request.transfers.len() > 1024
             || request.reemissions.len() > 4096
         {
@@ -480,6 +491,22 @@ impl SegmentEngine {
             || !index.recognitions.contains_key(&prior.opening)
         {
             return Err(invalid());
+        }
+        // C05 reverses each native entry of a retired recognition and adds
+        // one entry per replacement: the old opening for the new opening and
+        // each backfill, then each re-emitted original for its re-emission.
+        let entries = |id| index.recognitions.get(id).map_or(0, Vec::len);
+        let operations = request.reemissions.iter().fold(
+            entries(&prior.opening)
+                .saturating_add(1)
+                .saturating_add(request.backfill.len()),
+            |n, again| n.saturating_add(entries(&again.original)).saturating_add(1),
+        );
+        if operations > MAX_CLOSURE_OPERATIONS {
+            return Ok(SegmentPreviewV1::TooLarge {
+                operations,
+                limit: MAX_CLOSURE_OPERATIONS,
+            });
         }
         let Some((component, _, basis, new_cutoff)) = opening_basis(state, &request.opening)?
         else {
@@ -783,6 +810,14 @@ impl SegmentEngine {
                 replacement: r.replacement.id,
             })
         }));
+        // C04 commits these records with the plan's frozen manifest.
+        let commit_records = records.len().saturating_add(1);
+        if commit_records > MAX_COMMIT_ITEMS {
+            return Ok(SegmentPreviewV1::TooManyRecords {
+                records: commit_records,
+                limit: MAX_COMMIT_ITEMS,
+            });
+        }
         let accounting = match <[_; 1]>::try_from(corrections) {
             Ok([retire]) => AccountingIntent::Correction(retire),
             Err(corrections) => AccountingIntent::Corrections(corrections),

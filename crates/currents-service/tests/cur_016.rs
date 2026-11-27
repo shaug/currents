@@ -692,11 +692,26 @@ fn segment_commit(
 /// test `cur_016_1_replacement_proves_old_boundary`: a 3,400 USD balance at
 /// 2026-10-30 and a -100 USD movement on 2026-10-31.
 async fn anchored_a(path: &std::path::Path) -> (support::Fixture, DomainState) {
-    let evidence = [
-        (2900, 3300, "2026-11-01", ObservationKind::Balance),
-        (3000, 3400, "2026-10-30", ObservationKind::Balance),
-        (3100, -100, "2026-10-31", ObservationKind::Movement),
-    ];
+    anchored_with(
+        path,
+        &[
+            (3000, 3400, "2026-10-30", ObservationKind::Balance),
+            (3100, -100, "2026-10-31", ObservationKind::Movement),
+        ],
+    )
+    .await
+}
+
+/// Account A anchored as in `anchored_a`, retaining `evidence` as
+/// `(observation, amount, date, kind)` for a later replacement.
+async fn anchored_with(
+    path: &std::path::Path,
+    evidence: &[(u32, i128, &str, ObservationKind)],
+) -> (support::Fixture, DomainState) {
+    let evidence: Vec<_> = [(2900, 3300, "2026-11-01", ObservationKind::Balance)]
+        .into_iter()
+        .chain(evidence.iter().copied())
+        .collect();
     let texts: Vec<_> = evidence
         .iter()
         .map(|(n, value, day, _)| format!("Synthetic evidence {n}: {value} USD on {day}"))
@@ -732,6 +747,51 @@ fn a_replacement() -> SegmentReplacementV1 {
         (3400, "2026-10-30"),
         (-100, "2026-10-31", "2026-10-31"),
     )
+}
+
+/// Backfill movements in the large replacement, and the first observation of
+/// their retained evidence. Movement `i` is observation `LARGE + 20 * i`.
+const LARGE_BACKFILL: u32 = 1_198;
+const LARGE: u32 = 200_000;
+
+/// Account A anchored as in `anchored_a`, with retained evidence for a
+/// replacement of 1,198 movements of -1 USD on 2026-10-31 and a 4,498 USD
+/// balance at 2026-10-30.
+async fn anchored_large(path: &std::path::Path) -> (support::Fixture, DomainState) {
+    let opening = 3300 + i128::from(LARGE_BACKFILL);
+    let evidence: Vec<_> = [(3000, opening, "2026-10-30", ObservationKind::Balance)]
+        .into_iter()
+        .chain(
+            (0..LARGE_BACKFILL)
+                .map(|i| (LARGE + 20 * i, -1, "2026-10-31", ObservationKind::Movement)),
+        )
+        .collect();
+    anchored_with(path, &evidence).await
+}
+
+fn large_replacement() -> SegmentReplacementV1 {
+    let mut request = a_replacement();
+    request.opening = opening_draft(
+        retained(3000, 3300 + i128::from(LARGE_BACKFILL)),
+        3010,
+        ACCOUNT_A,
+        3017,
+        "2026-10-30",
+    );
+    request.backfill = (0..LARGE_BACKFILL)
+        .map(|i| {
+            let n = LARGE + 20 * i;
+            dated_draft(
+                retained(n, -1),
+                n + 10,
+                ACCOUNT_A,
+                EXPENSE,
+                "2026-10-31",
+                "2026-10-31",
+            )
+        })
+        .collect();
+    request
 }
 
 /// The head, domain records and frozen native entries of a replayed state.
@@ -1133,6 +1193,109 @@ async fn cur_016_segment_cancel_and_retry() {
     ));
     assert_eq!(writer.audited_prefix().await.unwrap(), committed);
     store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn cur_016_4_1200_operation_replacement_is_atomic() {
+    use currents_accounting::test_fixtures::{ClosureFault, fault_control, release_control};
+    use currents_service::{ReplayCoordinator, synthetic_commit_verified_segment};
+    use currents_storage::CommitFailure;
+    // Each full read of this history costs seconds, so the test reads it
+    // only where a check needs it.
+    let started = std::time::Instant::now();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("segment-large.db");
+    let (f, old) = anchored_large(&path).await;
+    let request = large_replacement();
+    let (plan, frozen) = ready_plan(&old, &request);
+    // The old opening's reversal, the new opening and 1,198 backfills.
+    assert_eq!(frozen.operations.len(), 1200);
+    f.service.close().await.unwrap();
+    let identical = |control| segment_commit(&plan, &frozen, 53_000, control);
+    let store = open(&path).await;
+    let (writer, history) = (store.writer(), store.history());
+    let prior = history.audit_report().await.unwrap();
+
+    // Cancellation after the final native batch and before COMMIT.
+    let prepared = identical(fault_control(ClosureFault::PauseAfter1200));
+    let control = prepared.control.clone();
+    let cancel = async {
+        while control.completed_operations() < 1200 {
+            tokio::task::yield_now().await;
+        }
+        assert!(control.request_cancel());
+    };
+    let (outcome, ()) = tokio::time::timeout(std::time::Duration::from_secs(120), async {
+        tokio::join!(
+            synthetic_commit_verified_segment(writer, &request, prepared),
+            cancel
+        )
+    })
+    .await
+    .expect("the final batch was not reached");
+    assert!(matches!(
+        outcome,
+        Err(CommitFailure::DefinitelyRolledBack(EngineError {
+            class: ErrorClass::Canceled,
+            ..
+        }))
+    ));
+    let command = CommandId(fixture::id(53_000).0);
+    assert!(
+        writer
+            .command_result(command, DIGEST)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // The identical command commits once. After its first native batch of
+    // 600, a separate reader sees the prior domain and native heads: the
+    // cancellation left them, and the open commit does not show.
+    let prepared = identical(fault_control(ClosureFault::PauseAfter600));
+    let control = prepared.control.clone();
+    let observe = async {
+        while control.completed_operations() < 600 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(control.completed_operations(), 600);
+        assert_eq!(history.audit_report().await.unwrap(), prior);
+        release_control(&control);
+    };
+    let (receipt, ()) = tokio::time::timeout(std::time::Duration::from_secs(120), async {
+        tokio::join!(
+            synthetic_commit_verified_segment(writer, &request, prepared),
+            observe
+        )
+    })
+    .await
+    .expect("the first native batch did not finish");
+    let receipt = receipt.expect("the identical command commits after the cancellation");
+    assert_eq!(control.completed_operations(), 1200);
+    assert_eq!(receipt.commit, CommitSeq(prior.through.0 + 1));
+    let committed = history.audit_report().await.unwrap();
+    assert_eq!(
+        (committed.through, &committed.native_head),
+        (receipt.commit, &receipt.native_head)
+    );
+    assert_ne!(committed.native_head, prior.native_head);
+    store.close().await.unwrap();
+
+    // A fresh rebuild matches the committed native head, native leaves and
+    // ordered postings.
+    let store = open(&path).await;
+    let rebuilt = ReplayCoordinator::rebuild(
+        store.history(),
+        open(&dir.path().join("segment-large-rebuild.db")).await,
+    )
+    .await
+    .expect("replay re-admits the large replacement");
+    store.close().await.unwrap();
+    assert_eq!(rebuilt, committed);
+    eprintln!(
+        "cur_016_4_1200_operation_replacement_is_atomic ran in {:?}",
+        started.elapsed()
+    );
 }
 
 #[tokio::test]
