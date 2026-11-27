@@ -492,6 +492,12 @@ const CUR_017_SUITES: &Suites = &[
             "cur_017_activity_scope_and_basis",
             "cur_017_activity_digest_ignores_posting_ids",
             "cur_017_activity_refuses_other_bases",
+            "cur_017_record_and_replay_claim",
+            "cur_017_confirm_rechecks_digest",
+            "cur_017_partial_claim_cannot_be_confirmed",
+            "cur_017_supersession",
+            "cur_017_original_confirmation_reproducible",
+            "cur_017_replay_rejects_forged_confirmation",
         ],
     ),
     (

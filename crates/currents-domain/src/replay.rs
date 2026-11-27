@@ -92,6 +92,7 @@ impl ReplayEngine {
                 | AuthoritativeRecordV1::Allocation(_)
                 | AuthoritativeRecordV1::OccurrenceMatch(_) => return Err(EngineError::version()),
                 AuthoritativeRecordV1::ReconciliationClaim(v) => Some(v.id),
+                AuthoritativeRecordV1::ReconciliationDisposition(v) => Some(v.id),
                 AuthoritativeRecordV1::Organization(v) => {
                     if !v.allocations.is_empty() {
                         return Err(EngineError::version());

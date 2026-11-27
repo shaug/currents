@@ -52,6 +52,7 @@ const RECORDS: &[&str] = &[
     "AccountingSegment",
     "SegmentReemission",
     "ReconciliationClaim",
+    "ReconciliationDisposition",
     "Organization",
     "Rule",
     "Review",
@@ -707,6 +708,9 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.reference(&["Unit"], &v["unit"], None);
             m.many(RECORDS, &v["exclusions"]);
             m.allocations(&v["matched_allocations"]);
+        }
+        AuthoritativeRecordV1::ReconciliationDisposition(_) => {
+            m.reference(&["ReconciliationClaim"], &v["claim"], None);
         }
         AuthoritativeRecordV1::Organization(_) => {
             m.many(RECORDS, &v["targets"]);

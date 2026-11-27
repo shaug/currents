@@ -4,10 +4,11 @@ use crate::activity_predicate::ActivityPredicateV1;
 use crate::catalog::incomplete;
 use crate::dependencies::{self, ActivityScope};
 use currents_types::{
-    AccountId, Amount, AuthoritativeRecordV1, ClaimReasonV1, Date, DateBasis, DomainState,
-    EngineError, EvidenceAllocationV1, MovementFacetV1, ObservationKind, ReconciliationClaimV1,
-    ReconciliationKindV1, ReconciliationRequestV1, ReconciliationStatus, RecordId, SourceValue,
-    TemporalValue,
+    AccountId, AccountScope, AccountingIntent, Amount, AuthoritativeRecordV1, ClaimDispositionV1,
+    ClaimReasonV1, Date, DateBasis, DecisionKind, DecisionPlan, Digest, DomainCommitV1,
+    DomainState, EngineError, EvidenceAllocationV1, MovementFacetV1, NoEffectV1, ObservationKind,
+    ReconciliationClaimV1, ReconciliationDispositionV1, ReconciliationKindV1,
+    ReconciliationRequestV1, ReconciliationStatus, RecordId, SourceValue, TemporalValue,
 };
 use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -133,6 +134,194 @@ impl ReconciliationEngine {
             | ReconciliationKindV1::Relationship
             | ReconciliationKindV1::Holdings => Err(EngineError::version()),
         }
+    }
+
+    /// Evaluate `request` at `state` and record the claim, with no
+    /// accounting effect.
+    pub fn record(
+        state: &DomainState,
+        request: &ReconciliationRequestV1,
+    ) -> Result<DecisionPlan, EngineError> {
+        let claim = Self::evaluate(state, request)?;
+        Ok(no_effect(
+            AuthoritativeRecordV1::ReconciliationClaim(claim),
+            "Record a reconciliation claim",
+        ))
+    }
+
+    /// Confirm a `Proposed` claim for its scope. `digest` must be the digest
+    /// the claim recorded, and the digest computed at `state` must still
+    /// equal it.
+    pub fn confirm(
+        state: &DomainState,
+        claim: RecordId,
+        digest: Digest,
+    ) -> Result<DecisionPlan, EngineError> {
+        let recorded = Self::claim(state, claim)?;
+        if Self::lifecycle(state, claim)? != ReconciliationStatus::Proposed {
+            return Err(EngineError::invalid());
+        }
+        if digest != recorded.dependency_digest || current_digest(state, recorded)? != digest {
+            return Err(dependencies::stale());
+        }
+        disposition(
+            claim,
+            digest,
+            ClaimDispositionV1::ConfirmedForScope,
+            "Confirmed for the claim's scope at its dependency digest",
+        )
+    }
+
+    /// Dispute a `Proposed` or `PartiallySupported` claim. `digest` must be
+    /// the digest the claim recorded.
+    pub fn dispute(
+        state: &DomainState,
+        claim: RecordId,
+        digest: Digest,
+        reason: &str,
+    ) -> Result<DecisionPlan, EngineError> {
+        let recorded = Self::claim(state, claim)?;
+        if !matches!(
+            Self::lifecycle(state, claim)?,
+            ReconciliationStatus::Proposed | ReconciliationStatus::PartiallySupported
+        ) || reason.trim().is_empty()
+        {
+            return Err(EngineError::invalid());
+        }
+        if digest != recorded.dependency_digest {
+            return Err(dependencies::stale());
+        }
+        disposition(claim, digest, ClaimDispositionV1::Disputed, reason)
+    }
+
+    /// The claim's lifecycle status at `state`. A newer claim with the same
+    /// kind, accounts, unit and interval makes it `Superseded`. Otherwise an
+    /// owner's confirmation or dispute decides it, and before either the
+    /// claim's own recorded status does. A claim's commit follows its basis
+    /// commit, so the claim with the later basis is the newer one.
+    pub fn lifecycle(
+        state: &DomainState,
+        claim: RecordId,
+    ) -> Result<ReconciliationStatus, EngineError> {
+        let recorded = Self::claim(state, claim)?;
+        let mut decided = None;
+        for record in state.records.values() {
+            match record {
+                AuthoritativeRecordV1::ReconciliationClaim(other)
+                    if other.id != recorded.id
+                        && other.kind == recorded.kind
+                        && other.scope == recorded.scope
+                        && other.unit == recorded.unit
+                        && other.cutoffs == recorded.cutoffs
+                        && other.basis.through_commit > recorded.basis.through_commit =>
+                {
+                    return Ok(ReconciliationStatus::Superseded);
+                }
+                AuthoritativeRecordV1::ReconciliationDisposition(d) if d.claim == claim => {
+                    if decided.is_some() {
+                        return Err(EngineError::invalid());
+                    }
+                    decided = Some(match d.disposition {
+                        ClaimDispositionV1::ConfirmedForScope => {
+                            ReconciliationStatus::ConfirmedForScope
+                        }
+                        ClaimDispositionV1::Disputed => ReconciliationStatus::Disputed,
+                    });
+                }
+                _ => {}
+            }
+        }
+        Ok(decided.unwrap_or(recorded.status))
+    }
+
+    fn claim(state: &DomainState, id: RecordId) -> Result<&ReconciliationClaimV1, EngineError> {
+        match state.records.get(&id) {
+            Some(AuthoritativeRecordV1::ReconciliationClaim(claim)) if claim.id == id => Ok(claim),
+            _ => Err(EngineError::invalid()),
+        }
+    }
+}
+
+/// C06 replay of a claim, confirmation or dispute commit: the plan derived
+/// again from the prior history must be the commit's whole record set, with
+/// one `Reconciliation` decision and no invalidations.
+pub(crate) fn readmit(prior: &DomainState, commit: &DomainCommitV1) -> Result<(), EngineError> {
+    let Some((AuthoritativeRecordV1::FrozenAccountingManifest(_), held)) =
+        commit.records.split_last()
+    else {
+        return Err(EngineError::invalid());
+    };
+    let plan = match held {
+        [AuthoritativeRecordV1::ReconciliationClaim(claim)] => {
+            ReconciliationEngine::record(prior, &request_of(claim))?
+        }
+        [AuthoritativeRecordV1::ReconciliationDisposition(d)] => match d.disposition {
+            ClaimDispositionV1::ConfirmedForScope => {
+                ReconciliationEngine::confirm(prior, d.claim, d.dependency_digest)?
+            }
+            ClaimDispositionV1::Disputed => {
+                ReconciliationEngine::dispute(prior, d.claim, d.dependency_digest, &d.reason)?
+            }
+        },
+        _ => return Err(EngineError::invalid()),
+    };
+    let [decision] = commit.decisions.as_slice() else {
+        return Err(EngineError::invalid());
+    };
+    if plan.records != held
+        || decision.decision_type != DecisionKind::Reconciliation
+        || !commit.command_result.effects.invalidations.is_empty()
+    {
+        return Err(EngineError::invalid());
+    }
+    Ok(())
+}
+
+fn no_effect(record: AuthoritativeRecordV1, reason: &str) -> DecisionPlan {
+    DecisionPlan {
+        records: vec![record],
+        invalidations: vec![],
+        accounting: AccountingIntent::NoEffect(NoEffectV1 {
+            reason: reason.into(),
+        }),
+    }
+}
+
+fn disposition(
+    claim: RecordId,
+    digest: Digest,
+    disposition: ClaimDispositionV1,
+    reason: &str,
+) -> Result<DecisionPlan, EngineError> {
+    // A claim takes at most one confirmation or dispute.
+    let bytes = serde_json::to_vec(&(claim, disposition)).map_err(|_| EngineError::invalid())?;
+    let record = ReconciliationDispositionV1 {
+        id: derived_id(b"currents/reconciliation-disposition/v1\0", &bytes),
+        claim,
+        dependency_digest: digest,
+        disposition,
+        reason: reason.into(),
+    };
+    Ok(no_effect(
+        AuthoritativeRecordV1::ReconciliationDisposition(record),
+        "Decide a reconciliation claim",
+    ))
+}
+
+/// The dependency digest of `claim`'s scope at `state`.
+fn current_digest(
+    state: &DomainState,
+    claim: &ReconciliationClaimV1,
+) -> Result<Digest, EngineError> {
+    match claim.kind {
+        ReconciliationKindV1::Activity
+            if claim.comparison_version == ACTIVITY_COMPARISON_VERSION =>
+        {
+            let scope =
+                ActivityScope::new(&claim.scope, &claim.cutoffs, &claim.evidence_dependencies)?;
+            dependencies::activity_digest(state, &scope, claim.comparison_version)
+        }
+        _ => Err(EngineError::version()),
     }
 }
 
@@ -357,8 +546,8 @@ fn activity(
             "Activity coverage is partial for the listed reasons.",
         )
     };
-    Ok(ReconciliationClaimV1 {
-        id: claim_id(request)?,
+    let mut claim = ReconciliationClaimV1 {
+        id: RecordId(uuid::Uuid::nil()),
         kind: ReconciliationKindV1::Activity,
         comparison_version: ACTIVITY_COMPARISON_VERSION,
         basis: request.basis.clone(),
@@ -379,7 +568,9 @@ fn activity(
         status,
         reasons,
         reason: reason.into(),
-    })
+    };
+    claim.id = claim_id(&claim)?;
+    Ok(claim)
 }
 
 fn sorted(ids: &[RecordId]) -> Vec<RecordId> {
@@ -422,18 +613,36 @@ fn facets(
     Ok(facets.into_values().collect())
 }
 
-/// A claim's ID derives from its request, so the same request at the same
-/// basis yields the same claim.
-fn claim_id(request: &ReconciliationRequestV1) -> Result<RecordId, EngineError> {
-    let bytes = serde_json::to_vec(request).map_err(|_| EngineError::invalid())?;
+/// The request a claim records: its kind, accounts, `cutoffs`, sorted
+/// evidence and exclusions, and basis. Replay evaluates it again.
+fn request_of(claim: &ReconciliationClaimV1) -> ReconciliationRequestV1 {
+    ReconciliationRequestV1 {
+        kind: claim.kind,
+        scope: AccountScope {
+            accounts: claim.scope.clone(),
+            components: vec![],
+        },
+        cutoffs: claim.cutoffs.clone(),
+        evidence: claim.evidence_dependencies.clone(),
+        exclusions: claim.exclusions.clone(),
+        basis: claim.basis.clone(),
+    }
+}
+
+/// A claim's ID derives from the request it records, so the same request at
+/// the same basis yields the same claim, and replay derives the ID again.
+fn claim_id(claim: &ReconciliationClaimV1) -> Result<RecordId, EngineError> {
+    let bytes = serde_json::to_vec(&request_of(claim)).map_err(|_| EngineError::invalid())?;
+    Ok(derived_id(b"currents/reconciliation-claim/v1\0", &bytes))
+}
+
+/// An RFC 9562 version 8 (custom) UUID from the SHA-256 of `tag` and `bytes`.
+fn derived_id(tag: &[u8], bytes: &[u8]) -> RecordId {
     let mut hash = Sha256::new();
-    hash.update(b"currents/reconciliation-claim/v1\0");
-    hash.update(&bytes);
+    hash.update(tag);
+    hash.update(bytes);
     let digest: [u8; 32] = hash.finalize().into();
     let mut bytes = [0; 16];
     bytes.copy_from_slice(&digest[..16]);
-    // An RFC 9562 version 8 (custom) UUID.
-    Ok(RecordId(
-        uuid::Builder::from_custom_bytes(bytes).into_uuid(),
-    ))
+    RecordId(uuid::Builder::from_custom_bytes(bytes).into_uuid())
 }
