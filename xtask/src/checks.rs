@@ -437,6 +437,7 @@ const CUR_016_SUITES: [(&str, &str, &[&str]); 3] = [
             "cur_016_reinterpretation_invalidates_claims_in_scope",
             "cur_016_reinterpretation_keeps_organization",
             "cur_016_4_20001_operations_fail_visibly",
+            "cur_016_4_commit_record_limit",
         ],
     ),
     (

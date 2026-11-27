@@ -314,6 +314,12 @@ pub enum SegmentPreviewV1 {
         operations: usize,
         limit: usize,
     },
+    /// The commit would hold more records, its frozen manifest included, than
+    /// one C04 commit may hold. No plan exists, and the limit does not change.
+    TooManyRecords {
+        records: usize,
+        limit: usize,
+    },
 }
 fn clearing(state: &DomainState, account: AccountId) -> Result<bool, EngineError> {
     let component = state
@@ -804,6 +810,14 @@ impl SegmentEngine {
                 replacement: r.replacement.id,
             })
         }));
+        // C04 commits these records with the plan's frozen manifest.
+        let commit_records = records.len().saturating_add(1);
+        if commit_records > MAX_COMMIT_ITEMS {
+            return Ok(SegmentPreviewV1::TooManyRecords {
+                records: commit_records,
+                limit: MAX_COMMIT_ITEMS,
+            });
+        }
         let accounting = match <[_; 1]>::try_from(corrections) {
             Ok([retire]) => AccountingIntent::Correction(retire),
             Err(corrections) => AccountingIntent::Corrections(corrections),

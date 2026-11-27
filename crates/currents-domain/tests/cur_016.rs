@@ -1855,3 +1855,30 @@ fn cur_016_4_20001_operations_fail_visibly() {
         ErrorClass::UnsupportedVersion
     );
 }
+
+#[test]
+fn cur_016_4_commit_record_limit() {
+    // Each draft adds its event, leg, adoption and recognition; the commit
+    // also holds the successor segment and the frozen manifest. 4,998
+    // backfills fill the 20,000-record commit limit to 19,998 records.
+    let mut state = anchored();
+    let request = many_backfills(&mut state, 4_998);
+    let plan = ready(&state, &request);
+    assert_eq!(plan.records.len() + 1, 19_998);
+    let batch = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    assert_eq!(batch.operations.len(), 5_000);
+
+    // One more backfill adds four records and passes the limit, though its
+    // 5,001 native operations fit one closure.
+    let mut state = anchored();
+    let request = many_backfills(&mut state, 4_999);
+    let before = snapshot(&state);
+    assert_eq!(
+        SegmentEngine::replace(&state, &request).unwrap(),
+        SegmentPreviewV1::TooManyRecords {
+            records: 20_002,
+            limit: 20_000,
+        }
+    );
+    assert_eq!(snapshot(&state), before);
+}

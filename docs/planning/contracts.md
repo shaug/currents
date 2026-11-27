@@ -211,8 +211,9 @@ the old one, with retained movement evidence in the account's unit. The
 approved accounts must equal the accounts the plan touches.
 
 `SegmentPreviewV1` is `Ready(Box<DecisionPlan>)`, `UnresolvedResidual(Amount)`,
-`NeedsOrganizationDecision` (see the dependent invalidation checkpoint) or
-`TooLarge { operations, limit }` (see the large closure checkpoint).
+`NeedsOrganizationDecision` (see the dependent invalidation checkpoint),
+`TooLarge { operations, limit }` or `TooManyRecords { records, limit }` (see
+the large closure checkpoint).
 The residual is the new opening plus backfill on the account, minus the old
 opening; the preview reports it and returns no plan. A ready plan holds each
 draft's event, legs, adoption and recognition, then a successor
@@ -347,18 +348,24 @@ leaves add their tests to that list.
 The preview counts the native operations a replacement needs before it checks
 the drafts. C05 reverses each native entry of the old opening and of each
 re-emitted original, then adds one entry for the new opening, each backfill
-and each re-emission. A count above `MAX_CLOSURE_OPERATIONS` (20,000, now
-defined in `currents-types` and re-exported by `currents-accounting`) returns
+and each re-emission. A count above `MAX_CLOSURE_OPERATIONS` (20,000) returns
 `SegmentPreviewV1::TooLarge { operations, limit }` and no plan. The backfill
 has no length limit of its own.
 
-A closure within the limit freezes and commits through the segment commit
-path unchanged. C04 applies its native batches of at most 600 entries on one
+A plan also has to fit one C04 commit: its records plus the frozen manifest
+may number at most `MAX_COMMIT_ITEMS` (20,000). Each single-leg backfill adds
+four records (event, leg, adoption and recognition), so a backfill-only
+replacement holds at most 4,998 backfills, far below the operation limit. A larger plan returns `SegmentPreviewV1::TooManyRecords { records,
+limit }` and no plan. Both constants live in `currents-types`;
+`currents-accounting` re-exports the first and the C04 writer checks the
+second.
+
+A plan within both limits freezes and commits through the segment commit path
+unchanged. C04 applies its native batches of at most 600 entries on one
 transaction, so a reader sees the prior domain and native heads until COMMIT,
 and a failure or cancellation in any batch rolls back the whole closure. The
-C05 limit of 64 MiB of canonical instructions and the C04 limit of 20,000
-records per commit still apply when the plan is frozen and committed; each
-refuses a larger plan with history unchanged.
+C05 limit of 64 MiB of canonical instructions still applies when the plan is
+frozen.
 
 <a id="c09"></a>
 
