@@ -225,8 +225,9 @@ pub(super) struct RetainedEvidence<'a> {
     pub(super) text: &'a str,
 }
 /// The genesis commit also retains each observation, its parse product and its
-/// content. Trusted synthetic history, as in CUR013; the file adapter only
-/// emits movements.
+/// content. Observations with the same text share one content and the import
+/// receipt of the first of them. Trusted synthetic history, as in CUR013; the
+/// file adapter only emits movements.
 pub(super) async fn bootstrap_with_evidence(
     path: &Path,
     evidence: &[RetainedEvidence<'_>],
@@ -255,21 +256,28 @@ pub(super) async fn bootstrap_with_evidence(
         }
     }
     let mut staged = Vec::new();
+    let mut digests = std::collections::BTreeMap::new();
     for item in evidence {
         let n = item.n;
         fixture::evidence(&mut fixture, n, item.value, None);
         let bytes = item.text;
-        let content = store.stage(bytes.as_bytes()).await.unwrap();
+        let first = !digests.contains_key(bytes);
+        if first {
+            let content = store.stage(bytes.as_bytes()).await.unwrap();
+            digests.insert(bytes, content.digest());
+            staged.push(content);
+        }
+        let digest = digests[bytes];
         let Some(AuthoritativeRecordV1::ObservationVersion(o)) =
             fixture.records.get_mut(&fixture::id(n))
         else {
             panic!()
         };
-        o.content_digest = content.digest();
+        o.content_digest = digest;
         o.sanitized_representation = bytes.into();
         o.semantic_kind = item.kind;
         o.temporal = fixture::date(item.day);
-        records.push(AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {
+        let receipt = AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {
             id: fixture::id(n + 2),
             source: o.source.clone(),
             adapter_version: "cur015-synthetic-history/1".into(),
@@ -282,11 +290,14 @@ pub(super) async fn bootstrap_with_evidence(
             truncated: false,
             complete: true,
             contents: vec![ContentReferenceV1 {
-                digest: content.digest(),
+                digest,
                 byte_count: CommitSeq(bytes.len() as u64),
                 media_type: "text/plain".into(),
             }],
-        }));
+        });
+        if first {
+            records.push(receipt);
+        }
         let Some(AuthoritativeRecordV1::AddressedParseProduct(p)) =
             fixture.records.get_mut(&fixture::id(n + 1))
         else {
@@ -296,7 +307,6 @@ pub(super) async fn bootstrap_with_evidence(
         p.product.facets[0].temporal = fixture::date(item.day);
         records.push(fixture.records[&fixture::id(n)].clone());
         records.push(fixture.records[&fixture::id(n + 1)].clone());
-        staged.push(content);
     }
     let units = records
         .iter()

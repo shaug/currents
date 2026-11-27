@@ -704,7 +704,9 @@ async fn anchored_a(path: &std::path::Path) -> (support::Fixture, DomainState) {
 }
 
 /// Account A anchored as in `anchored_a`, retaining `evidence` as
-/// `(observation, amount, date, kind)` for a later replacement.
+/// `(observation, amount, date, kind)` for a later replacement. Observations
+/// with the same amount and date share one retained content and receipt, like
+/// identical lines of one statement.
 async fn anchored_with(
     path: &std::path::Path,
     evidence: &[(u32, i128, &str, ObservationKind)],
@@ -715,7 +717,7 @@ async fn anchored_with(
         .collect();
     let texts: Vec<_> = evidence
         .iter()
-        .map(|(n, value, day, _)| format!("Synthetic evidence {n}: {value} USD on {day}"))
+        .map(|(_, value, day, _)| format!("Synthetic evidence: {value} USD on {day}"))
         .collect();
     let retained_evidence: Vec<_> = evidence
         .iter()
