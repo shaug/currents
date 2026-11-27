@@ -255,10 +255,10 @@ impl ActivityInputs {
 
     /// The inputs that differ from the ones `claim` compared, when its
     /// recorded digest is not the digest of these inputs. The claim records
-    /// the legs it compared and whether its interval was complete, and it
-    /// read each named observation at the named version. A named receipt
-    /// never changes, so when the interval's completeness is unchanged, a
-    /// remaining difference is in the account's catalog terms.
+    /// the legs it compared and whether its interval was complete, and
+    /// evaluation accepts only named observations without a later revision.
+    /// A named receipt never changes, so when the interval's completeness is
+    /// unchanged, a remaining difference is in the account's catalog terms.
     pub(crate) fn changes(
         &self,
         state: &DomainState,

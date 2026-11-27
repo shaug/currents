@@ -474,8 +474,9 @@ evaluates `Activity` requests. It refuses a request whose
 lags the state, with `StaleBasis`. Other kinds return `UnsupportedVersion`
 until their leaves merge. An Activity request names exactly one account and a
 `cutoffs` interval with both a start and an end. Each `evidence` ID names an
-import receipt or an observation version. Each exclusion names a named
-observation or a live recognized leg.
+import receipt or an observation version. Evaluation refuses a named
+observation version that has a later explicit revision with `StaleBasis`.
+Each exclusion names a named observation or a live recognized leg.
 
 The source lines are the movement facets of the named observations. A line's
 one reported date is its facet's temporal value, and the comparison uses it
@@ -586,6 +587,8 @@ computed at `state` differs from the claim's recorded digest, or when
   names, such as a newly recognized backdated line on the account inside the
   interval.
 - `EvidenceRevision`: a named observation has a later explicit revision.
+  Evaluation refuses a revised observation, so the revision came after the
+  claim.
 - `Coverage`: whether the named receipts report the interval complete differs
   from the claim's own `IncompleteInterval` reason.
 - `AccountMapping`: the account's catalog terms, other than its display name,

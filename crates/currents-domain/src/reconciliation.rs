@@ -385,6 +385,11 @@ impl<'a> Statement<'a> {
             match state.records.get(id) {
                 Some(AuthoritativeRecordV1::ImportReceipt(_)) => {}
                 Some(AuthoritativeRecordV1::ObservationVersion(_)) => {
+                    // A claim compares current evidence only, so a later
+                    // revision always means the evidence changed after it.
+                    if dependencies::current_version(state, *id)? != *id {
+                        return Err(dependencies::stale());
+                    }
                     for facet in facets(state, *id)? {
                         let SourceValue::Known(amount) = facet.amount else {
                             return Err(incomplete());

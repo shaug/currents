@@ -693,7 +693,8 @@ fn cur_017_activity_digest_ignores_posting_ids() {
     let after = changed.evaluate(&changed.request());
     assert_ne!(after.dependency_digest, claim.dependency_digest);
 
-    // A named observation gains a newer version.
+    // A named observation gains a newer version. A claim compares current
+    // evidence only, so evaluation refuses the superseded version.
     let mut revised = World::complete();
     let deposit = revised.line("deposit").observation;
     revised.observe(7100, ObservationKind::Movement, 100, date("2026-11-12"));
@@ -703,8 +704,8 @@ fn cur_017_activity_digest_ignores_posting_ids() {
         unreachable!()
     };
     next.prior_version = Some(deposit);
-    let after = revised.evaluate(&revised.request());
-    assert_ne!(after.dependency_digest, claim.dependency_digest);
+    let error = ReconciliationEngine::evaluate(&revised.state, &revised.request()).unwrap_err();
+    assert_eq!(error.class, ErrorClass::StaleBasis);
 }
 
 #[test]
