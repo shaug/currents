@@ -5,7 +5,7 @@ Refs # (use non-closing references until acceptance is complete).
 - Exact candidate, platform/tool versions, named tests, and counterexamples:
 - Local quality/core/msrv/docs/privacy results and remaining BLOCKED gates:
 - Schema/header/migration compatibility and narrow lint exceptions:
-- New or changed docs/slow-tests.json entries, with CI durations and reasons:
+- New or changed docs/slow-tests.json or docs/nested-cargo-tests.json entries, with CI durations and reasons:
 - Dependency source, features, license, advisory review (if changed):
 
 Synthetic fixtures only. Never attach raw private diagnostics or financial state.

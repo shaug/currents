@@ -7,6 +7,7 @@
 /clippy.toml @shaug
 /docs/lint-allowlist.json @shaug
 /docs/slow-tests.json @shaug
+/docs/nested-cargo-tests.json @shaug
 /AGENTS.md @shaug
 /CLAUDE.md @shaug
 /Cargo.toml @shaug

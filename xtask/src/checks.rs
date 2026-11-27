@@ -1070,7 +1070,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         ("check","quality")=>quality(), ("check","quality-ci")=>quality_ci(), ("check","core")=>core(false, None), ("check","msrv")=>core(true, None),
         ("check","docs")=>crate::quality::docs(None),
         ("check","privacy")=>crate::quality::privacy(&root()),
-        ("qualify", "format"|"compile"|"lints"|"allowlist"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
+        ("qualify", "format"|"compile"|"lints"|"allowlist"|"nested-cargo"|"schema-drift"|"workflow-security"|"privacy"|"docs"|"generated-drift"|"dependencies")=>crate::quality::qualify(gate, &args),
         ("qualify","workspace")=>workspace(),
         ("qualify","native-platform")=>crate::native::command(&root(), &args[2..]),
         ("qualify","financekit")=>crate::financekit_gate::qualify(&args[2..]),

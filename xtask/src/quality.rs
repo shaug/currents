@@ -255,6 +255,129 @@ impl<'ast> syn::visit::Visit<'ast> for LintAudit<'_> {
     }
 }
 
+/// The reviewed list of test functions that start a nested cargo build.
+const NESTED_CARGO: &str = "docs/nested-cargo-tests.json";
+
+/// What the gate says when a test starts cargo without an entry.
+const UNLISTED_CARGO: &str = "A nested cargo build competes for the shared target \
+directory and slows every test running beside it. Test the code directly, or add an \
+entry with a reason to docs/nested-cargo-tests.json; the maintainer reviews every change \
+to that file. See AGENTS.md.";
+
+/// Finds every function that calls `Command::new("cargo")` or
+/// `Command::new(env!("CARGO"))`.
+struct CargoCalls<'a> {
+    file: &'a str,
+    function: Option<String>,
+    found: BTreeSet<(String, String)>,
+}
+impl<'ast> syn::visit::Visit<'ast> for CargoCalls<'_> {
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        let previous = self.function.replace(item.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, item);
+        self.function = previous;
+    }
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        let previous = self.function.replace(item.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, item);
+        self.function = previous;
+    }
+    fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+        let is_command_new = matches!(&*call.func, syn::Expr::Path(path)
+            if path.path.segments.iter().rev().take(2).map(|s| s.ident.to_string())
+                .eq(["new", "Command"]));
+        let is_cargo = match call.args.first() {
+            Some(syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(program),
+                ..
+            })) => program.value() == "cargo",
+            Some(syn::Expr::Macro(mac)) => {
+                mac.mac.path.is_ident("env") && mac.mac.tokens.to_string() == "\"CARGO\""
+            }
+            _ => false,
+        };
+        if is_command_new && is_cargo {
+            let function = self.function.clone().unwrap_or_else(|| "<module>".into());
+            self.found.insert((self.file.to_owned(), function));
+        }
+        syn::visit::visit_expr_call(self, call);
+    }
+}
+
+/// Every workspace test function that starts cargo must have a reviewed entry
+/// in `docs/nested-cargo-tests.json`, and every entry must still start cargo.
+fn nested_cargo() -> Result<Value> {
+    let entries: Value = serde_json::from_str(&read(&root().join(NESTED_CARGO))?)
+        .map_err(|e| format!("{NESTED_CARGO}: {e}"))?;
+    let mut listed = BTreeSet::new();
+    for entry in entries
+        .as_array()
+        .ok_or_else(|| format!("{NESTED_CARGO} must be a list"))?
+    {
+        let (Some(path), Some(function)) = (entry["path"].as_str(), entry["function"].as_str())
+        else {
+            return Err(format!(
+                "{NESTED_CARGO}: every entry needs a path and a function"
+            ));
+        };
+        if entry["reason"]
+            .as_str()
+            .is_none_or(|reason| reason.trim().is_empty())
+        {
+            return Err(format!("{NESTED_CARGO}: {path} {function} needs a reason"));
+        }
+        if !listed.insert((path.to_owned(), function.to_owned())) {
+            return Err(format!("{NESTED_CARGO}: {path} {function} is listed twice"));
+        }
+    }
+    let mut files = vec![];
+    for e in fs::read_dir(root().join("crates")).map_err(|e| e.to_string())? {
+        let crate_dir = e.map_err(|e| e.to_string())?.path();
+        for part in ["src", "tests"] {
+            if crate_dir.join(part).exists() {
+                walk(&crate_dir.join(part), &mut files)?;
+            }
+        }
+    }
+    let mut found = BTreeSet::new();
+    for file in files
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|s| s == "rs"))
+    {
+        let relative = file
+            .strip_prefix(root())
+            .map_err(|e| e.to_string())?
+            .to_str()
+            .ok_or("non-UTF-8 source path")?
+            .to_owned();
+        let syntax = syn::parse_file(&read(&file)?)
+            .map_err(|_| format!("nested cargo: invalid Rust syntax in {relative}"))?;
+        let mut calls = CargoCalls {
+            file: &relative,
+            function: None,
+            found: BTreeSet::new(),
+        };
+        syn::visit::Visit::visit_file(&mut calls, &syntax);
+        found.append(&mut calls.found);
+    }
+    let line = |(path, function): &(String, String)| format!("{path} {function}");
+    let unlisted: Vec<_> = found.difference(&listed).map(line).collect();
+    if !unlisted.is_empty() {
+        return Err(format!(
+            "These functions start cargo without an entry in {NESTED_CARGO}:\n  {}\n{UNLISTED_CARGO}",
+            unlisted.join("\n  ")
+        ));
+    }
+    let stale: Vec<_> = listed.difference(&found).map(line).collect();
+    if !stale.is_empty() {
+        return Err(format!(
+            "{NESTED_CARGO} lists functions that no longer start cargo; remove them:\n  {}",
+            stale.join("\n  ")
+        ));
+    }
+    Ok(json!({"reviewed_nested_cargo_functions": found.len()}))
+}
+
 fn schema(path: Option<&Path>) -> Result<Value> {
     let generated = cargo(&[
         "run",
@@ -502,6 +625,7 @@ pub fn all(with_docs: bool) -> Result<Value> {
     rust("compile", None)?;
     rust("lints", None)?;
     allowlist(None)?;
+    nested_cargo()?;
     schema(None)?;
     generated()?;
     workflow(None)?;
@@ -510,7 +634,7 @@ pub fn all(with_docs: bool) -> Result<Value> {
     }
     dependencies()?;
     Ok(
-        json!({"quality":"format/compiler/Clippy/allowlist/schema/header/migration/workflow/dependencies","docs":with_docs}),
+        json!({"quality":"format/compiler/Clippy/allowlist/nested-cargo/schema/header/migration/workflow/dependencies","docs":with_docs}),
     )
 }
 pub fn qualify(gate: &str, args: &[String]) -> Result<Value> {
@@ -518,6 +642,7 @@ pub fn qualify(gate: &str, args: &[String]) -> Result<Value> {
     match gate {
         "format" | "compile" | "lints" => rust(gate, manifest.as_deref()),
         "allowlist" => allowlist(manifest.as_deref()),
+        "nested-cargo" => nested_cargo(),
         "schema-drift" => schema(option(args, "--schema")?.as_deref()),
         "generated-drift" => generated(),
         "workflow-security" => workflow(option(args, "--workflow")?.as_deref()),
@@ -560,4 +685,34 @@ pub fn ticket() -> Result<Value> {
         return Err("CUR-003 incomplete execution".into());
     }
     Ok(json!({"assertions":assertions}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CargoCalls;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn finds_functions_that_start_cargo() {
+        let source = r#"
+            fn plain() { Command::new("cargo").arg("test"); }
+            fn qualified() { let _ = std::process::Command::new(env!("CARGO")); }
+            fn nested() { let f = || tokio::process::Command::new("cargo"); }
+            fn other_programs() {
+                Command::new("git");
+                Command::new(std::env::current_exe().unwrap());
+                Command::new(env!("CARGO_BIN_EXE_tool"));
+            }
+            impl Fixture { fn build(&self) { Command::new("cargo"); Command::new("cargo"); } }
+        "#;
+        let syntax = syn::parse_file(source).unwrap();
+        let mut calls = CargoCalls {
+            file: "t.rs",
+            function: None,
+            found: BTreeSet::new(),
+        };
+        syn::visit::Visit::visit_file(&mut calls, &syntax);
+        let found: Vec<_> = calls.found.iter().map(|(_, f)| f.as_str()).collect();
+        assert_eq!(found, ["build", "nested", "plain", "qualified"]);
+    }
 }

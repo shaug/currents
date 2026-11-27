@@ -1,0 +1,67 @@
+[
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "cur_044_no_account_probe",
+    "reason": "Runs `cargo xtask qualify financekit --account=...` to check that the FinanceKit gate rejects an account argument."
+  },
+  {
+    "path": "crates/currents-acquisition/tests/cur_044.rs",
+    "function": "gate",
+    "reason": "Runs `cargo xtask qualify financekit` to check the gate's blocked report end to end."
+  },
+  {
+    "path": "crates/currents-ffi/tests/cur_004.rs",
+    "function": "cur_004_3",
+    "reason": "Runs `cargo xtask qualify native-platform` without full Xcode to check the blocked report."
+  },
+  {
+    "path": "crates/currents-ffi/tests/cur_004.rs",
+    "function": "cur_004_ticket_dispatches_native_qualification",
+    "reason": "Runs `cargo xtask ticket CUR-004` to check that the ticket dispatches native qualification."
+  },
+  {
+    "path": "crates/currents-service/tests/cur_047.rs",
+    "function": "inspect",
+    "reason": "Runs `cargo xtask household-readiness` with piped input to test the command end to end."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "cur_005_3",
+    "reason": "Runs the vendored doubleentry suite. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_005.rs",
+    "function": "native_test",
+    "reason": "Runs one vendored doubleentry test. CI runs this binary in the cached doubleentry job, not in the core pool."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_006.rs",
+    "function": "cur_006_1",
+    "reason": "Resolves and builds a fixture crate without SQLCipher to check that the build is rejected."
+  },
+  {
+    "path": "crates/currents-storage/tests/cur_008.rs",
+    "function": "prefix_visibility",
+    "reason": "Runs the currents-accounting `native_head_mapping` unit test as part of the CUR-008 assertion. It rebuilds that crate's tests and is the slowest CI test."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "cur_001_3",
+    "reason": "Resolves a fixture that requires a newer Rust to check the MSRV gate's failure."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "cur_001_4",
+    "reason": "Runs `cargo xtask` with a missing MSRV tool and with native provider overrides to check that both are blocked."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_001.rs",
+    "function": "xtask",
+    "reason": "Runs `cargo xtask` gates end to end for CUR-001."
+  },
+  {
+    "path": "crates/currents-types/tests/cur_003.rs",
+    "function": "run",
+    "reason": "Runs `cargo xtask` quality gates on fixtures for CUR-003."
+  }
+]

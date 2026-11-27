@@ -55,6 +55,13 @@ first list held every test slower than 15 seconds in nine CI runs on
 least twice its CI time as headroom. AGENTS.md gives the rules for adding an
 entry.
 
+The quality gate also rejects a function under `crates/` that calls
+`Command::new("cargo")` or `Command::new(env!("CARGO"))` unless
+`docs/nested-cargo-tests.json` lists that file and function with a reason, and
+it rejects entries whose function no longer starts cargo. CI job timeouts sit
+at about twice the slowest job in recent runs, so a job that doubles in time
+fails instead of running for an hour.
+
 The vendored suite's result changes only with `vendor/`, `patches/`,
 `rust-toolchain.toml`, `.cargo/` or its test file. The CI `doubleentry` job
 hashes those files with git, adds the OS and compiler, and looks for a recorded
