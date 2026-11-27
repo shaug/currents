@@ -252,20 +252,9 @@ pub(crate) fn readmit(prior: &DomainState, commit: &DomainCommitV1) -> Result<()
         return Err(EngineError::invalid());
     };
     let plan = match held {
-        [AuthoritativeRecordV1::ReconciliationClaim(claim)] => ReconciliationEngine::record(
-            prior,
-            &ReconciliationRequestV1 {
-                kind: claim.kind,
-                scope: AccountScope {
-                    accounts: claim.scope.clone(),
-                    components: vec![],
-                },
-                cutoffs: claim.cutoffs.clone(),
-                evidence: claim.evidence_dependencies.clone(),
-                exclusions: claim.exclusions.clone(),
-                basis: claim.basis.clone(),
-            },
-        )?,
+        [AuthoritativeRecordV1::ReconciliationClaim(claim)] => {
+            ReconciliationEngine::record(prior, &request_of(claim))?
+        }
         [AuthoritativeRecordV1::ReconciliationDisposition(d)] => match d.disposition {
             ClaimDispositionV1::ConfirmedForScope => {
                 ReconciliationEngine::confirm(prior, d.claim, d.dependency_digest)?
@@ -557,8 +546,8 @@ fn activity(
             "Activity coverage is partial for the listed reasons.",
         )
     };
-    Ok(ReconciliationClaimV1 {
-        id: claim_id(request, &evidence, &exclusions)?,
+    let mut claim = ReconciliationClaimV1 {
+        id: RecordId(uuid::Uuid::nil()),
         kind: ReconciliationKindV1::Activity,
         comparison_version: ACTIVITY_COMPARISON_VERSION,
         basis: request.basis.clone(),
@@ -579,7 +568,9 @@ fn activity(
         status,
         reasons,
         reason: reason.into(),
-    })
+    };
+    claim.id = claim_id(&claim)?;
+    Ok(claim)
 }
 
 fn sorted(ids: &[RecordId]) -> Vec<RecordId> {
@@ -622,27 +613,26 @@ fn facets(
     Ok(facets.into_values().collect())
 }
 
-/// A claim's ID derives from what the claim records of its request: the
-/// kind, accounts, `cutoffs`, sorted evidence and exclusions, and basis. The
-/// same request at the same basis yields the same claim, and replay derives
-/// the ID again from the claim.
-fn claim_id(
-    request: &ReconciliationRequestV1,
-    evidence: &[RecordId],
-    exclusions: &[RecordId],
-) -> Result<RecordId, EngineError> {
-    let recorded = ReconciliationRequestV1 {
-        kind: request.kind,
+/// The request a claim records: its kind, accounts, `cutoffs`, sorted
+/// evidence and exclusions, and basis. Replay evaluates it again.
+fn request_of(claim: &ReconciliationClaimV1) -> ReconciliationRequestV1 {
+    ReconciliationRequestV1 {
+        kind: claim.kind,
         scope: AccountScope {
-            accounts: request.scope.accounts.clone(),
+            accounts: claim.scope.clone(),
             components: vec![],
         },
-        cutoffs: request.cutoffs.clone(),
-        evidence: evidence.to_vec(),
-        exclusions: exclusions.to_vec(),
-        basis: request.basis.clone(),
-    };
-    let bytes = serde_json::to_vec(&recorded).map_err(|_| EngineError::invalid())?;
+        cutoffs: claim.cutoffs.clone(),
+        evidence: claim.evidence_dependencies.clone(),
+        exclusions: claim.exclusions.clone(),
+        basis: claim.basis.clone(),
+    }
+}
+
+/// A claim's ID derives from the request it records, so the same request at
+/// the same basis yields the same claim, and replay derives the ID again.
+fn claim_id(claim: &ReconciliationClaimV1) -> Result<RecordId, EngineError> {
+    let bytes = serde_json::to_vec(&request_of(claim)).map_err(|_| EngineError::invalid())?;
     Ok(derived_id(b"currents/reconciliation-claim/v1\0", &bytes))
 }
 
