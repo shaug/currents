@@ -1242,16 +1242,29 @@ positions hold one security twice.
 
 `scope` names the local accounts the snapshot covers. Only a `Complete`
 snapshot records absences. For each position whose quantity account is in its
-scope and whose security it omits, it records a `HoldingAbsenceV1`. The first
-absence for a position is version 1; each later one is the next version and
-names, as `prior`, the snapshot that holds the version before. A `Partial` or
-`Unknown` snapshot records no absence.
+scope and whose security it omits, it records a `HoldingAbsenceV1`. A
+`Partial` or `Unknown` snapshot records no absence. A complete snapshot that
+lists an unmapped position records no absence either, because that position
+could be any security in scope. It still records its mapped holdings and keeps
+the unmapped observations. A later complete snapshot of the scope with no
+unmapped position records absences as usual.
+
+The first absence for a position is version 1; each later one is the next
+version and names, as `prior`, the snapshot that holds the version before. A
+version counts publications: a complete 2026-11-30 snapshot published after a
+2026-12-31 one records version 2 and names the 2026-12-31 snapshot as its
+prior. The engine accepts an older statement imported late and never refuses
+one for its as-of date.
 
 `InvestmentEngine::holdings` adds `snapshot`, the latest snapshot whose scope
 covers the position's quantity account and lists its security, with that
-quantity and market value, and `absence`, the latest absence for the position
-when no snapshot at least as late lists the security. Snapshots order by
-as-of date, then by the commit of their receipt. Replay derives the snapshot
+quantity and market value; `absence`, the latest absence for the position
+when no snapshot at least as late lists the security; and `unmapped`, the
+unmapped positions of the latest snapshot whose scope covers the position's
+quantity account. Snapshots order by as-of date, then by the commit of their
+receipt, so the current absence is the one with the latest as-of date, not the
+highest version. In the example above, a read through 2026-12-31 reports the
+2026-12-31 absence, version 1, as current. Replay derives the snapshot
 record again from the prior prefix and the commit's own observations, so a
 forged holding or absence is refused. Holdings claims stay with CUR-017.
 

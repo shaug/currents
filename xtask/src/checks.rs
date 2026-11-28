@@ -610,6 +610,8 @@ const CUR_021_SUITES: &Suites = &[
             "cur_021_3_complete_snapshot_records_absence_assertion",
             "cur_021_3_absence_follows_scope",
             "cur_021_snapshot_keeps_unmapped_positions",
+            "cur_021_3_unmapped_position_withholds_absences",
+            "cur_021_3_absence_versions_follow_publication_order",
             "cur_021_snapshot_replay",
         ],
     ),
