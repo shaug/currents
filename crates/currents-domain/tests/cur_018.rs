@@ -2673,23 +2673,54 @@ fn cur_018_transfer_inside_one_counted_total() {
     );
 }
 
-#[test]
-fn cur_018_transfer_fee_leg_moves_no_funds() {
-    // The S2 transfer as admitted: 1,000.00 leaves checking A (account 10)
-    // for accounts 60 and 70 as 600.00 and 400.00, and a separate 10.00 fee
-    // leg leaves A as well. Each account gets an S1 alias.
-    let (mut state, mut request) = association_fixtures::transfer_request();
+/// The relationship source of the S2 transfer's captured rows.
+const RELATIONSHIPS: u32 = 900;
+
+/// The S2 transfer as admitted: 1,000.00 leaves checking A (account 10)
+/// for accounts 60 and 70 as 600.00 and 400.00, and a separate 10.00 fee
+/// leg leaves A as well. Each leg allocates a captured row from the
+/// relationship source. Each account gets an alias from `connection`.
+fn admitted_s2(connection: u32) -> (DomainState, CompleteAssociationRequestV1) {
+    let (mut state, request) = association_fixtures::transfer_request();
     for (n, original) in [(CHECKING, "A-1"), (60, "S-1"), (70, "T-1")] {
         let current = CatalogEngine::current(&state, id(n + 1)).unwrap();
         let mut revision = catalog();
         revision.revision_id = id(n + 3);
         revision.prior_revision = Some(current.id);
         revision.catalog = current.catalog;
-        revision.catalog.aliases = vec![alias(S1, original)];
+        revision.catalog.aliases = vec![alias(connection, original)];
         revision.ownership.account_id = account(n);
         let plan = CatalogEngine::set_complete(&state, &revision).unwrap();
         apply(&mut state, &plan);
     }
+    (state, request)
+}
+
+/// Commit `request`'s legs and association revision.
+fn admit(state: &mut DomainState, request: CompleteAssociationRequestV1) {
+    let mut records: Vec<_> = request
+        .legs
+        .into_iter()
+        .map(AuthoritativeRecordV1::FinancialLeg)
+        .collect();
+    records.push(AuthoritativeRecordV1::AssociationRevision(request.revision));
+    publish(state, records);
+}
+
+/// Posted balances from `connection` as of 2026-11-10 of 4,000.00 for A,
+/// 600.00 for 60 and 400.00 for 70, each receipt reporting `coverage`.
+fn s2_balances(state: &mut DomainState, connection: u32, coverage: Vec<CoverageV1>) {
+    for (n, original, value) in [(6000, "A-1", 4000), (6010, "S-1", 600), (6020, "T-1", 400)] {
+        let mut report = Report::posted(n, connection, value, "2026-11-10");
+        report.original_ids = vec![original];
+        report.coverage = coverage.clone();
+        publish(state, report.records());
+    }
+}
+
+#[test]
+fn cur_018_transfer_fee_leg_moves_no_funds() {
+    let (mut state, mut request) = admitted_s2(S1);
     // Each S1 balance as of 2026-11-10 includes its movement line. The fee
     // line has not arrived, and no coverage rules it out.
     for (i, leg) in request.legs.iter_mut().take(3).enumerate() {
@@ -2705,21 +2736,43 @@ fn cur_018_transfer_fee_leg_moves_no_funds() {
             amount: binding.amount,
         }];
     }
-    let mut records: Vec<_> = request
-        .legs
-        .into_iter()
-        .map(AuthoritativeRecordV1::FinancialLeg)
-        .collect();
-    records.push(AuthoritativeRecordV1::AssociationRevision(request.revision));
-    publish(&mut state, records);
-    publish(&mut state, report(6000, "A-1", 4000, 1));
-    publish(&mut state, report(6010, "S-1", 600, 1));
-    publish(&mut state, report(6020, "T-1", 400, 1));
+    admit(&mut state, request);
+    s2_balances(&mut state, S1, vec![]);
     // Every balance includes its share of the transfer, and the fee moves
     // no funds between them, so nothing is in flight.
     assert_eq!(
         total(&state, REQUESTED, &[CHECKING, 60, 70]),
         AggregateV1::Exact(amount(5000))
+    );
+}
+
+#[test]
+fn cur_018_admitted_transfer_rows_decide_membership() {
+    // The balances come from the relationship source, whose captured rows,
+    // dated 2026-11-01 to 2026-11-05, are on or before their as-of.
+    let (mut state, request) = admitted_s2(RELATIONSHIPS);
+    admit(&mut state, request);
+    s2_balances(&mut state, RELATIONSHIPS, vec![]);
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, 60, 70]),
+        AggregateV1::Exact(amount(5000))
+    );
+    // Balances from S1 have no line of their own on the legs, which the
+    // relationship rows already stand for, so complete S1 coverage proves
+    // nothing: 5,000.00, less or plus 1,000.00.
+    let (mut state, request) = admitted_s2(S1);
+    admit(&mut state, request);
+    s2_balances(
+        &mut state,
+        S1,
+        vec![posting_coverage("2026-11-01", "2026-11-10")],
+    );
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, 60, 70]),
+        AggregateV1::Range {
+            low: amount(4000),
+            high: amount(6000),
+        }
     );
 }
 
@@ -2753,11 +2806,10 @@ fn cur_018_transfer_between_unequal_shares() {
     );
 }
 
-#[test]
-fn cur_018_senders_at_different_shares() {
-    // A, owned 1/1, and savings S, owned 1/2, send 600.00 and 400.00 to B.
-    // Both still hold the funds and B holds them too, so the copy to remove
-    // has no single share.
+/// A, owned 1/1, and savings S, owned 1/2, send 600.00 and 400.00 to B.
+/// A and S report under complete S1 coverage without their outflow lines,
+/// so both still hold the funds, and B holds them too.
+fn two_senders() -> DomainState {
     let mut state = transfer_world();
     let legs = [
         transfer_leg(&mut state, 5100, S1, account(CHECKING), -600, SENT, false),
@@ -2783,8 +2835,26 @@ fn cur_018_senders_at_different_shares() {
     let mut savings = Report::posted(2020, S1, 2000, AS_OF);
     savings.original_ids = vec!["B-1"];
     publish(&mut state, savings.records());
+    state
+}
+
+#[test]
+fn cur_018_senders_at_different_shares() {
+    // The copy to remove has no single share.
     let AggregateV1::Indeterminate { obstructions, .. } =
-        total(&state, ASKED, &[CHECKING, SAVINGS, SAVINGS_B])
+        total(&two_senders(), ASKED, &[CHECKING, SAVINGS, SAVINGS_B])
+    else {
+        panic!("an indeterminate aggregate")
+    };
+    assert_eq!(obstructions, vec!["transfer_membership"]);
+}
+
+#[test]
+fn cur_018_uncounted_sender_leaves_amount_unknown() {
+    // With S out of scope, only A's 600.00 of B's receipt is counted twice,
+    // and the receipt alone does not say how much that is.
+    let AggregateV1::Indeterminate { obstructions, .. } =
+        total(&two_senders(), ASKED, &[CHECKING, SAVINGS_B])
     else {
         panic!("an indeterminate aggregate")
     };

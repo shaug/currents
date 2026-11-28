@@ -188,9 +188,11 @@ impl Member {
     }
 }
 
-/// The source lines allocated to `leg`, by the leg itself or by its
-/// association's current revision, each with its source and its one reported
-/// date, `None` when that date is unknown.
+/// The source lines allocated to `leg`, each with its source and its one
+/// reported date, `None` when that date is unknown. A line is a movement
+/// facet that the leg itself or its association's current revision
+/// allocates, or a captured relationship row that the revision allocates,
+/// dated by the row.
 fn lines<'a>(
     state: &'a DomainState,
     head: &AssociationRevisionV1,
@@ -218,6 +220,15 @@ fn lines<'a>(
             .find(|(f, _)| f.lineage_key == facet)
             .and_then(|(f, _)| Boundary::of(&f.temporal));
         found.push((&version.source, date));
+    }
+    for edge in head.captured_allocations.iter().filter(|e| e.leg == leg.id) {
+        let Some(AuthoritativeRecordV1::RelationshipCapture(capture)) =
+            state.records.get(&edge.source.capture)
+        else {
+            return Err(incomplete());
+        };
+        let row = IdentityEngine::retained_facet(state, &edge.source, leg.movement.unit_id)?;
+        found.push((&capture.source, Boundary::of(&row.effective)));
     }
     Ok(found)
 }
@@ -250,10 +261,12 @@ fn covered(
 /// Whether a counted amount includes `leg` of transfer `head` (ruling G7 on
 /// #27). A selected source balance includes it when a line allocated to it
 /// from that source is dated on or before the balance's as-of. It excludes
-/// it when every such line is dated after the as-of and a receipt from that
-/// source reports complete posting-date coverage from the leg's posting date
-/// through the as-of, or when the leg's effective date is after the as-of,
-/// so the funds had not moved yet. Several selected balances must agree. The
+/// it when every such line is dated after the as-of and either the leg's
+/// effective date is after the as-of, so the funds had not moved yet, or a
+/// receipt from that source reports complete posting-date coverage from the
+/// leg's posting date through the as-of. Coverage proves nothing for a leg
+/// that a line from another source already stands for, because the
+/// balance's own line would never be allocated to it. Several selected balances must agree. The
 /// anchored balance includes the legs it adds. A component that another
 /// counts in place of, `None`, has no counted amount to decide from. Any of
 /// them excludes a leg dated after `day`. Anything else is unknown.
@@ -286,7 +299,8 @@ fn member(
         let each = if dates().any(|d| d.is_some_and(|d| d.by(*as_of))) {
             Member::Included
         } else if dates().all(|d| d.is_some_and(|d| d.after(*as_of)))
-            && (moved.is_some_and(|m| m.after(*as_of)) || covered(state, source, leg, *as_of))
+            && (moved.is_some_and(|m| m.after(*as_of))
+                || (lines.iter().all(|(s, _)| *s == source) && covered(state, source, leg, *as_of)))
         {
             Member::Excluded
         } else {
@@ -334,9 +348,10 @@ fn fee(
 /// outflow without its receipt adds the receipt, a receipt without its
 /// outflow removes it, and agreement adds nothing. The amount is the
 /// receiving leg's movement, added at the receiving component's share and
-/// removed at the sending components' share, which must be one share. Fee
-/// legs move no funds between accounts, and funds that stay inside one
-/// counted amount adjust nothing.
+/// removed at the sending components' share, which must be one share. When
+/// a sending leg is on a component that does not count, the counted part of
+/// the receipt is not known. Fee legs move no funds between accounts, and
+/// funds that stay inside one counted amount adjust nothing.
 fn transfers(
     state: &DomainState,
     day: Date,
@@ -356,18 +371,22 @@ fn transfers(
         let mut sending: Option<Member> = None;
         let mut senders = BTreeSet::new();
         let mut sender_shares = BTreeSet::new();
+        // A sending leg on a component that does not count, such as one out
+        // of scope, sends funds that no counted amount holds.
+        let mut uncounted_sender = false;
         let mut receiving = Vec::new();
         for id in &head.legs {
             let Some(AuthoritativeRecordV1::FinancialLeg(leg)) = state.records.get(&RecordId(id.0))
             else {
                 return Err(incomplete());
             };
-            let Some(c) = counted.get(&leg.account_id) else {
-                continue;
-            };
             if fee(state, head, leg)? {
                 continue;
             }
+            let Some(c) = counted.get(&leg.account_id) else {
+                uncounted_sender |= leg.movement.coefficient < 0;
+                continue;
+            };
             let m = member(state, day, head, leg, c.evidence, c.basis)?;
             match leg.movement.coefficient.signum() {
                 -1 => {
@@ -393,7 +412,8 @@ fn transfers(
                 continue;
             }
             let known = matches!(leg.unresolved_residual, SourceValue::Absent)
-                && leg.movement.unit_id == currency;
+                && leg.movement.unit_id == currency
+                && !uncounted_sender;
             // Funds in flight belong to the receiver; funds counted twice are
             // removed from the sender, whose share counted them.
             let added = owned(leg.movement, share).filter(|_| known);

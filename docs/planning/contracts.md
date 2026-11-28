@@ -1044,21 +1044,25 @@ Funds that a transfer moves between two counting components count once
 component that counts or that its total or parts represent. A leg
 with a negative movement sends and one with a positive movement receives.
 A leg with a captured `Fee` allocation moves no funds between accounts, so
-it neither sends nor receives. Legs on omitted components or outside the
-household adjust nothing, and the aggregate never changes the association
-or its claims.
+it neither sends nor receives. The aggregate never adjusts by a receipt on
+an omitted component or outside the household, and it never changes the
+association or its claims.
 
 A leg's membership in a counted amount is included, excluded or unknown:
 
 - A selected source balance includes the leg when a source line allocated to
   the leg comes from the balance's source and is dated on or before the
   balance's as-of. A line is a movement facet that the leg's own
-  `allocations` or the revision's `allocations` name, and its date is the
-  facet's one reported date. Relationship-capture rows are not lines.
+  `allocations` or the revision's `allocations` name, dated by the facet's
+  one reported date, or a captured relationship row that the revision's
+  `captured_allocations` name, from the capture's source and dated by the
+  row. Admission allocates only captured rows to transfer legs.
 - It excludes the leg when every such line is dated after the as-of, and
   either the leg's effective date is after the as-of or a receipt from that
   source reports `Complete` coverage by posting date from the leg's posting
-  date through the as-of.
+  date through the as-of. Coverage counts only when no line from another
+  source is allocated to the leg: such a line already stands for the leg,
+  so the balance's own line would never be allocated to it.
 - Several selected balances must agree; otherwise the leg is unknown.
 - The anchored balance includes the legs it adds as evidence.
 - A leg on a component that its total or parts represent is unknown,
@@ -1081,6 +1085,10 @@ leg, the aggregate adjusts once by the leg's movement:
   the sending components' share. Sending components at different shares
   leave that amount unknown.
 - The two agree: no adjustment.
+
+When a sending leg is on a component that does not count, such as one out
+of scope, the counted part of each receipt is not known, so any adjustment
+the transfer needs is unknown.
 
 A receiving leg whose funds one counted amount holds on both sides, such as
 a move from a brokerage's cash part to its holdings part while the total
