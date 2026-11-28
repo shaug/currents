@@ -317,9 +317,11 @@ impl InvestmentEngine {
 
 /// What one position holds through a date: its recognized quantity and
 /// carrying amount, the trades by then whose quantity or cash side is
-/// missing, the latest snapshot quantity, any current absence assertion and
-/// the unmapped positions of the latest snapshot that covers it. A snapshot
-/// never changes the recognized quantity. A read result, not a record.
+/// missing, the latest snapshot quantity, any current absence assertion,
+/// the unmapped positions of the latest snapshot that covers it, the
+/// security's quantity basis and its unresolved corporate actions. A
+/// snapshot never changes the recognized quantity. A read result, not a
+/// record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PositionHoldingsV1 {
     pub position: RecordId,
@@ -331,6 +333,10 @@ pub struct PositionHoldingsV1 {
     pub snapshot: Option<super::holdings::SnapshotQuantityV1>,
     pub absence: Option<super::holdings::SnapshotAbsenceV1>,
     pub unmapped: Option<super::holdings::SnapshotUnmappedV1>,
+    /// The security's quantity basis on `through`.
+    pub basis: u32,
+    /// Each unsupported corporate action on the security effective by then.
+    pub unresolved: Vec<RecordId>,
 }
 
 /// Whether `recognition` posts a security quantity. Until CUR-022 (#31)
@@ -732,7 +738,8 @@ impl InvestmentEngine {
     /// together. A missing side posts nothing and stays explicit in the
     /// trade record. Each unit balances on its own; the engine refuses a
     /// posting in another unit than its account's, an amount beyond its
-    /// unit's exponent and a request with neither side known.
+    /// unit's exponent, a request with neither side known and a quantity
+    /// dated before the security's latest split.
     pub fn recognize(
         state: &DomainState,
         request: &TradeRequestV1,
@@ -789,6 +796,9 @@ impl InvestmentEngine {
             {
                 return Err(invalid());
             }
+            // A quantity on an earlier basis than the security's latest
+            // split would change what that split posted.
+            super::actions::after_splits(state, position.security, &quantity.leg.effective)?;
         }
         if request.fee.unit_id != carrying.unit_id {
             return Err(invalid());
@@ -926,6 +936,8 @@ impl InvestmentEngine {
             snapshot,
             absence,
             unmapped,
+            basis: super::actions::basis(state, p.security, through)?,
+            unresolved: super::actions::unresolved(state, p.security, through)?,
         })
     }
 }

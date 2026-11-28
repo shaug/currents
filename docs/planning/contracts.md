@@ -1367,6 +1367,71 @@ highest version. In the example above, a read through 2026-12-31 reports the
 record again from the prior prefix and the commit's own observations, so a
 forged holding or absence is refused. Holdings claims stay with CUR-017.
 
+### CUR-021 reinvested dividends and corporate actions
+
+```text
+ReinvestmentRequestV1 { schema_version, id, dividend:ActivityRequestV1, purchase:TradeRequestV1 }
+ReinvestmentV1 { id, schema_version, adoption, trade }
+SplitV1 { numerator:i64, denominator:i64, prior_basis:u32, resulting_basis:u32 }
+CorporateActionTermsV1 = Split(SplitV1) | Unsupported(String)
+SplitAdjustmentV1 { position, recognition }
+CashInLieuV1 { position, event_id, cash:AdoptedFacetV1, fraction:Amount, recognition }
+CorporateActionV1 { id, schema_version, security, effective:TemporalValue, terms, adjustments, cash_in_lieu, interpretation }
+SplitAdjustmentRequestV1 { position, terms:RecognitionTermsV1 }
+CashInLieuRequestV1 { position, event:FinancialEventV1, cash:AdoptedLegV1, fraction:Amount, terms:RecognitionTermsV1 }
+CorporateActionRequestV1 { schema_version, id, security, effective, terms, adjustments, cash_in_lieu, interpretation }
+```
+
+`AuthoritativeRecordV1` adds `Reinvestment(ReinvestmentV1)` and
+`CorporateAction(CorporateActionV1)`, both schema version 1.
+
+`InvestmentEngine::reinvest(state,&ReinvestmentRequestV1)` plans a reinvested
+dividend as one plan with two recognitions. The dividend is an ordinary C08
+posted adoption of one positive cash row against an `IncomeFlow` account. The
+purchase is a trade buy whose cash leg pays exactly that amount out of the same
+account on the same day, and whose quantity leg is known. The three rows are
+distinct facts that nothing else binds. The plan holds both plans' records, the
+`ReinvestmentV1` that links the adoption and the trade, and
+`Recognitions([dividend, buy])`, so the cash account's balance does not change
+and the dividend's cash is never an extra deposit. The pair owns the dividend
+row, so a later adoption of it is refused. Replay derives the link again from
+the restored adoption and trade, which must be new in the same commit; each of
+them readmits its own records.
+
+`InvestmentEngine::act(state,&CorporateActionRequestV1)` records one corporate
+action on a security, effective on one civil day. A security's first quantity
+basis is 1, and each split starts the next one. A split needs a positive
+numerator and denominator that differ, `prior_basis` equal to the security's
+current basis and `resulting_basis` one more, and an effective day after the
+security's latest split and after every quantity posted to its positions. For
+each position of the security, the quantity live recognitions post before that
+day times the ratio, truncated to the security's exponent, is the new quantity. A
+position whose quantity changes needs one adjustment whose recognition posts
+the change to its quantity account against a `QuantityControl` account on that
+day and nothing else: no currency, carrying amount or income. A position left
+with a fraction needs one cash in lieu of exactly that fraction: its own event
+and one known cash leg, bound to a movement row, whose recognition posts the
+positive cash received against a `DisposalClearing` account. The planner
+refuses a split that is missing either, names one for a position that needs
+none, holds the cash in the split entry, or whose exact quantity has no
+decimal form within 18 places; it never rounds. A split commits the
+adjustments' and cash in lieu's recognitions as `Recognitions`, or `NoEffect`
+when no position holds the security. After a split, a trade whose quantity is
+dated before it is refused.
+
+Any other action, such as a merger or spin-off, is `Unsupported` with a short
+kind. It names its retained evidence in its interpretation and has no
+adjustment or cash in lieu; a request with either is refused. It commits with
+`NoEffect` and changes no quantity.
+
+`InvestmentEngine::holdings` adds `basis`, the security's quantity basis on the
+read's day, and `unresolved`, each unsupported action on the security effective
+by then. Replay restores each action's request from its records and derives
+the plan again from the prior prefix, and C05 checks each frozen entry against
+its recognition. A recognition that posts a security quantity needs an owner
+even when it binds no evidence. Lots and basis per share across splits stay
+with CUR-022.
+
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 
 <a id="c12"></a>

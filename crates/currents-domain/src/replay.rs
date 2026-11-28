@@ -105,6 +105,18 @@ impl ReplayEngine {
                     }
                     Some(v.id)
                 }
+                AuthoritativeRecordV1::Reinvestment(v) => {
+                    if v.schema_version != 1 {
+                        return Err(EngineError::version());
+                    }
+                    Some(v.id)
+                }
+                AuthoritativeRecordV1::CorporateAction(v) => {
+                    if v.schema_version != 1 {
+                        return Err(EngineError::version());
+                    }
+                    Some(v.id)
+                }
                 AuthoritativeRecordV1::SegmentReemission(v) => {
                     if v.schema_version != 1 {
                         return Err(EngineError::version());

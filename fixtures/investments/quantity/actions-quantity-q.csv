@@ -1,0 +1,5 @@
+original_id,amount,unit,effective,description
+buy-p,6,SCA,2026-11-02,synthetic buy of 6 SECA
+reinvest,0.4,SCA,2026-11-15,synthetic reinvestment of the SECA dividend in 0.4 SECA
+late,1,SCA,2026-11-10,synthetic buy of 1 SECA reported after the split
+merger,-6,SCA,2026-11-25,synthetic merger of SECA into another security
