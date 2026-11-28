@@ -1083,7 +1083,7 @@ fn claim_id(claim: &ReconciliationClaimV1) -> Result<RecordId, EngineError> {
 }
 
 /// An RFC 9562 version 8 (custom) UUID from the SHA-256 of `tag` and `bytes`.
-fn derived_id(tag: &[u8], bytes: &[u8]) -> RecordId {
+pub(crate) fn derived_id(tag: &[u8], bytes: &[u8]) -> RecordId {
     let mut hash = Sha256::new();
     hash.update(tag);
     hash.update(bytes);

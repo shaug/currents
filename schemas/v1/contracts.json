@@ -18211,6 +18211,1104 @@
             "value"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "DatasetPolicyRevision"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "effective_scope": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "Effective",
+                        "Posting"
+                      ],
+                      "type": "string"
+                    },
+                    "end": {
+                      "format": "date",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "start": {
+                      "format": "date",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "start",
+                    "end",
+                    "basis"
+                  ],
+                  "type": "object"
+                },
+                "freshness_thresholds": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "dataset_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "effective_scope": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "basis": {
+                                  "enum": [
+                                    "Effective",
+                                    "Posting"
+                                  ],
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "start": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end",
+                                "basis"
+                              ],
+                              "type": "object"
+                            },
+                            "evaluation_instant": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "query_semantics_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "selection_policy_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "through_commit": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "unit_catalog_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "dataset_id",
+                            "through_commit",
+                            "effective_scope",
+                            "evaluation_instant",
+                            "query_semantics_version",
+                            "selection_policy_version",
+                            "unit_catalog_version"
+                          ],
+                          "type": "object"
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Missing"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Unknown"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Null"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Absent"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Deleted"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Known"
+                                },
+                                "value": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "seconds": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "source": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "seconds"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 16384,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "state",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "basis"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "ownership_perimeter": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "dataset_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "effective_scope": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "basis": {
+                                  "enum": [
+                                    "Effective",
+                                    "Posting"
+                                  ],
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "start": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end",
+                                "basis"
+                              ],
+                              "type": "object"
+                            },
+                            "evaluation_instant": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "query_semantics_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "selection_policy_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "through_commit": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "unit_catalog_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "dataset_id",
+                            "through_commit",
+                            "effective_scope",
+                            "evaluation_instant",
+                            "query_semantics_version",
+                            "selection_policy_version",
+                            "unit_catalog_version"
+                          ],
+                          "type": "object"
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Missing"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Unknown"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Null"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Absent"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Deleted"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Known"
+                                },
+                                "value": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "account_id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "denominator": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      },
+                                      "numerator": {
+                                        "maxLength": 20,
+                                        "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "account_id",
+                                      "numerator",
+                                      "denominator"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 16384,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "state",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "basis"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "policy_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "prior_version": {
+                  "anyOf": [
+                    {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reporting_currency": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "dataset_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "effective_scope": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "basis": {
+                                  "enum": [
+                                    "Effective",
+                                    "Posting"
+                                  ],
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "start": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end",
+                                "basis"
+                              ],
+                              "type": "object"
+                            },
+                            "evaluation_instant": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "query_semantics_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "selection_policy_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "through_commit": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "unit_catalog_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "dataset_id",
+                            "through_commit",
+                            "effective_scope",
+                            "evaluation_instant",
+                            "query_semantics_version",
+                            "selection_policy_version",
+                            "unit_catalog_version"
+                          ],
+                          "type": "object"
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Missing"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Unknown"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Null"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Absent"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Deleted"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Known"
+                                },
+                                "value": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "state",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "basis"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_priority": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "dataset_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "effective_scope": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "basis": {
+                                  "enum": [
+                                    "Effective",
+                                    "Posting"
+                                  ],
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "start": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end",
+                                "basis"
+                              ],
+                              "type": "object"
+                            },
+                            "evaluation_instant": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "query_semantics_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "selection_policy_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "through_commit": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "unit_catalog_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "dataset_id",
+                            "through_commit",
+                            "effective_scope",
+                            "evaluation_instant",
+                            "query_semantics_version",
+                            "selection_policy_version",
+                            "unit_catalog_version"
+                          ],
+                          "type": "object"
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Missing"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Unknown"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Null"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Absent"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Deleted"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Known"
+                                },
+                                "value": {
+                                  "items": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "maxItems": 16384,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "state",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "basis"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timezone": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "basis": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "dataset_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "effective_scope": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "basis": {
+                                  "enum": [
+                                    "Effective",
+                                    "Posting"
+                                  ],
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "start": {
+                                  "format": "date",
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end",
+                                "basis"
+                              ],
+                              "type": "object"
+                            },
+                            "evaluation_instant": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "query_semantics_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "selection_policy_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "through_commit": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "unit_catalog_version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "dataset_id",
+                            "through_commit",
+                            "effective_scope",
+                            "evaluation_instant",
+                            "query_semantics_version",
+                            "selection_policy_version",
+                            "unit_catalog_version"
+                          ],
+                          "type": "object"
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Missing"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Unknown"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Null"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Absent"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Deleted"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "state": {
+                                  "const": "Known"
+                                },
+                                "value": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "calendar_version": {
+                                      "maximum": 4294967295,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "timezone_data_version": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    "zone": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Missing"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Unknown"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Null"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Absent"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Deleted"
+                                            }
+                                          },
+                                          "required": [
+                                            "state"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "state": {
+                                              "const": "Known"
+                                            },
+                                            "value": {
+                                              "maxLength": 1048576,
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "zone",
+                                    "timezone_data_version",
+                                    "calendar_version"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "state",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "basis"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "policy_id",
+                "version",
+                "prior_version",
+                "effective_scope",
+                "ownership_perimeter",
+                "source_priority",
+                "freshness_thresholds",
+                "timezone",
+                "reporting_currency"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -53275,6 +54373,1104 @@
                   "value"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "DatasetPolicyRevision"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "effective_scope": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "basis": {
+                            "enum": [
+                              "Effective",
+                              "Posting"
+                            ],
+                            "type": "string"
+                          },
+                          "end": {
+                            "format": "date",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "start": {
+                            "format": "date",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "start",
+                          "end",
+                          "basis"
+                        ],
+                        "type": "object"
+                      },
+                      "freshness_thresholds": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "seconds": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "source": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "source",
+                                            "seconds"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "ownership_perimeter": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "account_id": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            },
+                                            "denominator": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "numerator": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "account_id",
+                                            "numerator",
+                                            "denominator"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "policy_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior_version": {
+                        "anyOf": [
+                          {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reporting_currency": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "source_priority": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timezone": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "calendar_version": {
+                                            "maximum": 4294967295,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "timezone_data_version": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          "zone": {
+                                            "oneOf": [
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Missing"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Unknown"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Null"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Absent"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Deleted"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Known"
+                                                  },
+                                                  "value": {
+                                                    "maxLength": 1048576,
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state",
+                                                  "value"
+                                                ],
+                                                "type": "object"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "zone",
+                                          "timezone_data_version",
+                                          "calendar_version"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "policy_id",
+                      "version",
+                      "prior_version",
+                      "effective_scope",
+                      "ownership_perimeter",
+                      "source_priority",
+                      "freshness_thresholds",
+                      "timezone",
+                      "reporting_currency"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -68098,6 +70294,1104 @@
                       "recognition",
                       "interpretation",
                       "governing_policy"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "DatasetPolicyRevision"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "effective_scope": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "basis": {
+                            "enum": [
+                              "Effective",
+                              "Posting"
+                            ],
+                            "type": "string"
+                          },
+                          "end": {
+                            "format": "date",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "start": {
+                            "format": "date",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "start",
+                          "end",
+                          "basis"
+                        ],
+                        "type": "object"
+                      },
+                      "freshness_thresholds": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "seconds": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "source": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "source",
+                                            "seconds"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "ownership_perimeter": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "account_id": {
+                                              "format": "uuid",
+                                              "type": "string"
+                                            },
+                                            "denominator": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            },
+                                            "numerator": {
+                                              "maxLength": 20,
+                                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "account_id",
+                                            "numerator",
+                                            "denominator"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "policy_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior_version": {
+                        "anyOf": [
+                          {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reporting_currency": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "source_priority": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "items": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "maxItems": 16384,
+                                        "type": "array"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "timezone": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "basis": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "dataset_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "effective_scope": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "basis": {
+                                        "enum": [
+                                          "Effective",
+                                          "Posting"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "start": {
+                                        "format": "date",
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end",
+                                      "basis"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "evaluation_instant": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "query_semantics_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "selection_policy_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "through_commit": {
+                                    "maxLength": 20,
+                                    "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                    "type": "string"
+                                  },
+                                  "unit_catalog_version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "dataset_id",
+                                  "through_commit",
+                                  "effective_scope",
+                                  "evaluation_instant",
+                                  "query_semantics_version",
+                                  "selection_policy_version",
+                                  "unit_catalog_version"
+                                ],
+                                "type": "object"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Missing"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Unknown"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Null"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Absent"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Deleted"
+                                      }
+                                    },
+                                    "required": [
+                                      "state"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "state": {
+                                        "const": "Known"
+                                      },
+                                      "value": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "calendar_version": {
+                                            "maximum": 4294967295,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "timezone_data_version": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          "zone": {
+                                            "oneOf": [
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Missing"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Unknown"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Null"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Absent"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Deleted"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state"
+                                                ],
+                                                "type": "object"
+                                              },
+                                              {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "state": {
+                                                    "const": "Known"
+                                                  },
+                                                  "value": {
+                                                    "maxLength": 1048576,
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "state",
+                                                  "value"
+                                                ],
+                                                "type": "object"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "zone",
+                                          "timezone_data_version",
+                                          "calendar_version"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    },
+                                    "required": [
+                                      "state",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "policy_id",
+                      "version",
+                      "prior_version",
+                      "effective_scope",
+                      "ownership_perimeter",
+                      "source_priority",
+                      "freshness_thresholds",
+                      "timezone",
+                      "reporting_currency"
                     ],
                     "type": "object"
                   }

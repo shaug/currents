@@ -58,6 +58,7 @@ impl ReplayEngine {
                 }
                 AuthoritativeRecordV1::DateConversionPolicy(v) => Some(v.id),
                 AuthoritativeRecordV1::DatasetPolicy(v) => Some(v.id),
+                AuthoritativeRecordV1::DatasetPolicyRevision(v) => Some(v.id),
                 AuthoritativeRecordV1::UnitCatalog(v) => Some(v.id),
                 AuthoritativeRecordV1::AccountComponent(v) => Some(v.id),
                 AuthoritativeRecordV1::AccountAlias(v) => Some(v.id),

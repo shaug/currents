@@ -28,6 +28,7 @@ pub(crate) struct Metadata {
 }
 const RECORDS: &[&str] = &[
     "DatasetPolicy",
+    "DatasetPolicyRevision",
     "DateConversionPolicy",
     "FrozenAccountingManifest",
     "UnitCatalog",
@@ -533,6 +534,9 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.reference(&["DatasetPolicy"], &v["opening_policy"], None);
             m.reference(&["DatasetPolicy"], &v["withholding_policy"], None);
         }
+        AuthoritativeRecordV1::DatasetPolicyRevision(_) => {
+            m.reference(&["DatasetPolicy"], &v["policy_id"], None);
+        }
         AuthoritativeRecordV1::UnitCatalog(_) => {
             for u in v["units"].as_array().ok_or_else(EngineError::invalid)? {
                 m.define("Unit", &u["id"], 0, true);
@@ -842,5 +846,31 @@ fn scoped(parent: &Value, id: &Value) -> Value {
     match (parent.as_str(), id.as_str()) {
         (Some(parent), Some(id)) => Value::String(format!("{parent}/{id}")),
         _ => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_revision_references_its_dataset_policy_family() {
+        let revision: DatasetPolicyRevisionV1 = serde_json::from_value(serde_json::json!({
+            "id": "00000000-0000-0000-0000-000000000901",
+            "policy_id": "00000000-0000-0000-0000-000000000700",
+            "version": 1,
+            "prior_version": null,
+            "effective_scope": {"start": "2026-11-01", "end": null, "basis": "Effective"},
+            "ownership_perimeter": null,
+            "source_priority": null,
+            "freshness_thresholds": null,
+            "timezone": null,
+            "reporting_currency": null
+        }))
+        .unwrap();
+        let m = describe(&AuthoritativeRecordV1::DatasetPolicyRevision(revision)).unwrap();
+        assert!(m.references.iter().any(
+            |r| r.kinds == ["DatasetPolicy"] && r.id == "00000000-0000-0000-0000-000000000700"
+        ));
     }
 }
