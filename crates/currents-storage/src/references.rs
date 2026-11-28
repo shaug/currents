@@ -55,6 +55,7 @@ const RECORDS: &[&str] = &[
     "ReconciliationClaim",
     "ReconciliationDisposition",
     "Organization",
+    "OrganizationAssignment",
     "Rule",
     "Review",
     "Commitment",
@@ -63,6 +64,7 @@ const RECORDS: &[&str] = &[
     "Security",
     "Position",
     "Trade",
+    "HoldingsSnapshot",
 ];
 const EVIDENCE: &[&str] = &[
     "ObservationVersion",
@@ -745,6 +747,23 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.policy(&v["governing_policy"]);
             m.interpretation(&v["interpretation"]);
         }
+        AuthoritativeRecordV1::HoldingsSnapshot(snapshot) => {
+            if snapshot.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["ImportReceipt"], &v["receipt"], None);
+            m.many(&["Account"], &v["scope"]);
+            m.reference(&["Unit"], &v["currency"], None);
+            for holding in v["holdings"].as_array().ok_or_else(EngineError::invalid)? {
+                m.reference(&["ObservationVersion"], &holding["observation"], None);
+                m.reference(&["Security"], &holding["security"], None);
+            }
+            for absence in v["absences"].as_array().ok_or_else(EngineError::invalid)? {
+                m.reference(&["Position"], &absence["position"], None);
+                m.reference(&["Security"], &absence["security"], None);
+                m.reference(&["HoldingsSnapshot"], &absence["prior"], None);
+            }
+        }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);
         }
@@ -753,6 +772,28 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.reference(&["Organization"], &v["parent"], None);
             m.reference(&["Organization"], &v["supersedes"], None);
             m.allocations(&v["allocations"]);
+        }
+        AuthoritativeRecordV1::OrganizationAssignment(a) => {
+            // Rule and proposal sources name record kinds later CUR-019
+            // leaves define.
+            if a.schema_version != 1 || a.source != OrganizationSourceV1::Owner {
+                return Err(EngineError::version());
+            }
+            match (a.version, a.supersedes) {
+                (1, None) => {}
+                (version, Some(prior)) if version > 1 && prior != a.id => {
+                    m.reference(&["OrganizationAssignment"], &v["supersedes"], None);
+                    m.define(
+                        "OrganizationAssignmentSuccessor",
+                        &v["supersedes"],
+                        0,
+                        false,
+                    );
+                }
+                _ => return Err(EngineError::invalid()),
+            }
+            m.many(&["FinancialLeg"], &v["legs"]);
+            m.reference(&["Organization"], &v["value"], None);
         }
         AuthoritativeRecordV1::Rule(_) => m.many(&["Account"], &v["accounts"]),
         AuthoritativeRecordV1::Review(_) => m.many(RECORDS, &v["targets"]),

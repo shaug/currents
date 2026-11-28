@@ -2884,3 +2884,289 @@ fn cur_018_later_transfer_leaves_earlier_total() {
         AggregateV1::Exact(amount(7000))
     );
 }
+
+// One read basis (C09). Components A (checking) and B (savings). Basis B0
+// names commit 6, the requested date 2026-11-15 and the evaluation instant
+// 2026-11-15T12:00Z.
+
+/// `report`'s records, with a distinctive sanitized representation so that
+/// an explanation that repeats it is caught.
+fn canary(report: &Report) -> Vec<AuthoritativeRecordV1> {
+    let mut records = report.records();
+    for record in &mut records {
+        if let AuthoritativeRecordV1::ObservationVersion(o) = record {
+            o.sanitized_representation = format!("CANARY source text {}", report.n);
+        }
+    }
+    records
+}
+
+/// At commit 5, A is anchored at 2026-11-01 with aliases for S1 and S2, and
+/// B has an alias for S1. At commit 6, policy revision 1 ranks S1 over S2
+/// and sets a one-day threshold for S1 from 2026-11-01; S1 reports A 1,000
+/// and B 500 as of 2026-11-14, and S2 reports A 1,100 as of `s2_as_of`. Each
+/// commit holds several independent plans.
+fn basis_world(s2_as_of: &str) -> DomainState {
+    let mut state = monetary_state();
+    assert_eq!(state.through, CommitSeq(4));
+    let opening = supported_opening(&mut state);
+    let current = CatalogEngine::current(&state, id(CHECKING + 1)).unwrap();
+    let mut a = catalog();
+    a.revision_id = id(CHECKING + 3);
+    a.prior_revision = Some(current.id);
+    a.catalog = current.catalog;
+    a.catalog.aliases = vec![alias(S1, "A-1"), alias(S2, "A-2")];
+    let mut b = catalog();
+    b.revision_id = id(SAVINGS + 2);
+    b.catalog.component_id = id(SAVINGS + 1);
+    b.catalog.account_id = account(SAVINGS);
+    b.ownership.account_id = account(SAVINGS);
+    b.catalog.display_name = "Synthetic savings".into();
+    b.catalog.aliases = vec![alias(S1, "B-1")];
+    let plans = [
+        RecognitionEngine::adopt(&state, &opening).unwrap(),
+        CatalogEngine::set_complete(&state, &a).unwrap(),
+        CatalogEngine::set_complete(&state, &b).unwrap(),
+    ];
+    publish(
+        &mut state,
+        plans.into_iter().flat_map(|p| p.records).collect(),
+    );
+
+    let mut policy = request(None, scope(Some("2026-11-01"), None));
+    policy.policy_id = id(104);
+    policy.source_priority = change(&state, SourceValue::Known(vec![id(S1), id(S2)]));
+    policy.freshness_thresholds = change(&state, SourceValue::Known(vec![threshold(S1, 86_400)]));
+    let mut records = PolicyEngine::set(&state, &policy).unwrap().records;
+    let mut on_b = Report::posted(2020, S1, 500, "2026-11-14");
+    on_b.original_ids = vec!["B-1"];
+    for report in [
+        Report::posted(2000, S1, 1000, "2026-11-14"),
+        Report::posted(2010, S2, 1100, s2_as_of),
+        on_b,
+    ] {
+        records.extend(canary(&report));
+    }
+    publish(&mut state, records);
+    assert_eq!(state.through, CommitSeq(6));
+    state
+}
+
+fn b0(state: &DomainState) -> ReadBasis {
+    let mut read = serde_json::to_value(read_basis(state, REQUESTED)).unwrap();
+    read["evaluation_instant"] = json!("2026-11-15T12:00:00Z");
+    let read: ReadBasis = serde_json::from_value(read).unwrap();
+    assert_eq!(read.through_commit, CommitSeq(6));
+    read
+}
+
+/// The scope that names `components`.
+fn components_of(components: &[u32]) -> AccountScope {
+    AccountScope {
+        accounts: vec![],
+        components: components.iter().map(|c| id(c + 1)).collect(),
+    }
+}
+
+/// What a response says about `component` alone: its assertions, selected
+/// balances, freshness labels, anchored balance, movements and pending legs.
+type Facts = (
+    Vec<PositionAssertionV1>,
+    Vec<RecordId>,
+    Vec<FreshnessV1>,
+    Vec<AnchoredBalanceV1>,
+    Vec<AccountMovementV1>,
+    Vec<AccountMovementV1>,
+);
+
+fn facts(response: &PositionResponseV1, component: u32) -> Facts {
+    let component = id(component + 1);
+    let assertions: Vec<PositionAssertionV1> = response
+        .assertions
+        .iter()
+        .filter(|a| a.component == component)
+        .cloned()
+        .collect();
+    let mine = |source: &RecordId| assertions.iter().any(|a| a.id == *source);
+    let on = |movements: &[AccountMovementV1]| -> Vec<AccountMovementV1> {
+        movements
+            .iter()
+            .filter(|m| m.component == component)
+            .cloned()
+            .collect()
+    };
+    (
+        assertions.clone(),
+        response
+            .selected_basis
+            .iter()
+            .copied()
+            .filter(mine)
+            .collect(),
+        response
+            .freshness
+            .iter()
+            .filter(|f| mine(&f.source))
+            .cloned()
+            .collect(),
+        response
+            .anchored_balance
+            .iter()
+            .filter(|a| a.component == component)
+            .cloned()
+            .collect(),
+        on(&response.movements),
+        on(&response.pending),
+    )
+}
+
+/// The explanation's edges with `relationship`, as (from, to) pairs.
+fn edges(explanation: &ExplanationV1, relationship: &str) -> Vec<(RecordId, RecordId)> {
+    explanation
+        .edges
+        .iter()
+        .filter(|e| e.relationship == relationship)
+        .map(|e| (e.from, e.to))
+        .collect()
+}
+
+fn summary(explanation: &ExplanationV1, node: RecordId) -> &str {
+    &explanation
+        .nodes
+        .iter()
+        .find(|n| n.id == node)
+        .unwrap()
+        .summary
+}
+
+/// The ID of the only policy revision in `state`.
+fn policy_revision(state: &DomainState) -> RecordId {
+    let ids: Vec<RecordId> = state
+        .records
+        .values()
+        .filter_map(|r| match r {
+            AuthoritativeRecordV1::DatasetPolicyRevision(r) => Some(r.id),
+            _ => None,
+        })
+        .collect();
+    let [revision] = ids.as_slice() else {
+        panic!("one policy revision")
+    };
+    *revision
+}
+
+#[test]
+fn cur_018_4_pages_and_explanation_share_basis() {
+    let state = basis_world("2026-11-14");
+    let read = b0(&state);
+    let both = PositionEngine::query(&state, &read, &components_of(&[CHECKING, SAVINGS])).unwrap();
+    let a = PositionEngine::query(&state, &read, &components_of(&[CHECKING])).unwrap();
+    let b = PositionEngine::query(&state, &read, &components_of(&[SAVINGS])).unwrap();
+    let explanation = PositionEngine::explain(&state, &read, id(CHECKING + 1)).unwrap();
+    for basis in [&both.basis, &a.basis, &b.basis, &explanation.basis] {
+        assert_eq!(*basis, read);
+    }
+    // A's facts are the same alone and beside B, and so are B's.
+    let facts_a = facts(&a, CHECKING);
+    assert_eq!(facts(&both, CHECKING), facts_a);
+    assert_eq!(facts(&both, SAVINGS), facts(&b, SAVINGS));
+    assert_eq!(facts_a.0.len(), 2);
+    assert_eq!(facts_a.1, vec![id(2000)]);
+    assert_eq!(facts_a.2.len(), 1);
+    assert_eq!(facts_a.3.len(), 1);
+    assert_eq!(facts(&b, SAVINGS).1, vec![id(2020)]);
+    // The explanation names the same selection and labels.
+    assert_eq!(explanation.roots, vec![id(CHECKING + 1)]);
+    assert_eq!(
+        edges(&explanation, "selected"),
+        vec![(id(CHECKING + 1), id(2000))]
+    );
+    let labels: Vec<(RecordId, RecordId)> = facts_a
+        .2
+        .iter()
+        .map(|f| (policy_revision(&state), f.source))
+        .collect();
+    assert_eq!(edges(&explanation, "labels"), labels);
+    // S1 outranks S2 on the shared date, so S2's report is a candidate the
+    // explanation lists without selecting it.
+    let listed = explanation.nodes.iter().find(|n| n.id == id(2010)).unwrap();
+    assert_eq!(listed.kind, ExplanationNodeKindV1::Evidence);
+    assert!(edges(&explanation, "conflicts_with").is_empty());
+}
+
+#[test]
+fn cur_018_4_explanation_names_selection_inputs() {
+    // S2's instant overlaps S1's date without matching it, so priority
+    // decides nothing and the amounts conflict.
+    let state = basis_world("2026-11-14T12:00:00Z");
+    let read = b0(&state);
+    let a = id(CHECKING + 1);
+    let response = PositionEngine::query(&state, &read, &components_of(&[CHECKING])).unwrap();
+    assert!(codes(&response).contains(&"conflict"));
+    let explanation = PositionEngine::explain(&state, &read, a).unwrap();
+    let Some(AuthoritativeRecordV1::AccountingSegment(segment)) = state.records.get(&id(707))
+    else {
+        panic!("A's segment")
+    };
+    let opening = RecordId(segment.opening.0);
+    let revision = policy_revision(&state);
+    let nodes: BTreeMap<RecordId, ExplanationNodeKindV1> =
+        explanation.nodes.iter().map(|n| (n.id, n.kind)).collect();
+    let expected = BTreeMap::from([
+        (id(2000), ExplanationNodeKindV1::Evidence),
+        (id(2010), ExplanationNodeKindV1::Evidence),
+        (id(707), ExplanationNodeKindV1::Decision),
+        (opening, ExplanationNodeKindV1::Decision),
+        (revision, ExplanationNodeKindV1::Policy),
+    ]);
+    assert_eq!(nodes, expected);
+    assert_eq!(
+        edges(&explanation, "conflicts_with"),
+        vec![(id(2000), id(2010))]
+    );
+    let mut anchors = vec![(id(707), a), (opening, id(707))];
+    anchors.sort();
+    assert_eq!(edges(&explanation, "anchors"), anchors);
+    assert_eq!(edges(&explanation, "governs"), vec![(revision, a)]);
+    // Nothing is selected, so nothing is labeled.
+    assert!(edges(&explanation, "selected").is_empty());
+    assert!(edges(&explanation, "labels").is_empty());
+    // Each summary names a role and a date, never the source's text.
+    for node in &explanation.nodes {
+        assert!(!node.summary.contains("CANARY"), "{node:?}");
+    }
+    assert!(summary(&explanation, id(2000)).contains("2026-11-14"));
+    assert!(summary(&explanation, id(2010)).contains("2026-11-14"));
+    assert!(summary(&explanation, id(707)).contains("2026-11-01"));
+    assert!(summary(&explanation, opening).contains("2026-11-01"));
+    assert!(summary(&explanation, revision).contains("2026-11-01"));
+    // An unknown component is refused.
+    let error = PositionEngine::explain(&state, &read, id(999)).unwrap_err();
+    assert_eq!(error.class, ErrorClass::InvalidReference);
+}
+
+#[test]
+fn cur_018_4_refuses_another_commit() {
+    let mut state = basis_world("2026-11-14");
+    let read = b0(&state);
+    publish(
+        &mut state,
+        Report::posted(2030, S1, 1300, "2026-11-15").records(),
+    );
+    assert_eq!(state.through, CommitSeq(7));
+    let query = PositionEngine::query(&state, &read, &components_of(&[CHECKING]));
+    assert_eq!(query.unwrap_err().class, ErrorClass::StaleBasis);
+    let explanation = PositionEngine::explain(&state, &read, id(CHECKING + 1));
+    assert_eq!(explanation.unwrap_err().class, ErrorClass::StaleBasis);
+}
+
+#[test]
+fn cur_018_4_lagging_index_refused() {
+    let mut state = basis_world("2026-11-14");
+    let read = b0(&state);
+    state.accounting.as_mut().unwrap().prefix.through = CommitSeq(5);
+    let query = PositionEngine::query(&state, &read, &components_of(&[CHECKING]));
+    assert_eq!(query.unwrap_err().class, ErrorClass::StaleBasis);
+    let explanation = PositionEngine::explain(&state, &read, id(CHECKING + 1));
+    assert_eq!(explanation.unwrap_err().class, ErrorClass::StaleBasis);
+}

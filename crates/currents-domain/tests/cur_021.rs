@@ -1,12 +1,14 @@
-//! CUR-021 security and position declarations and trades, using synthetic
-//! identities and exact public interfaces.
+//! CUR-021 security and position declarations, trades and holdings
+//! snapshots, using synthetic identities and exact public interfaces.
 use currents_accounting::AccountingAdapter;
+use currents_acquisition::{capture::BoundedEvidence, parse::FileParser};
 use currents_domain::{
     ReplayEngine,
     associations::IdentityEngine,
     catalog::CatalogEngine,
     correction::CorrectionEngine,
-    investments::InvestmentEngine,
+    evidence::{EvidenceEngine, ValidatedEvidenceBatchV1},
+    investments::{InvestmentEngine, holdings::SnapshotUnmappedV1, quantity::PositionHoldingsV1},
     recognition::RecognitionEngine,
     segments::{ReemissionV1, SegmentEngine, SegmentReplacementV1},
 };
@@ -764,4 +766,393 @@ fn cur_021_corrections_refuse_trades() {
         }],
     };
     assert!(SegmentEngine::replace(&state, &replacement).is_err());
+}
+
+/// Quantity account QY of brokerage account Y, in SECA.
+const QY: u32 = 6160;
+/// Carrying accounts of positions PB and PY, in USD.
+const KB: u32 = 6170;
+const KY: u32 = 6180;
+/// Quantity control in SECB.
+const QB_CONTROL: u32 = 6190;
+/// Position PB holds SECB on QB in X; position PY holds SECA on QY in Y.
+const PB: u32 = 6210;
+const PY: u32 = 6220;
+
+/// A buy of `binding`'s quantity on `position` with no cash side, as trade
+/// `n`, posting `account` against `control`.
+fn quantity_buy(
+    state: &DomainState,
+    n: u32,
+    position: u32,
+    (account, control): (u32, u32),
+    binding: &SourceFacetBindingV1,
+) -> TradeRequestV1 {
+    let mut request = trade(state, n, TradeSideV1::Buy, None, Some(binding), 0);
+    request.position = id(position);
+    let SourceValue::Known(leg) = &mut request.quantity else {
+        panic!("a quantity side")
+    };
+    leg.leg.account_id = account_id(account);
+    request.terms.postings[0].account_id = account_id(account);
+    request.terms.postings[1].account_id = account_id(control);
+    request
+}
+
+/// Brokerage account X holds SECA 6 on P and SECB 3 on PB; brokerage
+/// account Y holds SECA 2 on PY. Trades recognize every quantity.
+fn held() -> DomainState {
+    let (mut state, rows) = trading();
+    let plan = InvestmentEngine::declare_security(&state, &secb()).unwrap();
+    commit_metadata(&mut state, &plan);
+    for request in [
+        account(QB, unit_id(SECB_UNIT), AccountOriginV1::External),
+        account(
+            QB_CONTROL,
+            unit_id(SECB_UNIT),
+            control(ControlRoleV1::QuantityControl),
+        ),
+        account(KB, unit_id(1), control(ControlRoleV1::InvestmentCarrying)),
+        account(QY, unit_id(SECA_UNIT), AccountOriginV1::External),
+        account(KY, unit_id(1), control(ControlRoleV1::InvestmentCarrying)),
+    ] {
+        let plan = CatalogEngine::set_complete(&state, &request).unwrap();
+        commit_metadata(&mut state, &plan);
+    }
+    for p in [position(PB, SECB, QB, KB), position(PY, SECA, QY, KY)] {
+        let plan = InvestmentEngine::declare_position(&state, &p).unwrap();
+        commit_metadata(&mut state, &plan);
+    }
+    for mapping in state.accounting.as_mut().unwrap().accounts.values_mut() {
+        mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
+    }
+    let header = "original_id,amount,unit,effective,description\n";
+    let b = format!("{header}buy-b,3,SCB,2026-11-04,synthetic buy of 3 SECB\n");
+    let b = import(&mut state, &b, secb().unit, 8400);
+    let y = format!("{header}buy-y,2,SCA,2026-11-05,synthetic buy of 2 SECA in Y\n");
+    let y = import(&mut state, &y, seca().unit, 8500);
+    let state = traded(&state, &buy_of(&state, &rows));
+    let sale = trade(
+        &state,
+        8300,
+        TradeSideV1::Sell,
+        Some(&rows.cash["sale"]),
+        Some(&rows.quantity["sale"]),
+        3,
+    );
+    let state = traded(&state, &sale);
+    let buy_b = quantity_buy(&state, 8600, PB, (QB, QB_CONTROL), &b["buy-b"]);
+    let state = traded(&state, &buy_b);
+    let buy_y = quantity_buy(&state, 8700, PY, (QY, QUANTITY_CONTROL), &y["buy-y"]);
+    traded(&state, &buy_y)
+}
+
+/// `name` from the synthetic holdings fixtures, captured as receipt `n`
+/// with its rows from `n + 1` and snapshot `n + 90`. The host names SECA
+/// and SECB by their source identifiers.
+fn snapshot_batch(name: &str, n: u32) -> CaptureBatchV1 {
+    receipted_batch(name, n, n)
+}
+
+/// `snapshot_batch(name, n)` captured under receipt `receipt` instead.
+fn receipted_batch(name: &str, n: u32, receipt: u32) -> CaptureBatchV1 {
+    let path = format!(
+        "{}/../../fixtures/investments/quantity/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let bytes = std::fs::read(path).unwrap();
+    let source: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let rows = u32::try_from(source["positions"].as_array().unwrap().len()).unwrap();
+    let context = ImportContextV1 {
+        receipt_id: id(receipt),
+        source: SourceIdentityV1 {
+            source: "synthetic".into(),
+            connection_id: id(102),
+            device_id: None,
+        },
+        captured_at: serde_json::from_str("\"2026-12-01T12:00:00Z\"").unwrap(),
+        received_at: serde_json::from_str("\"2026-12-01T13:00:00Z\"").unwrap(),
+        coverage: vec![],
+        row_ids: (0..rows)
+            .map(|i| ImportRowIdsV1 {
+                observation: id(n + 1 + 3 * i),
+                product: id(n + 2 + 3 * i),
+                facet: id(n + 3 + 3 * i),
+            })
+            .collect(),
+    };
+    let security = |n: u32, identifier: &str, unit: UnitDefinition| HoldingsSecurityV1 {
+        identifier: source_id(BROKER, identifier),
+        security: id(n),
+        unit,
+    };
+    let profile = HoldingsProfileV1 {
+        schema_version: 1,
+        parser_version: "1".into(),
+        currency: usd(),
+        securities: vec![
+            security(SECA, "SYN-0001", seca().unit),
+            security(SECB, "SYN-0002", secb().unit),
+        ],
+        snapshot: id(n + 90),
+    };
+    let input = BoundedEvidence::new("holdings.json", bytes, context).unwrap();
+    FileParser::parse_holdings(input, profile).unwrap()
+}
+
+/// The plan that publishes `name` after `state` as receipt `n`.
+fn snapshot_plan(state: &DomainState, name: &str, n: u32) -> DecisionPlan {
+    let batch = ValidatedEvidenceBatchV1::new(snapshot_batch(name, n)).unwrap();
+    EvidenceEngine::publish_holdings(state, batch).unwrap()
+}
+
+/// The snapshot record `plan` publishes.
+fn snapshot_of(plan: &DecisionPlan) -> &HoldingsSnapshotV1 {
+    let Some(AuthoritativeRecordV1::HoldingsSnapshot(snapshot)) = plan.records.last() else {
+        panic!("a snapshot record")
+    };
+    snapshot
+}
+
+/// `name` published after `state` and admitted by replay, with no
+/// accounting effect.
+fn published(state: &DomainState, name: &str, n: u32) -> (HoldingsSnapshotV1, DomainState) {
+    let plan = snapshot_plan(state, name, n);
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    let next = admit(state, &planned(state, &plan)).unwrap();
+    assert!(changes(state, &next).is_empty());
+    (snapshot_of(&plan).clone(), next)
+}
+
+fn holdings_of(state: &DomainState, position: u32, day: &str) -> PositionHoldingsV1 {
+    InvestmentEngine::holdings(state, id(position), civil(day)).unwrap()
+}
+
+#[test]
+fn cur_021_3_incomplete_snapshot_keeps_missing_security() {
+    let state = held();
+    let (snapshot, next) = published(&state, "holdings-x-partial.json", 7000);
+    assert_eq!(snapshot.completeness, CoverageStatus::Partial);
+    assert!(snapshot.absences.is_empty());
+    let b = holdings_of(&next, PB, "2026-11-30");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!((b.snapshot, b.absence), (None, None));
+    let a = holdings_of(&next, P, "2026-11-30");
+    assert_eq!(a.quantity, balance(6, SECA_UNIT));
+    let listed = a.snapshot.unwrap();
+    assert_eq!(listed.snapshot, id(7090));
+    assert_eq!(listed.quantity, units(6, SECA_UNIT));
+    assert_eq!(
+        listed.market_value,
+        Some(Amount::new(60000, 2, unit_id(1)).unwrap())
+    );
+}
+
+#[test]
+fn cur_021_3_complete_snapshot_records_absence_assertion() {
+    let state = held();
+    let (first, next) = published(&state, "holdings-x-complete-2026-11-30.json", 7000);
+    let v1 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    };
+    assert_eq!(first.absences, vec![v1]);
+    assert_eq!(first.scope, vec![account_id(Q), account_id(QB)]);
+    assert_eq!(
+        first.market_value,
+        Some(Amount::new(60000, 2, unit_id(1)).unwrap())
+    );
+    let b = holdings_of(&next, PB, "2026-11-30");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!(b.snapshot, None);
+    assert_eq!(b.absence.unwrap().snapshot, first.id);
+    // A later complete snapshot that again omits SECB adds version 2.
+    let (second, last) = published(&next, "holdings-x-complete-2026-12-31.json", 7100);
+    let v2 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 2,
+        prior: Some(first.id),
+    };
+    assert_eq!(second.absences, vec![v2]);
+    let b = holdings_of(&last, PB, "2026-12-31");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!(b.absence.unwrap().version, 2);
+    // Through the earlier day, version 1 is the current assertion.
+    assert_eq!(
+        holdings_of(&last, PB, "2026-11-30")
+            .absence
+            .unwrap()
+            .version,
+        1
+    );
+    // SECA is listed, so it has no absence.
+    let a = holdings_of(&last, P, "2026-12-31");
+    assert_eq!(a.quantity, balance(6, SECA_UNIT));
+    assert_eq!(a.snapshot.unwrap().snapshot, second.id);
+    assert_eq!(a.absence, None);
+}
+
+#[test]
+fn cur_021_3_absence_follows_scope() {
+    let state = held();
+    let (snapshot, next) = published(&state, "holdings-y-complete.json", 7000);
+    assert_eq!(snapshot.completeness, CoverageStatus::Complete);
+    assert!(snapshot.absences.is_empty());
+    assert_eq!(holdings_of(&next, PB, "2026-11-30").absence, None);
+    // Only Y's position reads the snapshot.
+    let y = holdings_of(&next, PY, "2026-11-30");
+    assert_eq!(y.quantity, balance(2, SECA_UNIT));
+    assert_eq!(y.snapshot.unwrap().quantity, units(2, SECA_UNIT));
+    assert_eq!(holdings_of(&next, P, "2026-11-30").snapshot, None);
+}
+
+#[test]
+fn cur_021_snapshot_keeps_unmapped_positions() {
+    let state = held();
+    let (snapshot, next) = published(&state, "holdings-x-unmapped.json", 7000);
+    let [listed, unmapped] = snapshot.holdings.as_slice() else {
+        panic!("two listed positions")
+    };
+    assert_eq!(listed.security, Some(id(SECA)));
+    // SYN-9999 names no security, though its symbol is SECA's.
+    assert_eq!((unmapped.security, unmapped.quantity), (None, None));
+    // The unmapped position is retained as holding evidence.
+    let Some(AuthoritativeRecordV1::ObservationVersion(observation)) =
+        next.records.get(&unmapped.observation)
+    else {
+        panic!("a retained observation")
+    };
+    assert_eq!(observation.semantic_kind, ObservationKind::Holding);
+    assert!(observation.sanitized_representation.contains("SYN-9999"));
+    // It does not count toward SECA.
+    let a = holdings_of(&next, P, "2026-11-30");
+    assert_eq!(a.snapshot.unwrap().quantity, units(6, SECA_UNIT));
+    assert_eq!(a.quantity, balance(6, SECA_UNIT));
+}
+
+#[test]
+fn cur_021_3_unmapped_position_withholds_absences() {
+    let state = held();
+    let name = "holdings-x-complete-unmapped.json";
+    let (snapshot, next) = published(&state, name, 7000);
+    assert_eq!(snapshot.completeness, CoverageStatus::Complete);
+    let [listed, unmapped] = snapshot.holdings.as_slice() else {
+        panic!("two listed positions")
+    };
+    assert_eq!(listed.security, Some(id(SECA)));
+    assert_eq!(unmapped.security, None);
+    // SYN-9999 could be SECB, so the snapshot asserts no absence for PB.
+    assert!(snapshot.absences.is_empty());
+    let b = holdings_of(&next, PB, "2026-11-30");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!((b.snapshot, b.absence), (None, None));
+    // The read shows the unmapped position instead.
+    let shown = SnapshotUnmappedV1 {
+        snapshot: snapshot.id,
+        as_of: civil("2026-11-30"),
+        observations: vec![unmapped.observation],
+    };
+    assert_eq!(b.unmapped, Some(shown));
+
+    // Replay refuses a commit whose snapshot asserts that absence.
+    let plan = snapshot_plan(&state, name, 7000);
+    let batch = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    let mut forged = plan.records.clone();
+    let Some(AuthoritativeRecordV1::HoldingsSnapshot(draft)) = forged.last_mut() else {
+        panic!("a snapshot record")
+    };
+    draft.absences.push(HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    });
+    rejected(&state, &candidate(&state, forged, batch));
+
+    // A later complete snapshot with no unmapped position records the
+    // absence as usual.
+    let (later, last) = published(&next, "holdings-x-complete-2026-12-31.json", 7100);
+    let v1 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    };
+    assert_eq!(later.absences, vec![v1]);
+    let b = holdings_of(&last, PB, "2026-12-31");
+    assert_eq!(b.absence.unwrap().snapshot, later.id);
+    assert_eq!(b.unmapped, None);
+}
+
+#[test]
+fn cur_021_3_absence_versions_follow_publication_order() {
+    let state = held();
+    let (december, next) = published(&state, "holdings-x-complete-2026-12-31.json", 7000);
+    // The November statement is imported late.
+    let (november, last) = published(&next, "holdings-x-complete-2026-11-30.json", 7100);
+    let v1 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    };
+    assert_eq!(december.absences, vec![v1]);
+    // The version counts publications, so November's is version 2.
+    let v2 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 2,
+        prior: Some(december.id),
+    };
+    assert_eq!(november.absences, vec![v2]);
+    // The current absence has the latest as-of date.
+    let current = holdings_of(&last, PB, "2026-12-31").absence.unwrap();
+    assert_eq!(
+        (current.snapshot, current.as_of, current.version),
+        (december.id, civil("2026-12-31"), 1)
+    );
+    let current = holdings_of(&last, PB, "2026-11-30").absence.unwrap();
+    assert_eq!(
+        (current.snapshot, current.as_of, current.version),
+        (november.id, civil("2026-11-30"), 2)
+    );
+}
+
+#[test]
+fn cur_021_snapshot_replay() {
+    let state = held();
+    let mut next = state.clone();
+    for (name, n) in [
+        ("holdings-x-partial.json", 7000),
+        ("holdings-x-complete-2026-11-30.json", 7100),
+        ("holdings-y-complete.json", 7200),
+        ("holdings-x-unmapped.json", 7300),
+    ] {
+        next = published(&next, name, n).1;
+    }
+    assert_eq!(next.through.0, state.through.0 + 4);
+
+    // A commit whose absence names SECA, which the snapshot lists.
+    let plan = snapshot_plan(&next, "holdings-x-complete-2026-12-31.json", 7400);
+    let batch = AccountingAdapter::freeze(&plan.accounting, &next).unwrap();
+    let mut forged = plan.records.clone();
+    let Some(AuthoritativeRecordV1::HoldingsSnapshot(snapshot)) = forged.last_mut() else {
+        panic!("a snapshot record")
+    };
+    snapshot.absences.push(HoldingAbsenceV1 {
+        position: id(P),
+        security: id(SECA),
+        version: 1,
+        prior: None,
+    });
+    rejected(&next, &candidate(&next, forged, batch.clone()));
+    // The commit as planned still replays at that head.
+    admit(&next, &candidate(&next, plan.records, batch)).unwrap();
+    // A snapshot under an already published receipt has no plan.
+    let name = "holdings-x-complete-2026-12-31.json";
+    let reused = ValidatedEvidenceBatchV1::new(receipted_batch(name, 7400, 7000)).unwrap();
+    assert!(EvidenceEngine::publish_holdings(&next, reused).is_err());
 }

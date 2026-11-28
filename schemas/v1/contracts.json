@@ -19500,6 +19500,501 @@
             "value"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "HoldingsSnapshot"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "absences": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "position": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "security": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "security",
+                      "version",
+                      "prior"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "as_of": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "civil": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "Date"
+                        },
+                        "original_text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "civil",
+                        "original_text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Instant"
+                        },
+                        "original_offset": {
+                          "anyOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "original_text": {
+                          "type": "string"
+                        },
+                        "original_zone": {
+                          "anyOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "precision": {
+                          "enum": [
+                            "Second",
+                            "Millisecond",
+                            "Microsecond",
+                            "Nanosecond",
+                            "Unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "utc": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "utc",
+                        "original_offset",
+                        "original_zone",
+                        "precision",
+                        "original_text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Unknown"
+                        },
+                        "original_text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "original_text"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "completeness": {
+                  "enum": [
+                    "Complete",
+                    "Partial",
+                    "Unknown"
+                  ],
+                  "type": "string"
+                },
+                "currency": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "holdings": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "market_value": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "coefficient": {
+                                "maxLength": 40,
+                                "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                "type": "string"
+                              },
+                              "scale": {
+                                "maximum": 18,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "unit_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "coefficient",
+                              "scale",
+                              "unit_id"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "observation": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "coefficient": {
+                                "maxLength": 40,
+                                "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                "type": "string"
+                              },
+                              "scale": {
+                                "maximum": 18,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "unit_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "coefficient",
+                              "scale",
+                              "unit_id"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "security": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "observation",
+                      "security",
+                      "quantity",
+                      "market_value"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "market_value": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "coefficient": {
+                          "maxLength": 40,
+                          "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                          "type": "string"
+                        },
+                        "scale": {
+                          "maximum": 18,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "unit_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "coefficient",
+                        "scale",
+                        "unit_id"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "receipt": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "scope": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "receipt",
+                "as_of",
+                "scope",
+                "completeness",
+                "currency",
+                "holdings",
+                "market_value",
+                "absences"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "OrganizationAssignment"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "enum": [
+                    "Party",
+                    "Category",
+                    "Tag"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "legs": {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "override_action": {
+                  "enum": [
+                    "Preserve",
+                    "Replace",
+                    "Clear"
+                  ],
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "source": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Owner"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Rule"
+                        },
+                        "value": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "grant": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "rule": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "rule",
+                            "version",
+                            "grant"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Proposal"
+                        },
+                        "value": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "supersedes": {
+                  "anyOf": [
+                    {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "version",
+                "supersedes",
+                "field",
+                "legs",
+                "value",
+                "override_action",
+                "source"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -56308,6 +56803,501 @@
                   "value"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "HoldingsSnapshot"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "absences": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "prior": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "security": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "security",
+                            "version",
+                            "prior"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "as_of": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "civil": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "Date"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "civil",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Instant"
+                              },
+                              "original_offset": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "original_text": {
+                                "type": "string"
+                              },
+                              "original_zone": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "precision": {
+                                "enum": [
+                                  "Second",
+                                  "Millisecond",
+                                  "Microsecond",
+                                  "Nanosecond",
+                                  "Unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "utc": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "utc",
+                              "original_offset",
+                              "original_zone",
+                              "precision",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Unknown"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "completeness": {
+                        "enum": [
+                          "Complete",
+                          "Partial",
+                          "Unknown"
+                        ],
+                        "type": "string"
+                      },
+                      "currency": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "holdings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "market_value": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "observation": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "quantity": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "security": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "observation",
+                            "security",
+                            "quantity",
+                            "market_value"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "market_value": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "coefficient": {
+                                "maxLength": 40,
+                                "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                "type": "string"
+                              },
+                              "scale": {
+                                "maximum": 18,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "unit_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "coefficient",
+                              "scale",
+                              "unit_id"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "receipt": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "scope": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "receipt",
+                      "as_of",
+                      "scope",
+                      "completeness",
+                      "currency",
+                      "holdings",
+                      "market_value",
+                      "absences"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "OrganizationAssignment"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "Party",
+                          "Category",
+                          "Tag"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "legs": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "override_action": {
+                        "enum": [
+                          "Preserve",
+                          "Replace",
+                          "Clear"
+                        ],
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "source": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Owner"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Rule"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "grant": {
+                                    "anyOf": [
+                                      {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "rule": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "rule",
+                                  "version",
+                                  "grant"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Proposal"
+                              },
+                              "value": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "supersedes": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "version",
+                      "supersedes",
+                      "field",
+                      "legs",
+                      "value",
+                      "override_action",
+                      "source"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -72229,6 +73219,501 @@
                       "freshness_thresholds",
                       "timezone",
                       "reporting_currency"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "HoldingsSnapshot"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "absences": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "prior": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "security": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "security",
+                            "version",
+                            "prior"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "as_of": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "civil": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "Date"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "civil",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Instant"
+                              },
+                              "original_offset": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "original_text": {
+                                "type": "string"
+                              },
+                              "original_zone": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "precision": {
+                                "enum": [
+                                  "Second",
+                                  "Millisecond",
+                                  "Microsecond",
+                                  "Nanosecond",
+                                  "Unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "utc": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "utc",
+                              "original_offset",
+                              "original_zone",
+                              "precision",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Unknown"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "completeness": {
+                        "enum": [
+                          "Complete",
+                          "Partial",
+                          "Unknown"
+                        ],
+                        "type": "string"
+                      },
+                      "currency": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "holdings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "market_value": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "observation": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "quantity": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "security": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "observation",
+                            "security",
+                            "quantity",
+                            "market_value"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "market_value": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "coefficient": {
+                                "maxLength": 40,
+                                "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                "type": "string"
+                              },
+                              "scale": {
+                                "maximum": 18,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "unit_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "coefficient",
+                              "scale",
+                              "unit_id"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "receipt": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "scope": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "receipt",
+                      "as_of",
+                      "scope",
+                      "completeness",
+                      "currency",
+                      "holdings",
+                      "market_value",
+                      "absences"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "OrganizationAssignment"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "Party",
+                          "Category",
+                          "Tag"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "legs": {
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "override_action": {
+                        "enum": [
+                          "Preserve",
+                          "Replace",
+                          "Clear"
+                        ],
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "source": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Owner"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Rule"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "grant": {
+                                    "anyOf": [
+                                      {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "rule": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "rule",
+                                  "version",
+                                  "grant"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Proposal"
+                              },
+                              "value": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "supersedes": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "version",
+                      "supersedes",
+                      "field",
+                      "legs",
+                      "value",
+                      "override_action",
+                      "source"
                     ],
                     "type": "object"
                   }

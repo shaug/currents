@@ -183,7 +183,7 @@ fn strict_bounds() {
         "decode has no mutation authority"
     );
     let records: Vec<AuthoritativeRecordV1> = decode(fixture("records.json").as_bytes()).unwrap();
-    assert_eq!(records.len(), 25);
+    assert_eq!(records.len(), 26);
     let operations: Vec<CommandBodyV1> = decode(fixture("operations.json").as_bytes()).unwrap();
     assert_eq!(operations.len(), 22);
     for record in records {

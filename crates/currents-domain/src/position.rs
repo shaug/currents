@@ -5,7 +5,8 @@
 //! it labels each selected balance's freshness and lists pending activity,
 //! the selected sources' reported coverage and any journal discrepancy. It
 //! reads the state and writes nothing. It never rolls a source balance
-//! forward.
+//! forward. An explanation is the graph of one component's selection inputs
+//! at the same basis.
 use crate::activity_predicate::civil_date;
 use crate::aggregation::{self, Basis, Found};
 use crate::catalog::{CatalogEngine, incomplete, journal_sign};
@@ -89,14 +90,17 @@ struct Candidate {
 /// The candidates no other candidate is strictly later than. When they share
 /// one boundary, the highest-ranked source in `priority` among them decides.
 /// Equal amounts corroborate and are all selected. Different amounts are a
-/// conflict, `None`, with nothing selected.
-fn select<'a>(candidates: &'a [Candidate], priority: &[RecordId]) -> Option<Vec<&'a Candidate>> {
+/// conflict: nothing is selected, and the error holds the candidates that
+/// conflict.
+type Selection<'a> = Result<Vec<&'a Candidate>, Vec<&'a Candidate>>;
+
+fn select<'a>(candidates: &'a [Candidate], priority: &[RecordId]) -> Selection<'a> {
     let latest: Vec<&Candidate> = candidates
         .iter()
         .filter(|c| !candidates.iter().any(|o| o.boundary.after(c.boundary)))
         .collect();
     let Some(first) = latest.first() else {
-        return Some(Vec::new());
+        return Ok(Vec::new());
     };
     let mut pool = latest.clone();
     if latest.iter().all(|c| c.boundary == first.boundary)
@@ -106,9 +110,60 @@ fn select<'a>(candidates: &'a [Candidate], priority: &[RecordId]) -> Option<Vec<
     {
         pool.retain(|c| c.source.connection_id == *top);
     }
-    pool.iter()
-        .all(|c| c.amount == pool[0].amount)
-        .then_some(pool)
+    if pool.iter().all(|c| c.amount == pool[0].amount) {
+        Ok(pool)
+    } else {
+        Err(pool)
+    }
+}
+
+/// The requested date of `basis`, once the state can answer at it: the
+/// basis names the state's commit, the accounting index is current with the
+/// state, and the effective scope ends on a date by effective date. It also
+/// returns every live leg.
+fn requested<'s>(
+    state: &'s DomainState,
+    basis: &ReadBasis,
+) -> Result<(Date, Vec<&'s FinancialLegV1>), EngineError> {
+    if basis.through_commit != state.through {
+        return Err(dependencies::stale());
+    }
+    let legs = dependencies::live_legs(state)?;
+    let (Some(day), DateBasis::Effective) =
+        (basis.effective_scope.end, basis.effective_scope.basis)
+    else {
+        return Err(EngineError::invalid());
+    };
+    Ok((day, legs))
+}
+
+/// The governing source priority, or none.
+fn priority(policy: &GoverningPolicyV1) -> Vec<RecordId> {
+    match &policy.source_priority {
+        PolicySettingV1::Set {
+            value: SourceValue::Known(order),
+            ..
+        } => order.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// The account's active anchor when its cutoff is on or before `day`, with
+/// its segment.
+fn anchor(
+    state: &DomainState,
+    account: AccountId,
+    day: Date,
+) -> Result<Option<(Anchor, &AccountingSegmentV1)>, EngineError> {
+    let Some(anchor) = Anchor::active(state, account)?.filter(|a| a.cutoff <= day) else {
+        return Ok(None);
+    };
+    let Some(AuthoritativeRecordV1::AccountingSegment(segment)) =
+        state.records.get(&anchor.segment)
+    else {
+        return Err(EngineError::invalid());
+    };
+    Ok(Some((anchor, segment)))
 }
 
 /// The components a scope names directly or through their accounts, each
@@ -266,12 +321,12 @@ fn journal(
     movements: &mut Vec<AccountMovementV1>,
 ) -> Result<Option<AnchoredBalanceV1>, EngineError> {
     let account = catalog.account_id;
-    let anchor = Anchor::active(state, account)?.filter(|a| a.cutoff <= day);
-    let mut amount = anchor
+    let anchored = anchor(state, account, day)?;
+    let mut amount = anchored
         .as_ref()
-        .map(|a| journal_sign(catalog.normal_sign, a.opening.amount))
+        .map(|(a, _)| journal_sign(catalog.normal_sign, a.opening.amount))
         .transpose()?;
-    let mut dependencies: Vec<RecordId> = anchor.iter().map(|a| a.segment).collect();
+    let mut dependencies: Vec<RecordId> = anchored.iter().map(|(a, _)| a.segment).collect();
     let mut unmapped = false;
     for leg in legs.iter().filter(|l| l.account_id == account) {
         let Some(leg_day) = civil_date(DateBasis::Effective, &leg.effective, &leg.posting) else {
@@ -281,8 +336,8 @@ fn journal(
         if leg_day > day {
             continue;
         }
-        match &anchor {
-            Some(anchor) if leg_day > anchor.cutoff => {
+        match &anchored {
+            Some((anchor, _)) if leg_day > anchor.cutoff => {
                 amount = amount.map(|a| a.checked_add(&leg.movement)).transpose()?;
                 dependencies.push(RecordId(leg.id.0));
             }
@@ -302,14 +357,9 @@ fn journal(
     if unmapped {
         codes.insert("missing_date_mapping");
     }
-    let Some(anchor) = anchor else {
+    let Some((_, segment)) = anchored else {
         codes.insert("unknown_opening");
         return Ok(None);
-    };
-    let Some(AuthoritativeRecordV1::AccountingSegment(segment)) =
-        state.records.get(&anchor.segment)
-    else {
-        return Err(EngineError::invalid());
     };
     Ok(Some(AnchoredBalanceV1 {
         component,
@@ -471,24 +521,10 @@ impl PositionEngine {
         basis: &ReadBasis,
         scope: &AccountScope,
     ) -> Result<PositionResponseV1, EngineError> {
-        if basis.through_commit != state.through {
-            return Err(dependencies::stale());
-        }
-        let legs = dependencies::live_legs(state)?;
-        let (Some(day), DateBasis::Effective) =
-            (basis.effective_scope.end, basis.effective_scope.basis)
-        else {
-            return Err(EngineError::invalid());
-        };
+        let (day, legs) = requested(state, basis)?;
         let components = components(state, scope)?;
         let policy = PolicyEngine::governing(state, day)?;
-        let priority = match policy.source_priority {
-            PolicySettingV1::Set {
-                value: SourceValue::Known(order),
-                ..
-            } => order,
-            _ => Vec::new(),
-        };
+        let priority = priority(&policy);
         let evaluated = basis.evaluation_instant.unix_timestamp_nanos();
         let held = RecognitionEngine::pending(state)?;
         let mut codes = BTreeSet::new();
@@ -505,7 +541,7 @@ impl PositionEngine {
         let mut found = Vec::new();
         for (component, catalog) in &components {
             let reading = readings.remove(component).unwrap_or_default();
-            let chosen = select(&reading.candidates, &priority);
+            let chosen = select(&reading.candidates, &priority).ok();
             if chosen.is_none() {
                 codes.insert("conflict");
             }
@@ -578,5 +614,177 @@ impl PositionEngine {
             missing_inputs: codes.into_iter().map(String::from).collect(),
             aggregate: aggregation::aggregate(state, day, found)?,
         })
+    }
+
+    /// The graph behind `component`'s position at `basis`, read as `query`
+    /// reads it: the balances that could be selected, the anchor and its
+    /// opening, and the policy revisions the query uses for the component.
+    /// It refuses what `query` refuses.
+    pub fn explain(
+        state: &DomainState,
+        basis: &ReadBasis,
+        component: RecordId,
+    ) -> Result<ExplanationV1, EngineError> {
+        let (day, _) = requested(state, basis)?;
+        let scope = AccountScope {
+            accounts: vec![],
+            components: vec![component],
+        };
+        let components = components(state, &scope)?;
+        let account = components[&component].account_id;
+        let policy = PolicyEngine::governing(state, day)?;
+        let mut readings = balances(
+            state,
+            &components,
+            Boundary::Date(day),
+            &mut BTreeSet::new(),
+        )?;
+        let candidates = readings.remove(&component).unwrap_or_default().candidates;
+        let (selected, conflicting) = match select(&candidates, &priority(&policy)) {
+            Ok(selected) => (selected, Vec::new()),
+            Err(conflicting) => (Vec::new(), conflicting),
+        };
+        let has = |pool: &[&Candidate], c: &Candidate| {
+            pool.iter().any(|o| o.observation == c.observation)
+        };
+
+        let mut graph = Graph::default();
+        for candidate in &candidates {
+            let role = if has(&selected, candidate) {
+                "selected balance"
+            } else if has(&conflicting, candidate) {
+                "conflicting balance"
+            } else {
+                "candidate balance"
+            };
+            let summary = format!("{role} as of {}", date_of(&candidate.as_of));
+            graph.node(
+                candidate.observation,
+                ExplanationNodeKindV1::Evidence,
+                summary,
+            );
+        }
+        for candidate in &selected {
+            graph.edge(component, candidate.observation, "selected");
+        }
+        for a in &conflicting {
+            for b in &conflicting {
+                if a.observation < b.observation && a.amount != b.amount {
+                    graph.edge(a.observation, b.observation, "conflicts_with");
+                }
+            }
+        }
+        if let Some((anchor, segment)) = anchor(state, account, day)? {
+            let opening = RecordId(segment.opening.0);
+            let cutoff = anchor.cutoff;
+            graph.node(
+                anchor.segment,
+                ExplanationNodeKindV1::Decision,
+                format!("accounting segment from cutoff {cutoff}"),
+            );
+            graph.node(
+                opening,
+                ExplanationNodeKindV1::Decision,
+                format!("opening recognition at cutoff {cutoff}"),
+            );
+            graph.edge(anchor.segment, component, "anchors");
+            graph.edge(opening, anchor.segment, "anchors");
+        }
+        // Source priority decides the selection, and the ownership perimeter
+        // and reporting currency decide what the aggregate counts. Freshness
+        // thresholds label each selected balance.
+        for version in [
+            version(&policy.source_priority),
+            version(&policy.ownership_perimeter),
+            version(&policy.reporting_currency),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let revision = graph.revision(state, version)?;
+            graph.edge(revision, component, "governs");
+        }
+        if let Some(version) = version(&policy.freshness_thresholds)
+            && !selected.is_empty()
+        {
+            let revision = graph.revision(state, version)?;
+            for candidate in &selected {
+                graph.edge(revision, candidate.observation, "labels");
+            }
+        }
+        Ok(ExplanationV1 {
+            basis: basis.clone(),
+            roots: vec![component],
+            nodes: graph.nodes.into_values().collect(),
+            edges: graph
+                .edges
+                .into_iter()
+                .map(|(from, to, relationship)| ExplanationEdgeV1 {
+                    from,
+                    to,
+                    relationship: relationship.into(),
+                })
+                .collect(),
+        })
+    }
+}
+
+/// An explanation's nodes in ID order and its edges in (from, to,
+/// relationship) order. A node's first summary stays.
+#[derive(Default)]
+struct Graph {
+    nodes: BTreeMap<RecordId, ExplanationNodeV1>,
+    edges: BTreeSet<(RecordId, RecordId, &'static str)>,
+}
+
+impl Graph {
+    fn node(&mut self, id: RecordId, kind: ExplanationNodeKindV1, summary: String) {
+        self.nodes
+            .entry(id)
+            .or_insert(ExplanationNodeV1 { id, kind, summary });
+    }
+
+    fn edge(&mut self, from: RecordId, to: RecordId, relationship: &'static str) {
+        self.edges.insert((from, to, relationship));
+    }
+
+    /// Add the dataset policy revision with `version` as a node, and return
+    /// its ID. A dataset has one revision family, so a version names one
+    /// revision.
+    fn revision(&mut self, state: &DomainState, version: u32) -> Result<RecordId, EngineError> {
+        let revision = state
+            .records
+            .values()
+            .find_map(|record| match record {
+                AuthoritativeRecordV1::DatasetPolicyRevision(r) if r.version == version => Some(r),
+                _ => None,
+            })
+            .ok_or_else(incomplete)?;
+        let from = revision.effective_scope.start.map_or_else(
+            || "with no start date".into(),
+            |start| format!("from {start}"),
+        );
+        let summary = format!("policy revision {version} effective {from}");
+        self.node(revision.id, ExplanationNodeKindV1::Policy, summary);
+        Ok(revision.id)
+    }
+}
+
+/// The version of the revision that sets a governing policy field.
+fn version<T>(setting: &PolicySettingV1<T>) -> Option<u32> {
+    match setting {
+        PolicySettingV1::Set { version, .. } => Some(*version),
+        PolicySettingV1::NotSet => None,
+    }
+}
+
+/// A temporal value's date for a node summary: a civil date, or an instant's
+/// UTC date (its offset is always zero). It never repeats the source's
+/// original text.
+fn date_of(temporal: &TemporalValue) -> String {
+    match temporal {
+        TemporalValue::Date { civil, .. } => civil.to_string(),
+        TemporalValue::Instant { utc, .. } => format!("{} UTC", utc.date()),
+        TemporalValue::Unknown { .. } => "an unknown date".into(),
     }
 }

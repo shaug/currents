@@ -22,7 +22,7 @@ ID newtypes over UUID: `DatasetId`, `InstanceId`, `CommandId`, `RecordId`, `Acco
 
 `TemporalValue = Date { civil, original_text } | Instant { utc, original_offset, original_zone, precision, original_text } | Unknown { original_text }`; `DateScope { start:Option<Date>, end:Option<Date>, basis:Effective|Posting }`; `ReadBasis { dataset_id, through_commit, effective_scope, evaluation_instant, query_semantics_version, selection_policy_version, unit_catalog_version }`. Dates use `time::Date`; instants use `time::OffsetDateTime`; source unknown/null/absent values are distinct enums. IANA timezone data and calendar definitions are explicit versioned input, not an ambient conversion.
 
-`AuthoritativeRecordV1` is a tagged enum for dataset/policy/catalog definitions, account components/aliases/perimeter, import receipts, observation versions, parse products, economic events/legs, associations/allocations, decisions/recognitions/segments, reconciliation claims, organization/rules/review, commitments/matches/scenarios/forecast runs. CUR-002 creates schemas for every required field in design section 3 and the owning subsystem extends its variant before use. A semantic version change never silently ignores unknown variants. `DomainCommitV1 { seq, previous_digest, records:Vec<AuthoritativeRecordV1>, decisions:Vec<DecisionEnvelopeV1>, native_head_after, command_result, digest }`; decision envelopes carry actor/grant identity, recorded time, policy, command/digest and supersession, never bearer authorization. `DomainState` is the replayed typed state indexed by stable IDs; it is not authoritative by itself. `DecisionPlan { records, invalidations:Vec<RecordId>, accounting:AccountingIntent }` is a proposed effect, never writes by itself. `AccountingIntent` is a typed enum of metadata declaration, recognition, correction and no-effect; the frozen native form is C05.
+`AuthoritativeRecordV1` is a tagged enum for dataset/policy/catalog definitions, account components/aliases/perimeter, import receipts, observation versions, parse products, economic events/legs, associations/allocations, decisions/recognitions/segments, reconciliation claims, organization records and assignments/rules/review, commitments/matches/scenarios/forecast runs. C10 gives the exact `OrganizationAssignmentV1` schema. CUR-002 creates schemas for every required field in design section 3 and the owning subsystem extends its variant before use. A semantic version change never silently ignores unknown variants. `DomainCommitV1 { seq, previous_digest, records:Vec<AuthoritativeRecordV1>, decisions:Vec<DecisionEnvelopeV1>, native_head_after, command_result, digest }`; decision envelopes carry actor/grant identity, recorded time, policy, command/digest and supersession, never bearer authorization. `DomainState` is the replayed typed state indexed by stable IDs; it is not authoritative by itself. `DecisionPlan { records, invalidations:Vec<RecordId>, accounting:AccountingIntent }` is a proposed effect, never writes by itself. `AccountingIntent` is a typed enum of metadata declaration, recognition, correction and no-effect; the frozen native form is C05.
 
 `EngineError` has the stable classes listed in design section 10, affected scope and safe next action; no raw SQL, secrets, path, or private excluded fields in external errors. `Health = Healthy | SourcePartial | SourceStale | Locked | ProjectionLagging | IntegrityFailed | MigrationRequired | RecoveryInProgress`; independent source conditions may coexist.
 
@@ -94,6 +94,13 @@ CUR012 adds the compatible authoritative `AddressedParseProductV1 { id:RecordId,
 ### CUR-017 balance kind
 
 Schema version 2 adds `balance_kinds:Vec<BalanceFacetKindV1 { facet:RecordId, kind:BalanceKindV1 }>`, where `BalanceKindV1` is `Posted`, `Available`, `Statement` or `Unknown`. A version-2 product names exactly one kind for each `Balance` facet, in ascending facet ID order, and none for any other facet. A version-1 product has no `balance_kinds` field, keeps its canonical bytes and admission rules, and reports every balance as `Unknown`; its wire form with the field is refused. Every other version is refused with `UnsupportedVersion`. Domain replay and storage admit both versions through `AddressedParseProductV1::validate`. The synthetic import profiles still emit version-1 movement products, and evidence batch admission still requires version 1. Every addressed product of one observation must report the same kind for a facet; a version-1 or unaddressed product reports `Unknown`. Reconciliation refuses an observation whose products disagree.
+
+CUR-021 adds the `SyntheticHoldings` profile,
+`FileParser::parse_holdings(input,HoldingsProfileV1)`, and
+`CaptureBatchV1.snapshot`, which only that profile sets. Evidence batch
+admission accepts `Holding` observations from that profile only, and
+`EvidenceEngine::publish` refuses a holdings batch; see [CUR-021 holdings
+snapshots](#cur-021-holdings-snapshots).
 
 `FileParser::parse(input:BoundedEvidence,profile:ParserProfileV1)->Result<CaptureBatchV1,EngineError>`; `EvidenceEngine::publish(state:&DomainState,batch:ValidatedEvidenceBatchV1)->Result<DecisionPlan,EngineError>`; `IdentityEngine::associate(state:&DomainState,request:AssociationRequestV1)->Result<DecisionPlan,EngineError>`. `AssociationRequestV1` specifies relationship type, legs/facets, exact allocations, survivor/corrections and reasons. `ReadOnlyAdapter` methods `describe_capabilities()->AdapterCapabilitiesV1`, `async fetch_changes(cursor:Option<String>)->Result<CaptureBatchV1,EngineError>`, `async fetch_snapshot(scope:SourceScopeV1)->Result<CaptureBatchV1,EngineError>`, `async resume_import(receipt:RecordId)->Result<CaptureBatchV1,EngineError>`; source scope is explicit accounts/time/type. No write institution methods. `RefreshCoordinator::next_attempt(state:&ConnectionState,now:OffsetDateTime)->RefreshDecision` is deterministic; 24 hours schedule opt-in,1/5/30 minutes retry then next scheduled, Retry-After, lock/auth failures suppress attempts.
 
@@ -492,7 +499,7 @@ lists no overlaps behaves like a version-1 request.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|KnownSubtotal{known,omitted,obstructions}|Range{low,high}|Indeterminate{components,obstructions}` (see the CUR-018 household aggregate checkpoint). Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>` and `PositionEngine::explain(state,basis,component:RecordId)->Result<ExplanationV1,EngineError>` (see the CUR-018 position explanation checkpoint); response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|KnownSubtotal{known,omitted,obstructions}|Range{low,high}|Indeterminate{components,obstructions}` (see the CUR-018 household aggregate checkpoint). Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
@@ -1120,19 +1127,148 @@ movement times the share has no exact decimal.
 `transfer_membership` when a transfer leaves the total without one amount
 or range.
 
+### CUR-018 position explanation checkpoint
+
+```text
+PositionEngine::explain(state:&DomainState,basis:&ReadBasis,component:RecordId)->Result<ExplanationV1,EngineError>
+```
+
+An explanation names the inputs behind one component's position at one
+basis. It reads the state with the position query's rules and refuses what
+the query refuses: `StaleBasis` for a basis whose `through_commit` is not the
+state's commit or a state whose accounting index lags it, and
+`InvalidReference` for an unknown component or an effective scope with no
+end or another date basis. It never answers from another commit.
+
+A position page is one scoped query of at most 256 components, and every
+page names the caller's basis (ruling G10 on #27). Each component's
+assertions, selection, labels, anchored balance, movements and pending legs
+are the same whether it is queried alone or with others at the same basis,
+and its explanation names the same selection and labels. There is no
+position cursor.
+
+`basis` is the caller's basis and `roots` is the component. `nodes` lists,
+in ID order:
+
+- `Evidence`: each observation version with a candidate balance for the
+  component (the position selection checkpoint).
+- `Decision`: the anchor's segment and opening recognition, when the
+  component's account has an active anchor whose cutoff is on or before the
+  requested date.
+- `Policy`: the governing dataset policy revision that sets the source
+  priority, ownership perimeter or reporting currency for the requested
+  date, and the one that sets the freshness thresholds when a balance is
+  selected.
+
+`edges` lists, in (from, to, relationship) order:
+
+- `selected`: the component to each selected observation version.
+- `conflicts_with`: between two candidates that conflict with different
+  amounts, from the lower observation version ID to the higher.
+- `anchors`: the segment to the component, and the opening recognition to
+  the segment.
+- `governs`: a source priority, ownership perimeter or reporting currency
+  revision to the component.
+- `labels`: the freshness thresholds revision to each selected observation
+  version.
+
+A node summary names the node's role and a date: a balance's as-of date (an
+instant's UTC date), the anchor's cutoff, or a revision's first effective
+date. It never repeats an observation's sanitized representation or a
+source's original text.
+
+The service's synthetic test planner
+(`crates/currents-service/tests/support/financial_service.rs`) answers
+`QueryPosition` and `Explain` through `PositionEngine`. `QueryPosition`
+reads the accounts and components the query names; `Explain` reads the one
+component it names. The response's `processed_head` is the state's commit,
+and `Service::query` refuses a basis other than its head. There is no
+production query dispatch.
+
 <a id="c10"></a>
 
 ## C10: Organization and deterministic rules, owner CUR-019
 
 Files: `crates/currents-domain/src/{organization,rules}.rs`.
 
-`OrganizationRequestV1 { economic_ids, field, value, allocation, provenance, override_action }`; `RuleDefinitionV1 { id,version,scope,priority,predicate,allowed_operation,adopted_value }`; `RuleGrantV1 { grant_id,rule_id,version,accounts,conditions,operation_kinds,revoked }`. `OrganizationEngine::set(state,&OrganizationRequestV1)->Result<DecisionPlan,EngineError>`; `RuleEvaluator::propose(state,&RuleDefinitionV1)->Result<Vec<DecisionPlan>,EngineError>`. Only service-internal authorized evaluator can adopt with an active exact grant. AI proposals contain input field/model/version provenance and never a grant; no remote AI adapter in v1. Categories partition signed amounts; tags nonadditive; hierarchy deduplicates stable leg IDs; conflicting equal-priority rules remain conflicts.
+`OrganizationRequestV1 { economic_ids, field, value, allocation, provenance, override_action }` is the protocol `SetOrganization` payload; its bytes are unchanged and no route maps it yet. `RuleDefinitionV1 { id,version,scope,priority,predicate,allowed_operation,adopted_value }`; `RuleGrantV1 { grant_id,rule_id,version,accounts,conditions,operation_kinds,revoked }`. `OrganizationEngine::set(state,&OrganizationChangeV1)->Result<OrganizationPreviewV1,EngineError>`; `RuleEvaluator::propose(state,&RuleDefinitionV1)->Result<Vec<DecisionPlan>,EngineError>`. Only service-internal authorized evaluator can adopt with an active exact grant. AI proposals contain input field/model/version provenance and never a grant; no remote AI adapter in v1. Categories partition signed amounts; tags nonadditive; hierarchy deduplicates stable leg IDs; conflicting equal-priority rules remain conflicts.
+
+### CUR-019 owner organization records
+
+```text
+OrganizationRecordV1 { id, version, kind, targets, parent, text, allocations, supersedes }
+OrganizationFieldV1 = Party | Category | Tag
+OrganizationSourceV1 = Owner | Rule(RuleSourceV1 { rule, version, grant:Option<GrantId> }) | Proposal(RecordId)
+OrganizationAssignmentV1 { id, schema_version, version, supersedes:Option<RecordId>, field:OrganizationFieldV1, legs:Vec<LegId>, value:Option<RecordId>, override_action:OverrideActionV1, source:OrganizationSourceV1 }
+OrganizationChangeV1 { records:Vec<OrganizationRecordV1>, values:Vec<LegValueRequestV1> }
+LegValueRequestV1 { field, legs:Vec<LegId>, value:Option<RecordId>, action:OverrideActionV1 }
+OrganizationPreviewV1 { plan:DecisionPlan, skipped:Vec<LegId> }
+DomainState::owner_assignment(leg,field)->Option<&OrganizationAssignmentV1>
+DomainState::owner_value(leg,field)->Option<OwnerValueV1 { record, version, value }>
+```
+
+Parties, aliases, categories, tags and notes are `OrganizationRecordV1`
+versions; its fields and bytes are unchanged. A party, category or tag value
+on legs is an `OrganizationAssignmentV1` version, schema version 1.
+`AuthoritativeRecordV1` adds `OrganizationAssignment(OrganizationAssignmentV1)`.
+An edit appends the next version and never changes an earlier one.
+
+`OrganizationEngine::set` previews one owner change: the change's records
+first, then one assignment per changed leg. Its plan has no invalidations and
+`AccountingIntent::NoEffect`. A leg's assignment for a field is the next
+version of its latest one, including a version that cleared the value, or a
+first version; its ID derives from the field, the leg and the version it
+supersedes. `Preserve` sets a value only on legs without one and lists the
+others in `skipped`. `Replace` supersedes the current value. `Clear` releases
+it with a version whose `value` is null; a leg with no value has nothing to
+clear and is refused.
+
+`set` refuses, with no plan, an empty change, a value request with no legs or
+a leg twice, and a request whose `value` is null for any action but `Clear`.
+It and replay both refuse:
+
+- a record whose ID is nil, already recorded, or used twice in the commit;
+- a first version other than version 1, or a revision that is not the next
+  version of the version it supersedes, changes its kind or field, or forks a
+  version another record already supersedes;
+- a party, alias, category or tag with targets; a party with a parent; a
+  category or tag whose parent is not the first version of another of its
+  kind; an alias whose parent is not a party's first version; and a parent
+  chain, read through each definition's latest version, that returns to where
+  it started;
+- a note with a parent, with no targets or a target twice, or with a target
+  that is not a `FinancialLeg` record, such as a recognition or posting ID;
+- an assignment on no legs, a leg twice or a missing leg; a `Clear` that names
+  a value or supersedes a version without one; another action whose value is
+  not the first version of a definition of the field's kind; a `Preserve` that
+  supersedes a value; and a revision whose legs differ from its predecessor's;
+- two latest owner assignments for one leg and field.
+
+Replay refuses, with a version error, an organization record with allocations
+or of kind `ReportingAllocation`, an assignment of another schema version, and
+an assignment whose source is not `Owner` until later CUR-019 leaves define
+rules and proposals. Storage checks that an assignment's legs are
+`FinancialLeg` records, its value an `Organization` record and its
+predecessor an `OrganizationAssignment`. It also refuses a second successor
+of one assignment version, and a rule or proposal source.
+
+`owner_assignment` gives the latest owner assignment that holds the leg for
+the field, including one that clears the value; the engine plans from it.
+`owner_value` gives that assignment's ID, version and the definition it
+names, or `None` when there is none or it clears the value. Replay through
+an earlier commit reports that commit's value.
+
+Corrections and segment replacements refuse a change while an assignment
+names a leg they retire, until a later CUR-019 leaf defines its remap.
+`OrganizationRecordV1` successors in corrections work as before. Precedence
+beyond the owner tier, alias matching, rules, grants, proposals, splits, tag
+counting and the command route belong to later work.
 
 <a id="c11"></a>
 
 ## C11: Investments/FX/manual, owners CUR-021–024
 
-Files: `crates/currents-domain/src/investments/{quantity,basis,valuation}.rs`, `crates/currents-domain/src/{fx,loans,manual}.rs`.
+Files: `crates/currents-domain/src/investments/{quantity,holdings,basis,valuation}.rs`, `crates/currents-domain/src/{fx,loans,manual}.rs`.
 
 `TradeRequestV1` specifies adopted security identity, cash/quantity legs, fees, dates and source references. `LotSelectionV1 = Fifo | Explicit { acquisitions, attributed_choice }`; `BasisResultV1 = Known { carrying_cost,gross_gain,fees,net_result,remainder } | Partial { known,unknown_quantity } | Unknown { reason }`. `InvestmentEngine::recognize(state,&TradeRequestV1)->Result<DecisionPlan,EngineError>`; `BasisEngine::allocate(state,disposal:LegId,selection:LotSelectionV1)->Result<BasisResultV1,EngineError>`; `ValuationEngine::value(state,basis:&ReadBasis,account:AccountId)->Result<PositionResponseV1,EngineError>`. Supported corporate-action payloads specify split numerator/denominator, effective date and resulting basis; cash-in-lieu distinct. Unknown cohorts participate in FIFO eligibility; transfers preserve lineage.
 
@@ -1218,6 +1354,59 @@ the recognition, so a batch that holds only one side's postings is refused.
 Every correction path and segment replacement refuses a recognition that
 holds a security-unit posting, or a closure that includes one, until CUR-022
 extends `ReplacedLegs` to trade quantity legs.
+
+### CUR-021 holdings snapshots
+
+```text
+SnapshotHoldingV1 { observation, security:Option<RecordId>, quantity:Option<Amount>, market_value:Option<Amount> }
+HoldingAbsenceV1 { position, security, version, prior:Option<RecordId> }
+HoldingsSnapshotV1 { id, schema_version, receipt, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings, market_value:Option<Amount>, absences }
+```
+
+A holdings snapshot is evidence of what a source reports an account scope
+held on one day. It never changes a recognized quantity. The C07
+`SyntheticHoldings` profile parses one snapshot into a receipt, one `Holding`
+observation and product per position, and a snapshot draft.
+`EvidenceEngine::publish_holdings(state,ValidatedEvidenceBatchV1)` publishes
+them with a version 1 `HoldingsSnapshotV1` and `NoEffect` accounting.
+`AuthoritativeRecordV1` adds `HoldingsSnapshot(HoldingsSnapshotV1)`.
+
+Each holding names its observation and the security its source identifier
+names when the snapshot is published, with the quantity in that security's
+unit. A position whose identifier names no security keeps its observation,
+with an `Unknown` facet amount and no security; the snapshot lists it as
+unmapped. A display symbol never names a security. The planner refuses a
+snapshot that names one security twice, a quantity or market value beyond its
+unit's exponent, a scope account that is not declared, and a scope whose
+positions hold one security twice.
+
+`scope` names the local accounts the snapshot covers. Only a `Complete`
+snapshot records absences. For each position whose quantity account is in its
+scope and whose security it omits, it records a `HoldingAbsenceV1`. A
+`Partial` or `Unknown` snapshot records no absence. A complete snapshot that
+lists an unmapped position records no absence either, because that position
+could be any security in scope. It still records its mapped holdings and keeps
+the unmapped observations. A later complete snapshot of the scope with no
+unmapped position records absences as usual.
+
+The first absence for a position is version 1; each later one is the next
+version and names, as `prior`, the snapshot that holds the version before. A
+version counts publications: a complete 2026-11-30 snapshot published after a
+2026-12-31 one records version 2 and names the 2026-12-31 snapshot as its
+prior. The engine accepts an older statement imported late and never refuses
+one for its as-of date.
+
+`InvestmentEngine::holdings` adds `snapshot`, the latest snapshot whose scope
+covers the position's quantity account and lists its security, with that
+quantity and market value; `absence`, the latest absence for the position
+when no snapshot at least as late lists the security; and `unmapped`, the
+unmapped positions of the latest snapshot whose scope covers the position's
+quantity account. Snapshots order by as-of date, then by the commit of their
+receipt, so the current absence is the one with the latest as-of date, not the
+highest version. In the example above, a read through 2026-12-31 reports the
+2026-12-31 absence, version 1, as current. Replay derives the snapshot
+record again from the prior prefix and the commit's own observations, so a
+forged holding or absence is refused. Holdings claims stay with CUR-017.
 
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 
