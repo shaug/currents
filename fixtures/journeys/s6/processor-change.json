@@ -1,0 +1,27 @@
+{
+  "account": "K",
+  "party": "Blue Bottle",
+  "purchases": [
+    {
+      "leg": "L1",
+      "observation": "O1",
+      "date": "2026-11-03",
+      "amount": -96,
+      "description": "SQ *BLUE BOTTLE",
+      "category": "Restaurants"
+    },
+    {
+      "leg": "L2",
+      "observation": "O2",
+      "date": "2026-11-10",
+      "amount": -40,
+      "description": "BLUE BOTTLE COFFEE 0412"
+    }
+  ],
+  "aliases": [
+    {"alias": "A1", "text": "SQ *BLUE BOTTLE"},
+    {"alias": "A2", "text": "BLUE BOTTLE COFFEE 0412"}
+  ],
+  "owner_category": {"leg": "L1", "category": "Coffee"},
+  "revision": {"of": "O1", "category": "Dining"}
+}
