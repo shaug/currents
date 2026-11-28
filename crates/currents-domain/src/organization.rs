@@ -58,23 +58,6 @@ fn assignments(
     })
 }
 
-/// The latest version of the owner's `field` assignment that holds `leg`,
-/// including one that cleared the value.
-fn head(
-    records: &BTreeMap<RecordId, AuthoritativeRecordV1>,
-    leg: LegId,
-    field: OrganizationFieldV1,
-) -> Option<&OrganizationAssignmentV1> {
-    let superseded: BTreeSet<RecordId> =
-        assignments(records).filter_map(|a| a.supersedes).collect();
-    assignments(records).find(|a| {
-        a.field == field
-            && a.source == OrganizationSourceV1::Owner
-            && a.legs.contains(&leg)
-            && !superseded.contains(&a.id)
-    })
-}
-
 /// An assignment's ID derives from its field, leg and the version it
 /// supersedes, so a planned version names one record.
 fn assignment_id(
@@ -114,7 +97,7 @@ impl OrganizationEngine {
                 return Err(invalid());
             }
             for &leg in &request.legs {
-                let prior = head(&state.records, leg, request.field);
+                let prior = state.owner_assignment(leg, request.field);
                 let held = prior.is_some_and(|a| a.value.is_some());
                 match request.action {
                     OverrideActionV1::Preserve if held => {

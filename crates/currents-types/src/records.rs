@@ -609,22 +609,30 @@ impl DomainState {
     pub fn claim_invalidated(&self, id: RecordId) -> bool {
         self.claim_status(id).is_some() && self.invalidated.contains(&id)
     }
-    /// The owner's current value of `field` on `leg` at this prefix: the
-    /// latest version of the owner assignment that holds the leg, unless that
-    /// version clears the value.
-    pub fn owner_value(&self, leg: LegId, field: OrganizationFieldV1) -> Option<OwnerValueV1> {
+    /// The latest version of the owner's `field` assignment that holds `leg`
+    /// at this prefix, including one that clears the value.
+    pub fn owner_assignment(
+        &self,
+        leg: LegId,
+        field: OrganizationFieldV1,
+    ) -> Option<&OrganizationAssignmentV1> {
         let assignments = self.records.values().filter_map(|record| match record {
             AuthoritativeRecordV1::OrganizationAssignment(a) => Some(a),
             _ => None,
         });
         let superseded: BTreeSet<RecordId> =
             assignments.clone().filter_map(|a| a.supersedes).collect();
-        let current = assignments.into_iter().find(|a| {
+        assignments.into_iter().find(|a| {
             a.field == field
                 && a.source == OrganizationSourceV1::Owner
                 && a.legs.contains(&leg)
                 && !superseded.contains(&a.id)
-        })?;
+        })
+    }
+    /// The owner's current value of `field` on `leg` at this prefix: the
+    /// latest owner assignment that holds the leg, unless it clears the value.
+    pub fn owner_value(&self, leg: LegId, field: OrganizationFieldV1) -> Option<OwnerValueV1> {
+        let current = self.owner_assignment(leg, field)?;
         Some(OwnerValueV1 {
             record: current.id,
             version: current.version,

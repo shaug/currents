@@ -978,6 +978,7 @@ OrganizationAssignmentV1 { id, schema_version, version, supersedes:Option<Record
 OrganizationChangeV1 { records:Vec<OrganizationRecordV1>, values:Vec<LegValueRequestV1> }
 LegValueRequestV1 { field, legs:Vec<LegId>, value:Option<RecordId>, action:OverrideActionV1 }
 OrganizationPreviewV1 { plan:DecisionPlan, skipped:Vec<LegId> }
+DomainState::owner_assignment(leg,field)->Option<&OrganizationAssignmentV1>
 DomainState::owner_value(leg,field)->Option<OwnerValueV1 { record, version, value }>
 ```
 
@@ -1026,10 +1027,11 @@ rules and proposals. Storage checks that an assignment's legs are
 predecessor an `OrganizationAssignment`. It also refuses a second successor
 of one assignment version, and a rule or proposal source.
 
-`owner_value` gives the latest owner assignment that holds the leg for the
-field, its version and the definition it names, or `None` when there is none
-or it clears the value. Replay through an earlier commit reports that
-commit's value.
+`owner_assignment` gives the latest owner assignment that holds the leg for
+the field, including one that clears the value; the engine plans from it.
+`owner_value` gives that assignment's ID, version and the definition it
+names, or `None` when there is none or it clears the value. Replay through
+an earlier commit reports that commit's value.
 
 Corrections and segment replacements refuse a change while an assignment
 names a leg they retire, until a later CUR-019 leaf defines its remap.
