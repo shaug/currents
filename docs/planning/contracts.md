@@ -442,6 +442,22 @@ and a failure or cancellation in any batch rolls back the whole closure. The
 C05 limit of 64 MiB of canonical instructions still applies when the plan is
 frozen.
 
+### CUR-021 investment control roles
+
+`ControlRoleV1` adds three internal roles. Quantity control (`QuantityControl`,
+equity class) balances quantity movements and takes a security unit.
+Investment carrying amount (`InvestmentCarrying`, asset class) and disposal
+clearing (`DisposalClearing`, equity class) take a currency unit.
+`CatalogEngine::set_complete` refuses each in any other unit kind, and refuses
+every earlier role (unresolved equity, opening equity, income flow, expense
+flow, clearing and tax prepayment) in a security unit. An external account may
+be in a security unit.
+
+Activity adoption refuses a leg or posting in a security unit, and a posting to
+any of the three new roles. Association admission refuses a leg or posting in
+a security unit. Only the C11 investment engine moves quantities. Existing
+roles, records and command tags keep their bytes.
+
 <a id="c09"></a>
 
 ## C09: Queries/reconciliation, owners CUR-017, CUR-018, CUR-020
@@ -744,6 +760,49 @@ Files: `crates/currents-domain/src/{organization,rules}.rs`.
 Files: `crates/currents-domain/src/investments/{quantity,basis,valuation}.rs`, `crates/currents-domain/src/{fx,loans,manual}.rs`.
 
 `TradeRequestV1` specifies adopted security identity, cash/quantity legs, fees, dates and source references. `LotSelectionV1 = Fifo | Explicit { acquisitions, attributed_choice }`; `BasisResultV1 = Known { carrying_cost,gross_gain,fees,net_result,remainder } | Partial { known,unknown_quantity } | Unknown { reason }`. `InvestmentEngine::recognize(state,&TradeRequestV1)->Result<DecisionPlan,EngineError>`; `BasisEngine::allocate(state,disposal:LegId,selection:LotSelectionV1)->Result<BasisResultV1,EngineError>`; `ValuationEngine::value(state,basis:&ReadBasis,account:AccountId)->Result<PositionResponseV1,EngineError>`. Supported corporate-action payloads specify split numerator/denominator, effective date and resulting basis; cash-in-lieu distinct. Unknown cohorts participate in FIFO eligibility; transfers preserve lineage.
+
+### CUR-021 securities and positions
+
+```text
+SecuritySourceIdV1 { source, identifier }
+SecurityMappingV1 { identifier:SecuritySourceIdV1, reason }
+SecurityV1 { id, schema_version, root, prior_revision, unit_id, source_identifiers, display_symbol, local_mappings }
+SecurityDeclarationV1 { security:SecurityV1, unit:UnitDefinition, unit_catalog:RecordId }
+PositionV1 { id, schema_version, security, quantity_account, carrying_account }
+```
+
+A security is identified by its source identifiers and the owner's local
+mappings, never by its display symbol. `AuthoritativeRecordV1` adds
+`Security(SecurityV1)` and `Position(PositionV1)`, both schema version 1.
+
+`InvestmentEngine::declare_security(state,&SecurityDeclarationV1)` declares a
+new security, whose first revision's `id` is its `root`. The security gets its
+own unit: `UnitKind::Security`, exponent 0 to 18, and an ID and native code
+unused by any declared unit. The plan holds a new `UnitCatalogV1` (version 1, that one
+unit) and the security record, and its intent is a metadata declaration of the
+unit, so it commits before any financial preview. The planner refuses a
+security with no source identifier, and any identifier, source or mapped,
+already held by another security.
+
+`InvestmentEngine::revise_security(state,&SecurityV1)` replaces the head named
+by `prior_revision`. A revision keeps the unit and every identifier and mapping,
+may add identifiers and mappings, and has no accounting effect. A mapping joins
+another source's identifier to this security; one that would join two
+securities is refused, since each has its own unit. `current` returns a
+security's head and refuses a forked chain. `resolve` returns the security an
+identifier names, or none.
+
+`InvestmentEngine::declare_position(state,&PositionV1)` links a security to an
+external quantity account in its unit and an `InvestmentCarrying` account in a
+currency. Each account belongs to at most one position. The plan holds the
+record and has no accounting effect.
+
+Replay derives each security and position commit again from the prior prefix.
+A new security's unit must be declared by a unit catalog in the same commit,
+and a unit catalog that declares a security unit needs that security record.
+Trades, openings, snapshots, corporate actions, transfers and valuation belong
+to the later CUR-021 leaves; basis and lots to CUR-022. There is no command
+route.
 
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 

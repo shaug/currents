@@ -6,7 +6,10 @@ choices!(ControlRoleV1 {
     IncomeFlow,
     ExpenseFlow,
     Clearing,
-    TaxPrepayment
+    TaxPrepayment,
+    QuantityControl,
+    InvestmentCarrying,
+    DisposalClearing
 });
 dto!(InternalAccountV1 {
     role: ControlRoleV1,

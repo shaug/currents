@@ -22,6 +22,7 @@ fn origin(
     let catalog = CatalogEngine::current(state, component.id)?;
     let index = state.accounting.as_ref().ok_or_else(invalid)?;
     let mapping = index.accounts.get(&account).ok_or_else(invalid)?;
+    crate::investments::quantity::ordinary_unit(&crate::catalog::unit(state, unit)?)?;
     if catalog.catalog.lifecycle != Lifecycle::Open
         || mapping.account_id != account
         || mapping.unit_id != unit

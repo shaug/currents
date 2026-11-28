@@ -247,7 +247,10 @@
                         "IncomeFlow",
                         "ExpenseFlow",
                         "Clearing",
-                        "TaxPrepayment"
+                        "TaxPrepayment",
+                        "QuantityControl",
+                        "InvestmentCarrying",
+                        "DisposalClearing"
                       ],
                       "type": "string"
                     }
@@ -16148,7 +16151,10 @@
                                 "IncomeFlow",
                                 "ExpenseFlow",
                                 "Clearing",
-                                "TaxPrepayment"
+                                "TaxPrepayment",
+                                "QuantityControl",
+                                "InvestmentCarrying",
+                                "DisposalClearing"
                               ],
                               "type": "string"
                             }
@@ -17602,6 +17608,179 @@
             "value"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "Security"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "display_symbol": {
+                  "anyOf": [
+                    {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "local_mappings": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identifier": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "identifier": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          "source": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "identifier"
+                        ],
+                        "type": "object"
+                      },
+                      "reason": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "identifier",
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "prior_revision": {
+                  "anyOf": [
+                    {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "root": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "source_identifiers": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identifier": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "source": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "identifier"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "unit_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "root",
+                "prior_revision",
+                "unit_id",
+                "source_identifiers",
+                "display_symbol",
+                "local_mappings"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "Position"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "carrying_account": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "quantity_account": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "security": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "security",
+                "quantity_account",
+                "carrying_account"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -17840,7 +18019,10 @@
                         "IncomeFlow",
                         "ExpenseFlow",
                         "Clearing",
-                        "TaxPrepayment"
+                        "TaxPrepayment",
+                        "QuantityControl",
+                        "InvestmentCarrying",
+                        "DisposalClearing"
                       ],
                       "type": "string"
                     }
@@ -30228,7 +30410,10 @@
                                     "IncomeFlow",
                                     "ExpenseFlow",
                                     "Clearing",
-                                    "TaxPrepayment"
+                                    "TaxPrepayment",
+                                    "QuantityControl",
+                                    "InvestmentCarrying",
+                                    "DisposalClearing"
                                   ],
                                   "type": "string"
                                 }
@@ -50600,7 +50785,10 @@
                                       "IncomeFlow",
                                       "ExpenseFlow",
                                       "Clearing",
-                                      "TaxPrepayment"
+                                      "TaxPrepayment",
+                                      "QuantityControl",
+                                      "InvestmentCarrying",
+                                      "DisposalClearing"
                                     ],
                                     "type": "string"
                                   }
@@ -52045,6 +52233,179 @@
                       "profile",
                       "correction",
                       "row"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Security"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "display_symbol": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "local_mappings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "identifier": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "identifier": {
+                                  "maxLength": 1048576,
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "maxLength": 1048576,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "identifier"
+                              ],
+                              "type": "object"
+                            },
+                            "reason": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "identifier",
+                            "reason"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "prior_revision": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "root": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "source_identifiers": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "identifier": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "source": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "identifier"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "unit_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "root",
+                      "prior_revision",
+                      "unit_id",
+                      "source_identifiers",
+                      "display_symbol",
+                      "local_mappings"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Position"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "carrying_account": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "quantity_account": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "security": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "security",
+                      "quantity_account",
+                      "carrying_account"
                     ],
                     "type": "object"
                   }
@@ -64826,7 +65187,10 @@
                                       "IncomeFlow",
                                       "ExpenseFlow",
                                       "Clearing",
-                                      "TaxPrepayment"
+                                      "TaxPrepayment",
+                                      "QuantityControl",
+                                      "InvestmentCarrying",
+                                      "DisposalClearing"
                                     ],
                                     "type": "string"
                                   }
@@ -66271,6 +66635,179 @@
                       "profile",
                       "correction",
                       "row"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Security"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "display_symbol": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "local_mappings": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "identifier": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "identifier": {
+                                  "maxLength": 1048576,
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "maxLength": 1048576,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "identifier"
+                              ],
+                              "type": "object"
+                            },
+                            "reason": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "identifier",
+                            "reason"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "prior_revision": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "root": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "source_identifiers": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "identifier": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "source": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "identifier"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "unit_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "root",
+                      "prior_revision",
+                      "unit_id",
+                      "source_identifiers",
+                      "display_symbol",
+                      "local_mappings"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Position"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "carrying_account": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "quantity_account": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "security": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "security",
+                      "quantity_account",
+                      "carrying_account"
                     ],
                     "type": "object"
                   }
@@ -88291,7 +88828,10 @@
                                             "IncomeFlow",
                                             "ExpenseFlow",
                                             "Clearing",
-                                            "TaxPrepayment"
+                                            "TaxPrepayment",
+                                            "QuantityControl",
+                                            "InvestmentCarrying",
+                                            "DisposalClearing"
                                           ],
                                           "type": "string"
                                         }
@@ -103969,7 +104509,10 @@
                                                 "IncomeFlow",
                                                 "ExpenseFlow",
                                                 "Clearing",
-                                                "TaxPrepayment"
+                                                "TaxPrepayment",
+                                                "QuantityControl",
+                                                "InvestmentCarrying",
+                                                "DisposalClearing"
                                               ],
                                               "type": "string"
                                             }

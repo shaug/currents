@@ -53,18 +53,41 @@ fn origin(
         }
         AccountOriginV1::Internal(control) => {
             let expected = match control.role {
-                ControlRoleV1::UnresolvedEquity | ControlRoleV1::OpeningEquity => {
-                    AccountClass::Equity
-                }
+                ControlRoleV1::UnresolvedEquity
+                | ControlRoleV1::OpeningEquity
+                | ControlRoleV1::QuantityControl
+                | ControlRoleV1::DisposalClearing => AccountClass::Equity,
                 ControlRoleV1::IncomeFlow => AccountClass::Income,
                 ControlRoleV1::ExpenseFlow => AccountClass::Expense,
-                ControlRoleV1::Clearing | ControlRoleV1::TaxPrepayment => AccountClass::Asset,
+                ControlRoleV1::Clearing
+                | ControlRoleV1::TaxPrepayment
+                | ControlRoleV1::InvestmentCarrying => AccountClass::Asset,
             };
             if class != expected || !known_time(&control.created_at) {
                 return Err(EngineError::invalid());
             }
             Ok(SourceValue::Known(control.created_at.clone()))
         }
+    }
+}
+/// Each control role accepts only the unit kind it is for: quantity control
+/// a security unit, carrying amount and disposal clearing a currency, and
+/// every other role any unit but a security.
+fn role_unit(origin: &AccountOriginV1, unit: &UnitDefinition) -> Result<(), EngineError> {
+    let AccountOriginV1::Internal(control) = origin else {
+        return Ok(());
+    };
+    let fits = match control.role {
+        ControlRoleV1::QuantityControl => unit.kind == UnitKind::Security,
+        ControlRoleV1::InvestmentCarrying | ControlRoleV1::DisposalClearing => {
+            unit.kind == UnitKind::Currency
+        }
+        _ => unit.kind != UnitKind::Security,
+    };
+    if fits {
+        Ok(())
+    } else {
+        Err(EngineError::invalid())
     }
 }
 fn same_identity(root: &AccountComponentV1, catalog: &SetAccountCatalogV1) -> bool {
@@ -216,6 +239,7 @@ impl CatalogEngine {
         }
         let u = unit(state, c.unit_id)?;
         let boundary = origin(&request.origin, c.account_class)?;
+        role_unit(&request.origin, &u)?;
         validate_aliases(state, c)?;
         let mut records = vec![];
         let accounting = if let Some(record) = state.records.get(&c.component_id) {

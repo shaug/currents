@@ -59,6 +59,8 @@ const RECORDS: &[&str] = &[
     "Commitment",
     "Scenario",
     "ForecastRun",
+    "Security",
+    "Position",
 ];
 const EVIDENCE: &[&str] = &[
     "ObservationVersion",
@@ -696,6 +698,29 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.reference(&["Unit"], &v["unit"], None);
             m.many(RECORDS, &v["exclusions"]);
             m.allocations(&v["matched_allocations"]);
+        }
+        AuthoritativeRecordV1::Security(security) => {
+            if security.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            match security.prior_revision {
+                None if security.id == security.root => {}
+                Some(prior) if prior != security.id && security.id != security.root => {
+                    m.reference(&["Security"], &v["root"], None);
+                    m.reference(&["Security"], &v["prior_revision"], None);
+                    m.define("SecuritySuccessor", &v["prior_revision"], 0, false);
+                }
+                _ => return Err(EngineError::invalid()),
+            }
+            m.reference(&["Unit"], &v["unit_id"], None);
+        }
+        AuthoritativeRecordV1::Position(position) => {
+            if position.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["Security"], &v["security"], None);
+            m.reference(&["Account"], &v["quantity_account"], None);
+            m.reference(&["Account"], &v["carrying_account"], None);
         }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);
