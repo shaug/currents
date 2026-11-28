@@ -34,6 +34,7 @@ pub mod correction;
 mod dependencies;
 pub mod dependents;
 pub mod holdings;
+pub mod position;
 pub mod reconciliation;
 
 pub mod investments;
