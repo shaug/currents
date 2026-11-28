@@ -2,14 +2,15 @@
 //!
 //! The digest covers the current version of each named observation, each
 //! recognized leg the claim compared, the scope account's catalog terms
-//! except its display name, the coverage report an Activity claim used, the
-//! account's opening anchor where it decides the claim, and the comparison
-//! version. A Holdings claim compares no journal, so its digest covers no
-//! leg or anchor. A Relationship claim's digest covers only the
-//! association's root and current revision. Legs are keyed by their stable identity, so an identity-only
-//! correction, which replaces recognition and posting IDs and keeps the legs,
-//! leaves the digest unchanged. A claim whose recorded digest differs from
-//! the digest at a later state no longer applies there.
+//! except its display name, the coverage report an Activity claim used and
+//! the later reports from the same source that contradict it, the account's
+//! opening anchor where it decides the claim, and the comparison version. A
+//! Holdings claim compares no journal, so its digest covers no leg or anchor.
+//! A Relationship claim's digest covers only the association's root and
+//! current revision. Legs are keyed by their stable identity, so an
+//! identity-only correction, which replaces recognition and posting IDs and
+//! keeps the legs, leaves the digest unchanged. A claim whose recorded digest
+//! differs from the digest at a later state no longer applies there.
 use crate::activity_predicate::civil_date;
 use crate::catalog::{CatalogEngine, incomplete};
 use crate::reconciliation::InvalidationReasonV1;
@@ -222,28 +223,79 @@ pub(crate) fn stale() -> EngineError {
 }
 
 /// The named receipt and coverage that report the whole interval complete by
-/// the scope's basis, if any.
-pub(crate) fn coverage<'a>(
+/// the scope's basis, if any. When several named receipts do, the one
+/// committed last.
+fn coverage<'a>(
     state: &'a DomainState,
     scope: &ClaimScope<'_>,
 ) -> Option<(RecordId, &'a CoverageV1)> {
-    scope.evidence.iter().find_map(|id| {
+    let mut used: Option<(RecordId, &CoverageV1)> = None;
+    for id in scope.evidence {
         let Some(AuthoritativeRecordV1::ImportReceipt(receipt)) = state.records.get(id) else {
-            return None;
+            continue;
         };
-        receipt
+        let complete = receipt.reported_coverage.iter().find(|c| {
+            c.status == CoverageStatus::Complete
+                && c.scope.basis == scope.basis
+                && c.scope
+                    .start
+                    .is_none_or(|start| scope.start.is_some_and(|s| start <= s))
+                && c.scope.end.is_none_or(|end| scope.end <= end)
+        });
+        if let Some(c) = complete
+            && used.is_none_or(|(prior, _)| committed(state, *id) > committed(state, prior))
+        {
+            used = Some((*id, c));
+        }
+    }
+    used
+}
+
+/// The commit that recorded receipt `id`, if replay recorded it.
+fn committed(state: &DomainState, id: RecordId) -> Option<CommitSeq> {
+    state.receipt_commits.get(&id).copied()
+}
+
+/// The receipts that contradict receipt `named`: each comes from the same
+/// source, was committed after it, and reports coverage by the scope's basis
+/// that overlaps the interval and is not complete. Each comes with those
+/// coverage entries, in receipt ID order.
+fn contradictions(
+    state: &DomainState,
+    scope: &ClaimScope<'_>,
+    named: RecordId,
+) -> Vec<(RecordId, Vec<CoverageV1>)> {
+    let Some(AuthoritativeRecordV1::ImportReceipt(named_receipt)) = state.records.get(&named)
+    else {
+        return Vec::new();
+    };
+    let after = committed(state, named);
+    let mut found = Vec::new();
+    for (id, commit) in &state.receipt_commits {
+        let Some(AuthoritativeRecordV1::ImportReceipt(receipt)) = state.records.get(id) else {
+            continue;
+        };
+        if Some(*commit) <= after || receipt.source != named_receipt.source {
+            continue;
+        }
+        let entries: Vec<_> = receipt
             .reported_coverage
             .iter()
-            .find(|c| {
-                c.status == CoverageStatus::Complete
+            .filter(|c| {
+                c.status != CoverageStatus::Complete
                     && c.scope.basis == scope.basis
+                    && c.scope.start.is_none_or(|start| start <= scope.end)
                     && c.scope
-                        .start
-                        .is_none_or(|start| scope.start.is_some_and(|s| start <= s))
-                    && c.scope.end.is_none_or(|end| scope.end <= end)
+                        .end
+                        .is_none_or(|end| scope.start.is_none_or(|s| s <= end))
             })
-            .map(|c| (*id, c))
-    })
+            .cloned()
+            .collect();
+        if !entries.is_empty() {
+            found.push((*id, entries));
+        }
+    }
+    found
 }
 
 /// The latest explicit revision of `observation`.
@@ -297,6 +349,9 @@ pub(crate) struct ClaimInputs {
     catalog: SetAccountCatalogV1,
     /// The coverage an Activity claim used.
     coverage: Option<(RecordId, CoverageV1)>,
+    /// The later receipts that contradict that coverage, with their
+    /// overlapping coverage entries.
+    contradictions: Vec<(RecordId, Vec<CoverageV1>)>,
     /// The account's active anchor, when it decides the claim.
     pub(crate) anchor: Option<Anchor>,
 }
@@ -329,17 +384,27 @@ impl ClaimInputs {
             ReconciliationKindV1::Activity => coverage(state, scope).map(|(id, c)| (id, c.clone())),
             _ => None,
         };
+        let contradictions = coverage
+            .as_ref()
+            .map_or_else(Vec::new, |(named, _)| contradictions(state, scope, *named));
         Ok(Self {
             observations,
             rows,
             catalog,
             coverage,
+            contradictions,
             anchor: if journal {
                 Anchor::active(state, scope.account)?.filter(|a| scope.decided_by(a))
             } else {
                 None
             },
         })
+    }
+
+    /// A named receipt reports the whole interval complete, and no later
+    /// receipt from its source contradicts it.
+    pub(crate) fn complete(&self) -> bool {
+        self.coverage.is_some() && self.contradictions.is_empty()
     }
 
     pub(crate) fn digest(
@@ -360,8 +425,12 @@ impl ClaimInputs {
             "catalog": self.catalog,
             "coverage": self.coverage,
         });
-        // An Activity claim that no anchor decides keeps the digest it had
-        // before anchors entered it.
+        // An Activity claim that no anchor decides, and whose coverage no
+        // later receipt contradicts, keeps the digest it had before anchors
+        // and contradictions entered it.
+        if !self.contradictions.is_empty() {
+            inputs["contradictions"] = json!(self.contradictions);
+        }
         if let Some(anchor) = &self.anchor {
             inputs["anchor"] = json!({"segment": anchor.segment, "opening": anchor.opening});
         }
@@ -386,10 +455,12 @@ impl ClaimInputs {
     /// The inputs that differ from the ones `claim` compared, when its
     /// recorded digest is not the digest of these inputs. The claim records
     /// the legs it compared, the anchor's segment where an anchor decided it,
-    /// and whether its interval was complete, and evaluation accepts only
-    /// named observations without a later revision. A named receipt never
-    /// changes, so when the interval's completeness is unchanged, a remaining
-    /// difference is in the account's catalog terms.
+    /// whether its interval was complete and the commit it read through, and
+    /// evaluation accepts only named observations without a later revision.
+    /// A named receipt never changes, and the contradicting receipts it read
+    /// are the ones committed through that commit. So when the interval's
+    /// completeness and those receipts are unchanged, a remaining difference
+    /// is in the account's catalog terms.
     pub(crate) fn changes(
         &self,
         state: &DomainState,
@@ -411,6 +482,10 @@ impl ClaimInputs {
             *current = *named;
         }
         compared.anchor = Anchor::named(state, claim)?;
+        let through = claim.basis.through_commit;
+        compared
+            .contradictions
+            .retain(|(id, _)| committed(state, *id).is_some_and(|c| c <= through));
         if compared.rows != self.rows {
             reasons.push(InvalidationReasonV1::ScopeActivity);
         }
@@ -421,7 +496,9 @@ impl ClaimInputs {
             reasons.push(InvalidationReasonV1::Anchor);
         }
         let complete = !claim.reasons.contains(&ClaimReasonV1::IncompleteInterval);
-        if scope.kind == ReconciliationKindV1::Activity && complete != self.coverage.is_some() {
+        if scope.kind == ReconciliationKindV1::Activity
+            && (complete != self.complete() || compared.contradictions != self.contradictions)
+        {
             reasons.push(InvalidationReasonV1::Coverage);
         } else if compared.digest(scope, claim.comparison_version)? != claim.dependency_digest {
             reasons.push(InvalidationReasonV1::AccountMapping);

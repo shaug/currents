@@ -556,6 +556,9 @@ pub struct DomainState {
     pub through: CommitSeq,
     /// Every record a committed result invalidated through this prefix.
     pub invalidated: BTreeSet<RecordId>,
+    /// The commit that first recorded each import receipt through this
+    /// prefix. Receipts compare in this order, never by their received time.
+    pub receipt_commits: BTreeMap<RecordId, CommitSeq>,
 }
 impl DomainState {
     /// The lifecycle status a claim's record holds at this prefix.

@@ -205,31 +205,10 @@ impl World {
 
     /// Import receipt `n` reporting `coverage`, named as evidence.
     fn receipt(&mut self, n: u32, coverage: &Value) {
-        let reported = vec![CoverageV1 {
-            scope: DateScope {
-                start: Some(civil(coverage["start"].as_str().unwrap())),
-                end: Some(civil(coverage["end"].as_str().unwrap())),
-                basis: basis(coverage["basis"].as_str().unwrap()),
-            },
-            status: serde_json::from_value(coverage["status"].clone()).unwrap(),
-        }];
-        let receipt = ImportReceiptV1 {
-            id: id(n),
-            source: source(),
-            adapter_version: "synthetic-file/1".into(),
-            parser_version: "1".into(),
-            requested_coverage: reported.clone(),
-            reported_coverage: reported,
-            received_time: serde_json::from_value(json!("2026-12-01T00:00:00Z")).unwrap(),
-            result: ImportResult::Complete,
-            cursor: SourceValue::Absent,
-            truncated: false,
-            complete: true,
-            contents: vec![],
-        };
-        self.state
-            .records
-            .insert(id(n), AuthoritativeRecordV1::ImportReceipt(receipt));
+        self.state.records.insert(
+            id(n),
+            AuthoritativeRecordV1::ImportReceipt(import_receipt(n, source(), coverage)),
+        );
         if !self.evidence.contains(&id(n)) {
             self.evidence.push(id(n));
         }
@@ -391,6 +370,32 @@ fn source() -> SourceIdentityV1 {
         source: "synthetic".into(),
         connection_id: id(102),
         device_id: None,
+    }
+}
+
+/// Import receipt `n` from `from` reporting `coverage`.
+fn import_receipt(n: u32, from: SourceIdentityV1, coverage: &Value) -> ImportReceiptV1 {
+    let reported = vec![CoverageV1 {
+        scope: DateScope {
+            start: Some(civil(coverage["start"].as_str().unwrap())),
+            end: Some(civil(coverage["end"].as_str().unwrap())),
+            basis: basis(coverage["basis"].as_str().unwrap()),
+        },
+        status: serde_json::from_value(coverage["status"].clone()).unwrap(),
+    }];
+    ImportReceiptV1 {
+        id: id(n),
+        source: from,
+        adapter_version: "synthetic-file/1".into(),
+        parser_version: "1".into(),
+        requested_coverage: reported.clone(),
+        reported_coverage: reported,
+        received_time: serde_json::from_value(json!("2026-12-01T00:00:00Z")).unwrap(),
+        result: ImportResult::Complete,
+        cursor: SourceValue::Absent,
+        truncated: false,
+        complete: true,
+        contents: vec![],
     }
 }
 
@@ -1434,6 +1439,210 @@ fn cur_017_invalidated_claim_cannot_be_confirmed() {
     assert_eq!(
         lifecycle(&world.state, k.id),
         ReconciliationStatus::Proposed
+    );
+}
+
+// Later imports. K names receipt RECEIPT, which reports November complete by
+// posting date. A later receipt that no claim names may report part of it
+// otherwise.
+
+/// Coverage from `start` to `end` by `basis` with `status`.
+fn reported(start: &str, end: &str, basis: &str, status: &str) -> Value {
+    json!({"start": start, "end": end, "basis": basis, "status": status})
+}
+
+impl World {
+    /// `World::complete` with K recorded.
+    fn recorded() -> (Self, ReconciliationClaimV1) {
+        let mut world = Self::complete();
+        let k = world.record(&world.request());
+        assert_eq!(k.status, ReconciliationStatus::Proposed);
+        (world, k)
+    }
+
+    /// Commit import receipt `n` from `from` reporting `coverage`. No claim
+    /// names it.
+    fn import(&mut self, n: u32, from: SourceIdentityV1, coverage: &Value) -> ImportReceiptV1 {
+        let receipt = import_receipt(n, from, coverage);
+        let plan = DecisionPlan {
+            records: vec![AuthoritativeRecordV1::ImportReceipt(receipt.clone())],
+            invalidations: vec![],
+            accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "Import a statement".into(),
+            }),
+        };
+        self.commit_as(&plan, DecisionKind::Interpretation);
+        receipt
+    }
+}
+
+#[test]
+fn cur_017_later_partial_import_invalidates() {
+    let (mut world, k) = World::recorded();
+    let at_record = world.state.clone();
+    let later = world.import(
+        3800,
+        source(),
+        &reported("2026-11-15", "2026-12-15", "Posting", "Partial"),
+    );
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::Coverage)
+    );
+    // The history through K's commit still reports K current.
+    assert_eq!(
+        applicability(&at_record, k.id),
+        ClaimApplicabilityV1::Current
+    );
+    assert_eq!(bytes(&world.state, k.id), bytes(&at_record, k.id));
+    let error = ReconciliationEngine::confirm(&world.state, k.id, k.dependency_digest).unwrap_err();
+    assert_eq!(error.class, ErrorClass::StaleBasis);
+
+    // The same request evaluated again, with K's evidence.
+    let request = world.request();
+    assert_eq!(request.evidence, k.evidence_dependencies);
+    let claim = world.evaluate(&request);
+    assert_eq!(claim.status, ReconciliationStatus::PartiallySupported);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::IncompleteInterval]);
+    assert_ne!(claim.dependency_digest, k.dependency_digest);
+    // Recorded, it replays, supersedes K and applies.
+    let newer = world.record(&request);
+    assert_eq!(newer, claim);
+    assert_eq!(
+        lifecycle(&world.state, k.id),
+        ReconciliationStatus::Superseded
+    );
+    assert_eq!(
+        applicability(&world.state, newer.id),
+        ClaimApplicabilityV1::Current
+    );
+
+    // Commit order decides, not the receipt's received time: a later
+    // receipt received before the named one still counts.
+    let (mut world, k) = World::recorded();
+    let mut early = later.clone();
+    early.id = id(3810);
+    early.received_time = serde_json::from_value(json!("2026-11-20T00:00:00Z")).unwrap();
+    let plan = DecisionPlan {
+        records: vec![AuthoritativeRecordV1::ImportReceipt(early)],
+        invalidations: vec![],
+        accounting: AccountingIntent::NoEffect(NoEffectV1 {
+            reason: "Import a statement".into(),
+        }),
+    };
+    world.commit_as(&plan, DecisionKind::Interpretation);
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::Coverage)
+    );
+
+    // A second partial receipt after a claim that already lacks a
+    // complete interval also changes what that claim compared.
+    let mut world = World::complete();
+    world.import(
+        3800,
+        source(),
+        &reported("2026-11-15", "2026-12-15", "Posting", "Partial"),
+    );
+    let partial = world.record(&world.request());
+    assert_eq!(partial.reasons, vec![ClaimReasonV1::IncompleteInterval]);
+    world.import(
+        3820,
+        source(),
+        &reported("2026-11-01", "2026-11-10", "Posting", "Unknown"),
+    );
+    assert_eq!(
+        applicability(&world.state, partial.id),
+        invalidated(InvalidationReasonV1::Coverage)
+    );
+}
+
+#[test]
+fn cur_017_later_complete_import_keeps_claim() {
+    let (mut world, k) = World::recorded();
+    world.import(
+        3800,
+        source(),
+        &reported("2026-11-01", "2026-11-30", "Posting", "Complete"),
+    );
+    assert_eq!(
+        applicability(&world.state, k.id),
+        ClaimApplicabilityV1::Current
+    );
+    let claim = world.evaluate(&world.request());
+    assert_eq!(claim.status, ReconciliationStatus::Proposed);
+    assert_eq!(claim.dependency_digest, k.dependency_digest);
+}
+
+#[test]
+fn cur_017_other_source_import_keeps_claim() {
+    let mut other = source();
+    other.connection_id = id(105);
+    let partial = reported("2026-11-15", "2026-12-15", "Posting", "Partial");
+    for (from, coverage) in [
+        // Another connection of the same source.
+        (other, partial.clone()),
+        // The same source, by effective date.
+        (
+            source(),
+            reported("2026-11-15", "2026-12-15", "Effective", "Partial"),
+        ),
+        // The same source, after November.
+        (
+            source(),
+            reported("2026-12-01", "2026-12-31", "Posting", "Partial"),
+        ),
+    ] {
+        let (mut world, k) = World::recorded();
+        world.import(3800, from, &coverage);
+        assert_eq!(
+            applicability(&world.state, k.id),
+            ClaimApplicabilityV1::Current
+        );
+        let claim = world.evaluate(&world.request());
+        assert_eq!(claim.status, ReconciliationStatus::Proposed);
+        assert_eq!(claim.dependency_digest, k.dependency_digest);
+    }
+}
+
+#[test]
+fn cur_017_retry_after_partial() {
+    let (mut world, k) = World::recorded();
+    world.import(
+        3800,
+        source(),
+        &reported("2026-11-15", "2026-12-15", "Posting", "Partial"),
+    );
+    let newer = world.import(
+        3810,
+        source(),
+        &reported("2026-11-01", "2026-11-30", "Posting", "Complete"),
+    );
+    // K still names only the older receipt, which the partial one follows.
+    assert_eq!(
+        applicability(&world.state, k.id),
+        invalidated(InvalidationReasonV1::Coverage)
+    );
+
+    // A claim that also names the newer receipt.
+    let mut request = world.request();
+    request.evidence.push(newer.id);
+    let claim = world.record(&request);
+    assert_eq!(claim.status, ReconciliationStatus::Proposed);
+    assert_eq!(claim.reasons, vec![]);
+    assert_eq!(
+        applicability(&world.state, claim.id),
+        ClaimApplicabilityV1::Current
+    );
+    // Only receipts after the newer one count against it.
+    world.import(
+        3820,
+        source(),
+        &reported("2026-11-20", "2026-11-25", "Posting", "Partial"),
+    );
+    assert_eq!(
+        applicability(&world.state, claim.id),
+        invalidated(InvalidationReasonV1::Coverage)
     );
 }
 

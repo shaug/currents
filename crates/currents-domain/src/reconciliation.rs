@@ -589,7 +589,7 @@ fn activity(
 
     let mut reasons = Vec::new();
     let mut differences = Vec::new();
-    if dependencies::coverage(state, &scope).is_none() {
+    if !inputs.complete() {
         reasons.push(ClaimReasonV1::IncompleteInterval);
     }
     // A reported balance holds at the end of its day: the opening is the
