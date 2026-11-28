@@ -3,7 +3,7 @@
 //! currency. A component whose amount, share or value is not known is
 //! omitted with one named reason and never counts as zero.
 use crate::catalog::unit;
-use crate::policy::PolicyEngine;
+use crate::policy::{PolicyEngine, dataset};
 use currents_types::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -33,17 +33,7 @@ fn reporting_currency(
     setting: &PolicySettingV1<UnitId>,
 ) -> Result<Option<UnitId>, EngineError> {
     Ok(match setting {
-        PolicySettingV1::NotSet => {
-            let mut datasets = state.records.values().filter_map(|record| match record {
-                AuthoritativeRecordV1::Dataset(dataset) => Some(dataset.reporting_currency),
-                _ => None,
-            });
-            let currency = datasets.next().ok_or_else(crate::catalog::incomplete)?;
-            if datasets.next().is_some() {
-                return Err(EngineError::invalid());
-            }
-            Some(currency)
-        }
+        PolicySettingV1::NotSet => Some(dataset(state)?.reporting_currency),
         PolicySettingV1::Set {
             value: SourceValue::Known(currency),
             ..
