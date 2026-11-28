@@ -7,7 +7,7 @@
 //! reads the state and writes nothing. It never rolls a source balance
 //! forward.
 use crate::activity_predicate::civil_date;
-use crate::aggregation::{self, Found};
+use crate::aggregation::{self, Basis, Found};
 use crate::catalog::{CatalogEngine, incomplete, journal_sign};
 use crate::dependencies::{self, Anchor};
 use crate::policy::PolicyEngine;
@@ -30,13 +30,13 @@ const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588;
 /// dates therefore compare as civil dates. Against an instant, a date spans
 /// from its start at UTC+14 to its end at UTC−12.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Boundary {
+pub(crate) enum Boundary {
     Date(Date),
     Instant(i128),
 }
 
 impl Boundary {
-    fn of(temporal: &TemporalValue) -> Option<Self> {
+    pub(crate) fn of(temporal: &TemporalValue) -> Option<Self> {
         match temporal {
             TemporalValue::Date { civil, .. } => Some(Self::Date(*civil)),
             TemporalValue::Instant { utc, .. } => Some(Self::Instant(utc.unix_timestamp_nanos())),
@@ -64,11 +64,16 @@ impl Boundary {
     }
 
     /// It starts after `other` ends, whatever the timezone.
-    fn after(self, other: Self) -> bool {
+    pub(crate) fn after(self, other: Self) -> bool {
         match (self, other) {
             (Self::Date(a), Self::Date(b)) => a > b,
             _ => self.span().0 > other.span().1,
         }
+    }
+
+    /// It is on or before `other`, whatever the timezone.
+    pub(crate) fn by(self, other: Self) -> bool {
+        self == other || other.after(self)
     }
 }
 
@@ -534,13 +539,23 @@ impl PositionEngine {
                 (Some(chosen), _) if !chosen.is_empty() => {
                     let ids: BTreeSet<RecordId> = chosen.iter().map(|c| c.observation).collect();
                     selected.extend(ids.iter().copied());
-                    Found::Known(chosen[0].amount, ids.into_iter().collect())
+                    Found::Known(
+                        chosen[0].amount,
+                        ids.into_iter().collect(),
+                        Basis::Reported(
+                            chosen
+                                .iter()
+                                .map(|c| (c.source.clone(), c.boundary))
+                                .collect(),
+                        ),
+                    )
                 }
                 (Some(_), None) => Found::Missing("unknown_opening"),
                 (Some(_), Some(anchored)) => match anchored.amount {
                     SourceValue::Known(amount) => Found::Known(
                         journal_sign(catalog.normal_sign, amount)?,
                         anchored.dependencies.clone(),
+                        Basis::Anchored,
                     ),
                     _ => Found::Missing("missing_date_mapping"),
                 },

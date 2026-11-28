@@ -1038,18 +1038,68 @@ perimeter or the reporting currency is `Unknown`, nothing counts, so each
 component keeps its own reason. A part whose total is out of scope or outside
 the household counts on its own.
 
-- `Exact(total)`: no in-perimeter component is omitted. A scope the known
-  perimeter leaves wholly outside the household gives `Exact` zero.
-- `KnownSubtotal`: some components are omitted and at least one counts.
-  `known` is the total of those that count, and `omitted` lists each omitted
-  component in component order with its amount in its own unit, its evidence
-  and its reason. A known subtotal is not complete net worth.
-- `Indeterminate`: every in-perimeter component is omitted, or the reporting
-  currency is `Unknown`. `components` lists each in-perimeter component in
-  component order with its amount in its own unit and its evidence.
+Funds that a transfer moves between two counting components count once
+(ruling G7 on #27). The aggregate reads the current revision of each
+`Transfer` association family and each of its legs on a counting
+component's account. A leg with a negative movement sends and one with a
+positive movement receives. Legs on components that do not count adjust
+nothing, and the aggregate never changes the association or its claims.
 
-`obstructions` lists each omission reason once, sorted. The query never
-returns `Range`; transfer adjustments belong to later CUR-018 work.
+A leg's membership in a counted amount is included, excluded or unknown:
+
+- A selected source balance includes the leg when a source line allocated to
+  the leg comes from the balance's source and is dated on or before the
+  balance's as-of. A line is a movement facet that the leg's own
+  `allocations` or the revision's `allocations` name, and its date is the
+  facet's one reported date. Relationship-capture rows are not lines.
+- It excludes the leg when every such line is dated after the as-of and a
+  receipt from that source reports `Complete` coverage by posting date from
+  the leg's posting date through the as-of.
+- Several selected balances must agree; otherwise the leg is unknown.
+- The anchored balance includes the legs it adds as evidence and excludes a
+  leg whose effective date is after the requested date.
+- Everything else is unknown. An as-of time alone never proves inclusion,
+  and dates compare as in the position selection checkpoint, so an answer
+  that depends on the timezone is unknown.
+
+The sending side of a transfer is included when every sending leg is, and
+excluded when every one is; otherwise it is unknown. For each receiving
+leg, the aggregate adjusts once by the leg's movement at its component's
+share:
+
+- The sending side is included and the receiving leg is excluded: the funds
+  are in flight, so the aggregate adds the amount.
+- The sending side is excluded and the receiving leg is included: both
+  balances count the funds, so the aggregate subtracts it.
+- The two agree: no adjustment.
+
+Each receiving leg adjusts only its own amount, so partial receipts each
+count once. Neither assertion nor any anchored balance is rewritten. When
+either side is unknown, the aggregate takes the least and the most total
+over the memberships the known sides allow. A receiving leg whose amount
+matters has no known amount when it has an unresolved residual, is in a unit
+other than the reporting currency, or its amount times its share has no
+exact decimal.
+
+- `Exact(total)`: no in-perimeter component is omitted, and every transfer
+  adjustment is known. A scope the known perimeter leaves wholly outside the
+  household gives `Exact` zero.
+- `KnownSubtotal`: some components are omitted, at least one counts, and
+  every transfer adjustment is known. `known` is the total of those that
+  count with the adjustments, and `omitted` lists each omitted component in
+  component order with its amount in its own unit, its evidence and its
+  reason. A known subtotal is not complete net worth.
+- `Range { low, high }`: no component is omitted, and the transfer
+  memberships allow totals from `low` to `high`, both normalized.
+- `Indeterminate`: every in-perimeter component is omitted, the reporting
+  currency is `Unknown`, a transfer amount that matters is not known, or the
+  transfer memberships allow several totals while a component is omitted.
+  `components` lists each in-perimeter component in component order with its
+  amount in its own unit and its evidence.
+
+`obstructions` lists each omission reason once, sorted, with
+`transfer_membership` when a transfer leaves the total without one amount
+or range.
 
 <a id="c10"></a>
 

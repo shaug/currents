@@ -575,6 +575,14 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_pending_stays_separate",
         "cur_018_discrepancy_only_for_comparable_balances",
         "cur_018_coverage_of_selected_source",
+        "cur_018_2_sender_included_receiver_excluded_adds_clearing_once",
+        "cur_018_2_receiver_included_suppresses_clearing",
+        "cur_018_2_both_included_removes_overlap_once",
+        "cur_018_2_balance_receipt_before_feed",
+        "cur_018_2_partial_receipts",
+        "cur_018_2_unknown_amount_is_indeterminate",
+        "cur_018_journal_balance_membership",
+        "cur_018_transfer_beside_an_omission",
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
@@ -664,7 +672,8 @@ fn ticket_cur_018() -> Result<Value> {
         "ticket":"CUR-018",
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
         "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, and version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both; no command route, preview or transfer adjustment"
+        "transfer_overlap_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/transfer-overlap.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both, and transfer membership from allocated source lines and complete coverage so in-flight funds count once as an exact amount, a range or an indeterminate total; no command route or preview"
     }))
 }
 fn ticket_cur_021() -> Result<Value> {
