@@ -29,12 +29,43 @@ pub struct LegValueRequestV1 {
     pub action: OverrideActionV1,
 }
 
-/// The plan for one change and the legs `Preserve` left alone because they
-/// already hold a value.
+/// The plan for one change, the legs `Preserve` left alone because they
+/// already hold a value, and the legs whose resolved party the change alters.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OrganizationPreviewV1 {
     pub plan: DecisionPlan,
     pub skipped: Vec<LegId>,
+    pub party_changes: Vec<LegId>,
+}
+
+/// Where a leg's value for one field comes from, in precedence order. The two
+/// rule tiers stay empty until rules exist.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OrganizationTierV1 {
+    Owner,
+    AccountRule,
+    DatasetRule,
+    Provider,
+}
+
+/// A leg's value for one field: the first tier's answer and the records it
+/// came from, sorted, or unknown when no tier has one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResolvedFieldV1 {
+    /// A definition's first version, or text a source reports.
+    Known {
+        tier: OrganizationTierV1,
+        value: OrganizationValueV1,
+        sources: Vec<RecordId>,
+    },
+    /// The tier holds different values. `sources` names every record behind
+    /// them, such as each alias whose exact text matches and names another
+    /// party.
+    Conflict {
+        tier: OrganizationTierV1,
+        sources: Vec<RecordId>,
+    },
+    Unknown,
 }
 
 fn invalid() -> EngineError {
@@ -135,6 +166,7 @@ impl OrganizationEngine {
             }
         }
         validate(&state.records, &next, &records)?;
+        let party_changes = party_changes(state, &next, change)?;
         Ok(OrganizationPreviewV1 {
             plan: DecisionPlan {
                 records,
@@ -144,7 +176,233 @@ impl OrganizationEngine {
                 }),
             },
             skipped,
+            party_changes,
         })
+    }
+
+    /// `leg`'s value for `field`: the owner's value, then the provider
+    /// proposal, then unknown. Rule tiers sit between the two and are empty.
+    pub fn resolve(
+        state: &DomainState,
+        leg: LegId,
+        field: OrganizationFieldV1,
+    ) -> Result<ResolvedFieldV1, EngineError> {
+        Resolver::new(&state.records).resolve(leg, field)
+    }
+
+    /// The provider tier's answer alone for `leg` and `field`, which an owner
+    /// value hides but never changes.
+    pub fn provider(
+        state: &DomainState,
+        leg: LegId,
+        field: OrganizationFieldV1,
+    ) -> Result<ResolvedFieldV1, EngineError> {
+        Resolver::new(&state.records).provider(leg, field)
+    }
+}
+
+/// The legs whose resolved party differs between `state` and `next`. A new
+/// or revised alias can change any leg's party; otherwise only the legs the
+/// change sets a party on can change.
+fn party_changes(
+    state: &DomainState,
+    next: &BTreeMap<RecordId, AuthoritativeRecordV1>,
+    change: &OrganizationChangeV1,
+) -> Result<Vec<LegId>, EngineError> {
+    let field = OrganizationFieldV1::Party;
+    let legs: BTreeSet<LegId> = if change
+        .records
+        .iter()
+        .any(|o| o.kind == OrganizationKind::Alias)
+    {
+        next.values()
+            .filter_map(|record| match record {
+                AuthoritativeRecordV1::FinancialLeg(l) => Some(l.id),
+                _ => None,
+            })
+            .collect()
+    } else {
+        change
+            .values
+            .iter()
+            .filter(|request| request.field == field)
+            .flat_map(|request| request.legs.iter().copied())
+            .collect()
+    };
+    if legs.is_empty() {
+        return Ok(vec![]);
+    }
+    let (before, after) = (Resolver::new(&state.records), Resolver::new(next));
+    let mut changed = Vec::new();
+    for leg in legs {
+        if before.resolve(leg, field)? != after.resolve(leg, field)? {
+            changed.push(leg);
+        }
+    }
+    Ok(changed)
+}
+
+/// Indexes of one set of records for resolving leg values.
+struct Resolver<'a> {
+    records: &'a BTreeMap<RecordId, AuthoritativeRecordV1>,
+    /// Each leg's latest owner assignment per field.
+    owner: BTreeMap<(LegId, u8), &'a OrganizationAssignmentV1>,
+    /// Each alias's latest version, by its exact text.
+    aliases: BTreeMap<&'a str, Vec<&'a OrganizationRecordV1>>,
+    /// Each observation version's revisions.
+    revisions: BTreeMap<RecordId, Vec<RecordId>>,
+}
+
+impl<'a> Resolver<'a> {
+    fn new(records: &'a BTreeMap<RecordId, AuthoritativeRecordV1>) -> Self {
+        let mut superseded = BTreeSet::new();
+        let mut revisions: BTreeMap<RecordId, Vec<RecordId>> = BTreeMap::new();
+        for record in records.values() {
+            match record {
+                AuthoritativeRecordV1::Organization(o) => superseded.extend(o.supersedes),
+                AuthoritativeRecordV1::OrganizationAssignment(a) => {
+                    superseded.extend(a.supersedes);
+                }
+                AuthoritativeRecordV1::ObservationVersion(o) => {
+                    if let Some(prior) = o.prior_version {
+                        revisions.entry(prior).or_default().push(o.id);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut owner = BTreeMap::new();
+        for a in assignments(records) {
+            if a.source == OrganizationSourceV1::Owner && !superseded.contains(&a.id) {
+                for leg in &a.legs {
+                    owner.insert((*leg, a.field as u8), a);
+                }
+            }
+        }
+        let mut aliases: BTreeMap<&str, Vec<&OrganizationRecordV1>> = BTreeMap::new();
+        for record in records.values() {
+            if let AuthoritativeRecordV1::Organization(o) = record
+                && o.kind == OrganizationKind::Alias
+                && !superseded.contains(&o.id)
+            {
+                aliases.entry(o.text.as_str()).or_default().push(o);
+            }
+        }
+        Self {
+            records,
+            owner,
+            aliases,
+            revisions,
+        }
+    }
+
+    fn resolve(
+        &self,
+        leg: LegId,
+        field: OrganizationFieldV1,
+    ) -> Result<ResolvedFieldV1, EngineError> {
+        let owned = self
+            .owner
+            .get(&(leg, field as u8))
+            .and_then(|a| Some((a.id, a.value?)));
+        match owned {
+            Some((record, value)) => Ok(ResolvedFieldV1::Known {
+                tier: OrganizationTierV1::Owner,
+                value: OrganizationValueV1::Reference(value),
+                sources: vec![record],
+            }),
+            // With no owner value, or a cleared one, the next tier answers.
+            None => self.provider(leg, field),
+        }
+    }
+
+    /// Each observation the leg's facets bind, read at its latest version,
+    /// proposes a value: a party through every alias whose text exactly
+    /// matches its `description`, or its `category` text. One distinct value
+    /// is the answer; several are a conflict.
+    fn provider(
+        &self,
+        leg: LegId,
+        field: OrganizationFieldV1,
+    ) -> Result<ResolvedFieldV1, EngineError> {
+        let Some(AuthoritativeRecordV1::FinancialLeg(record)) = self.records.get(&RecordId(leg.0))
+        else {
+            return Err(invalid());
+        };
+        // Each distinct proposed value, and every record behind any of them.
+        let mut values: Vec<OrganizationValueV1> = Vec::new();
+        let mut sources = BTreeSet::new();
+        let mut propose = |value: OrganizationValueV1, records: &[RecordId]| {
+            if !values.contains(&value) {
+                values.push(value);
+            }
+            sources.extend(records.iter().copied());
+        };
+        let observations: BTreeSet<RecordId> =
+            record.allocations.iter().map(|a| a.observation).collect();
+        for bound in observations {
+            let observation = self.latest(bound)?;
+            if observation.tombstone_of.is_some() {
+                continue;
+            }
+            let reported = |name: &str| {
+                observation
+                    .reported_fields
+                    .iter()
+                    .find(|f| f.name == name)
+                    .and_then(|f| match &f.value {
+                        SourceValue::Known(text) => Some(text.as_str()),
+                        _ => None,
+                    })
+            };
+            match field {
+                OrganizationFieldV1::Party => {
+                    let matched = reported("description").and_then(|text| self.aliases.get(text));
+                    for alias in matched.into_iter().flatten() {
+                        let party = alias.parent.ok_or_else(invalid)?;
+                        propose(
+                            OrganizationValueV1::Reference(party),
+                            &[observation.id, alias.id],
+                        );
+                    }
+                }
+                OrganizationFieldV1::Category => {
+                    if let Some(text) = reported("category") {
+                        propose(OrganizationValueV1::Text(text.into()), &[observation.id]);
+                    }
+                }
+                OrganizationFieldV1::Tag => {}
+            }
+        }
+        let tier = OrganizationTierV1::Provider;
+        let sources = sources.into_iter().collect();
+        Ok(match (values.pop(), values.is_empty()) {
+            (None, _) => ResolvedFieldV1::Unknown,
+            (Some(value), true) => ResolvedFieldV1::Known {
+                tier,
+                value,
+                sources,
+            },
+            (Some(_), false) => ResolvedFieldV1::Conflict { tier, sources },
+        })
+    }
+
+    /// The latest explicit revision of observation version `id`.
+    fn latest(&self, id: RecordId) -> Result<&'a ObservationVersionV1, EngineError> {
+        let mut current = id;
+        let mut seen = BTreeSet::from([current]);
+        loop {
+            match self.revisions.get(&current).map(Vec::as_slice) {
+                None => break,
+                Some([next]) if seen.insert(*next) => current = *next,
+                // A fork or a cycle has no latest version.
+                Some(_) => return Err(invalid()),
+            }
+        }
+        match self.records.get(&current) {
+            Some(AuthoritativeRecordV1::ObservationVersion(o)) => Ok(o),
+            _ => Err(invalid()),
+        }
     }
 }
 
