@@ -129,12 +129,43 @@ impl currents_service::CommandPlanner for RelationshipPlanner {
             },
         })
     }
+    /// Position queries and explanations answer from the planner's state.
+    /// The position engine refuses a basis other than its commit.
     fn query(
         &self,
-        _: &currents_protocol::QueryV1,
+        query: &currents_protocol::QueryV1,
         _: &AccountingPrefixV1,
     ) -> Result<currents_protocol::QueryResponseV1, EngineError> {
-        Err(EngineError::version())
+        use currents_domain::position::PositionEngine;
+        use currents_protocol::{QueryKindV1, QueryOutputV1};
+        let output = match query.kind {
+            QueryKindV1::QueryPosition => QueryOutputV1::Position(PositionEngine::query(
+                &self.state,
+                &query.basis,
+                &AccountScope {
+                    accounts: query.accounts.clone(),
+                    components: query.records.clone(),
+                },
+            )?),
+            QueryKindV1::Explain => {
+                let ([component], []) = (query.records.as_slice(), query.accounts.as_slice())
+                else {
+                    return Err(EngineError::invalid());
+                };
+                QueryOutputV1::Explanation(PositionEngine::explain(
+                    &self.state,
+                    &query.basis,
+                    *component,
+                )?)
+            }
+            _ => return Err(EngineError::version()),
+        };
+        Ok(currents_protocol::QueryResponseV1 {
+            processed_head: self.state.through,
+            basis: query.basis.clone(),
+            health: vec![Health::Healthy],
+            output,
+        })
     }
 }
 
