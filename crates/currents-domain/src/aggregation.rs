@@ -6,7 +6,7 @@
 //! moves between counted components count once: in flight, they are added,
 //! and counted by both balances, they are removed.
 use crate::activity_predicate::civil_date;
-use crate::associations::current_heads;
+use crate::associations::{IdentityEngine, current_heads};
 use crate::catalog::{incomplete, unit};
 use crate::policy::{PolicyEngine, dataset};
 use crate::position::Boundary;
@@ -300,11 +300,30 @@ fn member(
 }
 
 /// A component that counts, or that another counts in place of, by its
-/// account. Only a component that counts has a `basis`.
+/// account. Only a component that counts has a `basis`. `by` is the
+/// component whose amount holds its funds: itself, or the total that counts
+/// in its place.
 struct Counted<'a> {
     share: (i128, i128),
     evidence: &'a [RecordId],
     basis: Option<&'a Basis>,
+    by: RecordId,
+}
+
+/// A leg that carries a transfer's fee rather than funds moving between
+/// accounts: one of its captured allocations has the `Fee` role.
+fn fee(
+    state: &DomainState,
+    head: &AssociationRevisionV1,
+    leg: &FinancialLegV1,
+) -> Result<bool, EngineError> {
+    for edge in head.captured_allocations.iter().filter(|e| e.leg == leg.id) {
+        let facet = IdentityEngine::retained_facet(state, &edge.source, leg.movement.unit_id)?;
+        if facet.role == RelationshipFacetRoleV1::Fee {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// What the current transfers between counted components add to the total:
@@ -313,7 +332,9 @@ struct Counted<'a> {
 /// outflow or not, and the receiving balance includes the receipt or not. An
 /// outflow without its receipt adds the receipt, a receipt without its
 /// outflow removes it, and agreement adds nothing. The amount is the
-/// receiving leg's movement at the receiving component's share.
+/// receiving leg's movement at the receiving component's share. Fee legs
+/// move no funds between accounts, and funds that stay inside one counted
+/// amount adjust nothing.
 fn transfers(
     state: &DomainState,
     day: Date,
@@ -331,6 +352,7 @@ fn transfers(
         .filter(|h| h.kind == RelationshipKind::Transfer)
     {
         let mut sending: Option<Member> = None;
+        let mut senders = BTreeSet::new();
         let mut receiving = Vec::new();
         for id in &head.legs {
             let Some(AuthoritativeRecordV1::FinancialLeg(leg)) = state.records.get(&RecordId(id.0))
@@ -340,17 +362,26 @@ fn transfers(
             let Some(c) = counted.get(&leg.account_id) else {
                 continue;
             };
+            if fee(state, head, leg)? {
+                continue;
+            }
             let m = member(state, day, head, leg, c.evidence, c.basis)?;
             match leg.movement.coefficient.signum() {
-                -1 => sending = Some(sending.map_or(m, |s| s.and(m))),
-                1 => receiving.push((leg, c.share, m)),
+                -1 => {
+                    sending = Some(sending.map_or(m, |s| s.and(m)));
+                    senders.insert(c.by);
+                }
+                1 => receiving.push((leg, c.share, m, c.by)),
                 _ => {}
             }
         }
         let Some(sending) = sending else {
             continue;
         };
-        for (leg, share, received) in receiving {
+        for (leg, share, received, by) in receiving {
+            if senders.len() == 1 && senders.contains(&by) {
+                continue;
+            }
             // Each bound is 0 or 1, so each difference is -1, 0 or 1.
             let (s, r) = (sending.bounds(), received.bounds());
             let (least, most) = (s.0.saturating_sub(r.1), s.1.saturating_sub(r.0));
@@ -443,6 +474,7 @@ pub(crate) fn aggregate(
                             share: *share,
                             evidence: &c.evidence,
                             basis: Some(basis),
+                            by: c.component,
                         },
                     );
                 }
@@ -450,6 +482,10 @@ pub(crate) fn aggregate(
             // Another component counts its funds, so a transfer leg on it
             // still decides the total, though its membership is unknown.
             Count::Represented => {
+                let total = roots.iter().find(|t| {
+                    t.overlapping_components.contains(&c.component)
+                        && matches!(counts.get(&t.id), Some(Count::Adds(_)))
+                });
                 if let Some(share) = share {
                     counted.insert(
                         *account,
@@ -457,6 +493,7 @@ pub(crate) fn aggregate(
                             share: *share,
                             evidence: &c.evidence,
                             basis: None,
+                            by: total.map_or(c.component, |t| t.id),
                         },
                     );
                 }

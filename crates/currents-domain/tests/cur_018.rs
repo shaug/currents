@@ -11,6 +11,9 @@ use std::collections::BTreeMap;
 #[allow(dead_code)]
 mod fixture;
 use fixture::*;
+#[path = "support/associations.rs"]
+#[allow(dead_code)]
+mod association_fixtures;
 
 /// Policy family P, and a second family Q.
 const P: u32 = 700;
@@ -2630,5 +2633,85 @@ fn cur_018_transfer_into_a_represented_part() {
             low: amount(14000),
             high: amount(15000),
         }
+    );
+}
+
+#[test]
+fn cur_018_transfer_inside_one_counted_total() {
+    // Total T counts in place of cash C and holdings H, so 1,000.00 moving
+    // from C to H stays inside T's amount.
+    let mut state = brokerage(Some(10000), Some(8000));
+    let sending = transfer_leg(&mut state, 5100, S1, account(CASH), -1000, SENT, false);
+    let receiving = transfer_leg(
+        &mut state,
+        5200,
+        S1,
+        account(HOLDINGS),
+        1000,
+        RECEIVED,
+        false,
+    );
+    let legs = [sending.id, receiving.id];
+    publish(
+        &mut state,
+        vec![
+            AuthoritativeRecordV1::FinancialLeg(sending),
+            AuthoritativeRecordV1::FinancialLeg(receiving),
+            transfer_revision(TRANSFER, None, &legs, vec![]),
+        ],
+    );
+    assert_eq!(
+        total(&state, REQUESTED, BROKERED),
+        AggregateV1::Exact(amount(10000))
+    );
+}
+
+#[test]
+fn cur_018_transfer_fee_leg_moves_no_funds() {
+    // The S2 transfer as admitted: 1,000.00 leaves checking A (account 10)
+    // for accounts 60 and 70 as 600.00 and 400.00, and a separate 10.00 fee
+    // leg leaves A as well. Each account gets an S1 alias.
+    let (mut state, mut request) = association_fixtures::transfer_request();
+    for (n, original) in [(CHECKING, "A-1"), (60, "S-1"), (70, "T-1")] {
+        let current = CatalogEngine::current(&state, id(n + 1)).unwrap();
+        let mut revision = catalog();
+        revision.revision_id = id(n + 3);
+        revision.prior_revision = Some(current.id);
+        revision.catalog = current.catalog;
+        revision.catalog.aliases = vec![alias(S1, original)];
+        revision.ownership.account_id = account(n);
+        let plan = CatalogEngine::set_complete(&state, &revision).unwrap();
+        apply(&mut state, &plan);
+    }
+    // Each S1 balance as of 2026-11-10 includes its movement line. The fee
+    // line has not arrived, and no coverage rules it out.
+    for (i, leg) in request.legs.iter_mut().take(3).enumerate() {
+        let n = 6100 + 10 * u32::try_from(i).unwrap();
+        let TemporalValue::Date { civil, .. } = leg.effective else {
+            panic!("a dated leg")
+        };
+        let (records, binding) = line(n, S1, leg.movement.coefficient, &civil.to_string());
+        publish(&mut state, records);
+        leg.allocations = vec![EvidenceAllocationV1 {
+            observation: binding.observation,
+            facet: binding.facet,
+            amount: binding.amount,
+        }];
+    }
+    let mut records: Vec<_> = request
+        .legs
+        .into_iter()
+        .map(AuthoritativeRecordV1::FinancialLeg)
+        .collect();
+    records.push(AuthoritativeRecordV1::AssociationRevision(request.revision));
+    publish(&mut state, records);
+    publish(&mut state, report(6000, "A-1", 4000, 1));
+    publish(&mut state, report(6010, "S-1", 600, 1));
+    publish(&mut state, report(6020, "T-1", 400, 1));
+    // Every balance includes its share of the transfer, and the fee moves
+    // no funds between them, so nothing is in flight.
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, 60, 70]),
+        AggregateV1::Exact(amount(5000))
     );
 }

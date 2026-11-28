@@ -1043,8 +1043,10 @@ Funds that a transfer moves between two counting components count once
 `Transfer` association family and each of its legs on the account of a
 component that counts or that its total or parts represent. A leg
 with a negative movement sends and one with a positive movement receives.
-Legs on omitted components or outside the household adjust nothing, and
-the aggregate never changes the association or its claims.
+A leg with a captured `Fee` allocation moves no funds between accounts, so
+it neither sends nor receives. Legs on omitted components or outside the
+household adjust nothing, and the aggregate never changes the association
+or its claims.
 
 A leg's membership in a counted amount is included, excluded or unknown:
 
@@ -1076,7 +1078,10 @@ share:
   balances count the funds, so the aggregate subtracts it.
 - The two agree: no adjustment.
 
-Each receiving leg adjusts only its own amount, so partial receipts each
+A receiving leg whose funds one counted amount holds on both sides, such as
+a move from a brokerage's cash part to its holdings part while the total
+counts, adjusts nothing. Each receiving leg adjusts only its own amount, so
+partial receipts each
 count once. Neither assertion nor any anchored balance is rewritten. When
 either side is unknown, the aggregate takes the least and the most total
 over the memberships the known sides allow. A receiving leg whose amount

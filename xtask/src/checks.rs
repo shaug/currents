@@ -584,6 +584,8 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_journal_balance_membership",
         "cur_018_transfer_beside_an_omission",
         "cur_018_transfer_into_a_represented_part",
+        "cur_018_transfer_inside_one_counted_total",
+        "cur_018_transfer_fee_leg_moves_no_funds",
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
