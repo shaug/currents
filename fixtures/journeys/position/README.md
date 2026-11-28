@@ -1,7 +1,11 @@
-# Position: source precedence
+# Position: source precedence and transfer overlap
 
-`source-precedence.json` is synthetic input for the `cur_018_1` tests in
+Both files are synthetic input for tests in
 `crates/currents-domain/tests/cur_018.rs`.
+
+## Source precedence
+
+`source-precedence.json` drives the `cur_018_1` tests.
 
 Checking account A holds USD and has an alias for connection S1 and another
 for S2. Each case commits its reports in list order, each in its own import
@@ -29,3 +33,21 @@ effective from its `from` date.
 
 These cases cover one component. They do not cover the journal balance,
 freshness, coverage or the household aggregate.
+
+## Transfer overlap
+
+`transfer-overlap.json` drives `cur_018_2_balance_receipt_before_feed`.
+
+Checking A (USD, connection S1) sends 1,000.00 to savings B (USD, connection
+S2), each owned 1/1, by one transfer association with a sending leg dated
+2026-11-04 and a receiving leg dated 2026-11-05. A reports 4,000.00 as of
+2026-11-05, and A's outflow line is allocated to the sending leg. B reports
+3,000.00 as of 2026-11-05 before B's feed arrives, so B's balance may or may
+not include the receipt.
+
+- Before the feed, the aggregate on 2026-11-06 is the range from 7,000.00
+  (B includes the receipt) to 8,000.00 (the funds are in flight).
+- B's feed then brings the receipt line, dated 2026-11-05 and allocated to
+  the receiving leg, and complete posting-date coverage from 2026-11-01
+  through 2026-11-05. B's balance includes the receipt, and the aggregate is
+  exactly 7,000.00.

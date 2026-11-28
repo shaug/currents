@@ -580,6 +580,22 @@ const CUR_018_SUITES: &Suites = &[
             "cur_018_4_explanation_names_selection_inputs",
             "cur_018_4_refuses_another_commit",
             "cur_018_4_lagging_index_refused",
+            "cur_018_2_sender_included_receiver_excluded_adds_clearing_once",
+            "cur_018_2_receiver_included_suppresses_clearing",
+            "cur_018_2_both_included_removes_overlap_once",
+            "cur_018_2_balance_receipt_before_feed",
+            "cur_018_2_partial_receipts",
+            "cur_018_2_unknown_amount_is_indeterminate",
+            "cur_018_journal_balance_membership",
+            "cur_018_transfer_beside_an_omission",
+            "cur_018_transfer_into_a_represented_part",
+            "cur_018_transfer_inside_one_counted_total",
+            "cur_018_transfer_fee_leg_moves_no_funds",
+            "cur_018_transfer_between_unequal_shares",
+            "cur_018_senders_at_different_shares",
+            "cur_018_later_transfer_needs_coverage",
+            "cur_018_admitted_transfer_rows_decide_membership",
+            "cur_018_uncounted_sender_leaves_amount_unknown",
         ],
     ),
     (
@@ -717,7 +733,8 @@ fn ticket_cur_018() -> Result<Value> {
         "ticket":"CUR-018",
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
         "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, and version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both, and per-component explanations of the selection inputs at the same read basis, answered with position queries through the encrypted service's test planner, and owner dataset policy commands whose preview lists the components whose position changes, submitted through the same planner; no production route or transfer adjustment"
+        "transfer_overlap_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/transfer-overlap.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both, transfer membership from allocated source lines and complete coverage so in-flight funds count once as an exact amount, a range or an indeterminate total, and per-component explanations of the selection inputs at the same read basis, answered with position queries through the encrypted service's test planner, and owner dataset policy commands whose preview lists the components whose position changes, submitted through the same planner; no production route"
     }))
 }
 fn ticket_cur_019() -> Result<Value> {

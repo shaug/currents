@@ -1,0 +1,12 @@
+{
+  "unit": "USD",
+  "requested": "2026-11-06",
+  "transfer": {"from": "A", "to": "B", "amount": 1000, "sent": "2026-11-04", "received": "2026-11-05"},
+  "balances": [
+    {"component": "A", "source": "S1", "as_of": "2026-11-05", "amount": 4000, "line": true},
+    {"component": "B", "source": "S2", "as_of": "2026-11-05", "amount": 3000, "line": false}
+  ],
+  "before_feed": {"low": 7000, "high": 8000},
+  "feed": {"component": "B", "source": "S2", "line": true, "complete_coverage": {"start": "2026-11-01", "end": "2026-11-05"}},
+  "after_feed": {"exact": 7000}
+}
