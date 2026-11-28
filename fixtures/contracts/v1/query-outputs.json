@@ -9,6 +9,18 @@
       }
     },
     {
+      "kind": "KnownSubtotal",
+      "value": {
+        "known": {
+          "coefficient": "1",
+          "scale": 1,
+          "unit_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "obstructions": [],
+        "omitted": []
+      }
+    },
+    {
       "kind": "Range",
       "value": {
         "high": {

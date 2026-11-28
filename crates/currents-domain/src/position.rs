@@ -4,6 +4,7 @@
 //! anchored balance or, without an anchor, the known movements. It reads the
 //! state and writes nothing. It never rolls a source balance forward.
 use crate::activity_predicate::civil_date;
+use crate::aggregation::{self, Found};
 use crate::catalog::CatalogEngine;
 use crate::dependencies::{self, Anchor};
 use crate::policy::PolicyEngine;
@@ -78,7 +79,7 @@ struct Candidate {
 /// one boundary, the highest-ranked source in `priority` among them decides.
 /// Equal amounts corroborate and are all selected. Different amounts are a
 /// conflict, `None`, with nothing selected.
-fn select(candidates: &[Candidate], priority: &[RecordId]) -> Option<Vec<RecordId>> {
+fn select<'a>(candidates: &'a [Candidate], priority: &[RecordId]) -> Option<Vec<&'a Candidate>> {
     let latest: Vec<&Candidate> = candidates
         .iter()
         .filter(|c| !candidates.iter().any(|o| o.boundary.after(c.boundary)))
@@ -96,7 +97,7 @@ fn select(candidates: &[Candidate], priority: &[RecordId]) -> Option<Vec<RecordI
     }
     pool.iter()
         .all(|c| c.amount == pool[0].amount)
-        .then(|| pool.iter().map(|c| c.observation).collect())
+        .then_some(pool)
 }
 
 /// The components a scope names directly or through their accounts, each
@@ -340,17 +341,14 @@ impl PositionEngine {
         let mut movements = Vec::new();
         let mut anchored_balance = Vec::new();
         let mut selected = BTreeSet::new();
-        let mut aggregate = Vec::new();
+        let mut found = Vec::new();
         for (component, catalog) in &components {
             let reading = readings.remove(component).unwrap_or_default();
-            match select(&reading.candidates, &priority) {
-                Some(ids) => selected.extend(ids),
-                None => {
-                    codes.insert("conflict");
-                }
+            let chosen = select(&reading.candidates, &priority);
+            if chosen.is_none() {
+                codes.insert("conflict");
             }
-            assertions.extend(reading.assertions);
-            anchored_balance.extend(journal(
+            let anchored = journal(
                 state,
                 &legs,
                 *component,
@@ -358,12 +356,26 @@ impl PositionEngine {
                 day,
                 &mut codes,
                 &mut movements,
-            )?);
-            aggregate.push(AggregateComponentV1 {
-                component: *component,
-                amount: SourceValue::Unknown,
-                evidence: Vec::new(),
-            });
+            )?;
+            // The selected amount, else the anchored balance.
+            let amount = match (chosen, &anchored) {
+                (None, _) => Found::Missing("conflict"),
+                (Some(chosen), _) if !chosen.is_empty() => {
+                    let ids: BTreeSet<RecordId> = chosen.iter().map(|c| c.observation).collect();
+                    selected.extend(ids.iter().copied());
+                    Found::Known(chosen[0].amount, ids.into_iter().collect())
+                }
+                (Some(_), None) => Found::Missing("unknown_opening"),
+                (Some(_), Some(anchored)) => match anchored.amount {
+                    SourceValue::Known(amount) => {
+                        Found::Known(amount, anchored.dependencies.clone())
+                    }
+                    _ => Found::Missing("missing_date_mapping"),
+                },
+            };
+            found.push((*component, amount));
+            assertions.extend(reading.assertions);
+            anchored_balance.extend(anchored);
         }
         Ok(PositionResponseV1 {
             basis: basis.clone(),
@@ -377,10 +389,7 @@ impl PositionEngine {
             coverage: Vec::new(),
             discrepancies: Vec::new(),
             missing_inputs: codes.into_iter().map(String::from).collect(),
-            aggregate: AggregateV1::Indeterminate {
-                components: aggregate,
-                obstructions: vec!["aggregation_unavailable".into()],
-            },
+            aggregate: aggregation::aggregate(state, day, found)?,
         })
     }
 }

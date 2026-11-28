@@ -552,6 +552,15 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_incompatible_candidates_never_selected",
         "cur_018_query_refuses_stale_basis",
         "cur_018_query_refuses_bad_scope",
+        "cur_018_3_exact_total_needs_every_input",
+        "cur_018_3_missing_opening_is_not_zero",
+        "cur_018_3_missing_rate_is_not_zero",
+        "cur_018_3_missing_value_is_not_zero",
+        "cur_018_3_unknown_ownership_is_not_full",
+        "cur_018_ownership_is_effective_dated",
+        "cur_018_inexact_share_is_omitted",
+        "cur_018_liability_subtracts",
+        "cur_018_outside_perimeter_contributes_nothing",
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
@@ -641,7 +650,7 @@ fn ticket_cur_018() -> Result<Value> {
         "ticket":"CUR-018",
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
         "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements; no command route, preview, labels or household aggregate"
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions; no command route, preview, labels, brokerage overlap or transfer adjustment"
     }))
 }
 fn ticket_cur_021() -> Result<Value> {

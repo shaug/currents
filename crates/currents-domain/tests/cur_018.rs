@@ -684,7 +684,8 @@ impl Report {
     }
 }
 
-/// A with aliases for S1 and S2, B with an alias for S1, and a EUR unit.
+/// A with aliases for S1 and S2, B owned 1/2 with an alias for S1, and a
+/// EUR unit.
 fn positions() -> DomainState {
     let mut state = monetary_state();
     let current = CatalogEngine::current(&state, id(CHECKING + 1)).unwrap();
@@ -700,6 +701,8 @@ fn positions() -> DomainState {
     savings.catalog.component_id = id(SAVINGS + 1);
     savings.catalog.account_id = account(SAVINGS);
     savings.ownership.account_id = account(SAVINGS);
+    savings.ownership.numerator = CommitSeq(1);
+    savings.ownership.denominator = CommitSeq(2);
     savings.catalog.display_name = "Synthetic savings".into();
     savings.catalog.aliases = vec![alias(S1, "B-1")];
     let plan = CatalogEngine::set_complete(&state, &savings).unwrap();
@@ -823,9 +826,41 @@ fn precedence_case(name: &str, reversed: bool) -> Vec<PositionResponseV1> {
         // No anchor, so the journal reports movements only.
         assert!(codes(&response).contains(&"unknown_opening"));
         assert!(response.anchored_balance.is_empty());
+        // A, owned 1/1, counts its selected amount. A conflict or no
+        // selection leaves the aggregate without a total.
+        let selected = response
+            .assertions
+            .iter()
+            .find(|a| response.selected_basis.contains(&a.id));
+        let expected = match (q["conflict"].as_bool().unwrap(), selected) {
+            (true, _) => indeterminate(&response, "conflict"),
+            (false, Some(assertion)) => AggregateV1::Exact(assertion.amount),
+            (false, None) => indeterminate(&response, "unknown_opening"),
+        };
+        assert_eq!(response.aggregate, expected, "{name} {q}");
         responses.push(response);
     }
     responses
+}
+
+/// The aggregate of a response whose only component, A, is omitted for
+/// `reason`, with its selected amount or `Unknown`.
+fn indeterminate(response: &PositionResponseV1, reason: &str) -> AggregateV1 {
+    let selected: Vec<&PositionAssertionV1> = response
+        .assertions
+        .iter()
+        .filter(|a| response.selected_basis.contains(&a.id))
+        .collect();
+    AggregateV1::Indeterminate {
+        components: vec![AggregateComponentV1 {
+            component: id(CHECKING + 1),
+            amount: selected
+                .first()
+                .map_or(SourceValue::Unknown, |a| SourceValue::Known(a.amount)),
+            evidence: selected.iter().map(|a| a.id).collect(),
+        }],
+        obstructions: vec![reason.into()],
+    }
 }
 
 #[test]
@@ -947,17 +982,11 @@ fn cur_018_unknown_opening_returns_movements_only() {
     assert_eq!(moved.effective, date("2026-11-03"));
     assert_eq!(moved.evidence, vec![RecordId(leg.0), id(3000)]);
     assert_eq!(codes(&response), vec!["unknown_opening"]);
-    assert!(!matches!(response.aggregate, AggregateV1::Exact(_)));
+    // Known movements are not a position: without an opening, A has no
+    // amount to count.
     assert_eq!(
         response.aggregate,
-        AggregateV1::Indeterminate {
-            components: vec![AggregateComponentV1 {
-                component: id(CHECKING + 1),
-                amount: SourceValue::Unknown,
-                evidence: vec![],
-            }],
-            obstructions: vec!["aggregation_unavailable".into()],
-        }
+        indeterminate(&response, "unknown_opening")
     );
     // A movement after the requested date is not listed.
     movement(&mut state, 3100, -10, "2026-11-08");
@@ -988,6 +1017,8 @@ fn cur_018_anchored_balance_is_not_rolled_forward() {
     assert!(response.movements.is_empty());
     assert!(response.selected_basis.is_empty());
     assert!(response.missing_inputs.is_empty());
+    // Without a selected assertion, A counts its anchored balance.
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(3200)));
     // Before the anchor's cutoff, the opening is unknown.
     let before = query(&state, "2026-10-31");
     assert!(before.anchored_balance.is_empty());
@@ -1011,6 +1042,8 @@ fn cur_018_anchored_balance_is_not_rolled_forward() {
         response.anchored_balance[0].amount,
         SourceValue::Known(amount(3150))
     );
+    // A selected assertion is the component's amount, not the journal's.
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(3250)));
 }
 
 #[test]
@@ -1109,4 +1142,315 @@ fn cur_018_query_refuses_bad_scope() {
     };
     let ids: Vec<RecordId> = components.iter().map(|c| c.component).collect();
     assert_eq!(ids, vec![id(CHECKING + 1), id(SAVINGS + 1)]);
+}
+
+// Household aggregation (C09). Reporting currency USD, requested date
+// 2026-11-15. Checking A reports 1,000.00 and is owned 1/1; savings B reports
+// 500.00 and is owned 1/2. Each added account declares one S1 alias.
+
+/// Account C, which has no assertion and no anchor.
+const CASH: u32 = 4100;
+/// A EUR account.
+const EURO: u32 = 4200;
+/// A holdings account in a security unit.
+const HOLDINGS: u32 = 4300;
+/// A card, which is a liability.
+const CARD: u32 = 4400;
+/// A declared security unit.
+const SHARES: u32 = 750;
+const REQUESTED: &str = "2026-11-15";
+
+/// Declare external account `n` of `class` in `unit`, owned 1/1, with the
+/// S1 alias `"{name}-1"`.
+fn add_account(state: &mut DomainState, n: u32, class: AccountClass, unit: u32, name: &str) {
+    let mut request = catalog();
+    request.revision_id = id(n + 2);
+    request.catalog.component_id = id(n + 1);
+    request.catalog.account_id = account(n);
+    request.ownership.account_id = account(n);
+    request.catalog.account_class = class;
+    if class == AccountClass::Liability {
+        request.catalog.normal_sign = NormalSign::Credit;
+    }
+    request.catalog.unit_id = UnitId(id(unit).0);
+    request.catalog.display_name = name.into();
+    request.catalog.aliases = vec![alias(S1, &format!("{name}-1"))];
+    let plan = CatalogEngine::set_complete(state, &request).unwrap();
+    apply(state, &plan);
+}
+
+/// A posted S1 balance of `value` in `unit` as of 2026-11-10 for the account
+/// whose alias is `"{alias}"`.
+fn report(n: u32, alias: &'static str, value: i128, unit: u32) -> Vec<AuthoritativeRecordV1> {
+    let mut report = Report::posted(n, S1, value, "2026-11-10");
+    report.original_ids = vec![alias];
+    report.unit = unit;
+    report.records()
+}
+
+/// A reports 1,000.00 and B reports `savings`.
+fn household(savings: i128) -> DomainState {
+    let mut state = positions();
+    publish(&mut state, report(2000, "A-1", 1000, 1));
+    publish(&mut state, report(2010, "B-1", savings, 1));
+    state
+}
+
+/// The aggregate for `accounts` on `requested`.
+fn total(state: &DomainState, requested: &str, accounts: &[u32]) -> AggregateV1 {
+    let scope = AccountScope {
+        accounts: vec![],
+        components: accounts.iter().map(|n| id(n + 1)).collect(),
+    };
+    PositionEngine::query(state, &read_basis(state, requested), &scope)
+        .unwrap()
+        .aggregate
+}
+
+/// The known amount and each omission's component and reason, after
+/// checking that the obstructions are the distinct reasons in order.
+fn subtotal(aggregate: &AggregateV1) -> (Amount, Vec<(RecordId, &str)>) {
+    let AggregateV1::KnownSubtotal {
+        known,
+        omitted,
+        obstructions,
+    } = aggregate
+    else {
+        panic!("known subtotal, not {aggregate:?}")
+    };
+    let mut reasons: Vec<&str> = omitted.iter().map(|o| o.reason.as_str()).collect();
+    reasons.sort_unstable();
+    reasons.dedup();
+    assert_eq!(obstructions, &reasons);
+    (
+        *known,
+        omitted
+            .iter()
+            .map(|o| (o.component, o.reason.as_str()))
+            .collect(),
+    )
+}
+
+/// Commit family 104's next revision, effective from `start`, which sets
+/// the ownership perimeter to `perimeter`.
+fn adopt_perimeter(
+    state: &mut DomainState,
+    prior: Option<u32>,
+    start: Option<&str>,
+    perimeter: SourceValue<Vec<OwnershipV1>>,
+) {
+    let mut r = request(prior, scope(start, None));
+    r.policy_id = id(104);
+    r.ownership_perimeter = change(state, perimeter);
+    let plan = PolicyEngine::set(state, &r).unwrap();
+    apply(state, &plan);
+}
+
+/// Commit family 104's next revision, effective from 2026-11-01, which sets
+/// the reporting currency to `currency`.
+fn adopt_currency(state: &mut DomainState, prior: Option<u32>, currency: SourceValue<UnitId>) {
+    let mut r = request(prior, scope(Some("2026-11-01"), None));
+    r.policy_id = id(104);
+    r.reporting_currency = change(state, currency);
+    let plan = PolicyEngine::set(state, &r).unwrap();
+    apply(state, &plan);
+}
+
+#[test]
+fn cur_018_3_exact_total_needs_every_input() {
+    let state = household(500);
+    // 1,000.00 at 1/1 and 500.00 at 1/2.
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, SAVINGS]),
+        AggregateV1::Exact(amount(1250))
+    );
+}
+
+#[test]
+fn cur_018_3_missing_opening_is_not_zero() {
+    let mut state = household(500);
+    add_account(&mut state, CASH, AccountClass::Asset, 1, "C");
+    let aggregate = total(&state, REQUESTED, &[CHECKING, SAVINGS, CASH]);
+    assert_eq!(
+        subtotal(&aggregate),
+        (amount(1250), vec![(id(CASH + 1), "unknown_opening")])
+    );
+    let AggregateV1::KnownSubtotal { omitted, .. } = &aggregate else {
+        unreachable!()
+    };
+    assert_eq!(omitted[0].amount, SourceValue::Unknown);
+    assert!(omitted[0].evidence.is_empty());
+}
+
+#[test]
+fn cur_018_3_missing_rate_is_not_zero() {
+    let mut state = household(500);
+    add_account(&mut state, EURO, AccountClass::Asset, EUR, "E");
+    publish(&mut state, report(2020, "E-1", 100, EUR));
+    let all = [CHECKING, SAVINGS, EURO];
+    let aggregate = total(&state, REQUESTED, &all);
+    assert_eq!(
+        subtotal(&aggregate),
+        (amount(1250), vec![(id(EURO + 1), "missing_rate")])
+    );
+    let AggregateV1::KnownSubtotal { omitted, .. } = &aggregate else {
+        unreachable!()
+    };
+    let euros = Amount::new(100, 0, UnitId(id(EUR).0)).unwrap();
+    assert_eq!(omitted[0].amount, SourceValue::Known(euros));
+    assert_eq!(omitted[0].evidence, vec![id(2020)]);
+
+    // A governing EUR reporting currency counts the EUR account and omits
+    // the USD ones.
+    adopt_currency(&mut state, None, SourceValue::Known(UnitId(id(EUR).0)));
+    assert_eq!(
+        subtotal(&total(&state, REQUESTED, &all)),
+        (
+            euros,
+            vec![
+                (id(CHECKING + 1), "missing_rate"),
+                (id(SAVINGS + 1), "missing_rate"),
+            ]
+        )
+    );
+    // An unknown reporting currency counts nothing.
+    adopt_currency(&mut state, Some(1), SourceValue::Unknown);
+    let AggregateV1::Indeterminate {
+        components,
+        obstructions,
+    } = total(&state, REQUESTED, &all)
+    else {
+        panic!("indeterminate")
+    };
+    assert_eq!(components.len(), 3);
+    assert_eq!(obstructions, vec!["unknown_reporting_currency"]);
+}
+
+#[test]
+fn cur_018_3_missing_value_is_not_zero() {
+    let mut state = household(500);
+    publish(
+        &mut state,
+        vec![AuthoritativeRecordV1::UnitCatalog(UnitCatalogV1 {
+            id: id(SHARES + 1),
+            version: 1,
+            units: vec![UnitDefinition {
+                id: UnitId(id(SHARES).0),
+                exponent: 0,
+                native_code: "SYN".into(),
+                kind: UnitKind::Security,
+            }],
+        })],
+    );
+    add_account(&mut state, HOLDINGS, AccountClass::Asset, SHARES, "H");
+    publish(&mut state, report(2030, "H-1", 10, SHARES));
+    assert_eq!(
+        subtotal(&total(&state, REQUESTED, &[CHECKING, SAVINGS, HOLDINGS])),
+        (amount(1250), vec![(id(HOLDINGS + 1), "missing_value")])
+    );
+}
+
+#[test]
+fn cur_018_3_unknown_ownership_is_not_full() {
+    let mut state = household(500);
+    adopt_perimeter(&mut state, None, None, SourceValue::Unknown);
+    let components = vec![
+        AggregateComponentV1 {
+            component: id(CHECKING + 1),
+            amount: SourceValue::Known(amount(1000)),
+            evidence: vec![id(2000)],
+        },
+        AggregateComponentV1 {
+            component: id(SAVINGS + 1),
+            amount: SourceValue::Known(amount(500)),
+            evidence: vec![id(2010)],
+        },
+    ];
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, SAVINGS]),
+        AggregateV1::Indeterminate {
+            components,
+            obstructions: vec!["unknown_ownership".into()],
+        }
+    );
+}
+
+#[test]
+fn cur_018_ownership_is_effective_dated() {
+    let mut state = household(500);
+    let before = state.clone();
+    adopt_perimeter(
+        &mut state,
+        None,
+        Some("2026-12-01"),
+        SourceValue::Known(vec![share(CHECKING, 1, 1), share(SAVINGS, 1, 4)]),
+    );
+    let both = [CHECKING, SAVINGS];
+    assert_eq!(
+        total(&state, REQUESTED, &both),
+        AggregateV1::Exact(amount(1250))
+    );
+    assert_eq!(
+        total(&state, "2026-12-15", &both),
+        AggregateV1::Exact(amount(1125))
+    );
+    // Through the commit before the revision, the catalog share applies.
+    assert_eq!(
+        total(&before, "2026-12-15", &both),
+        AggregateV1::Exact(amount(1250))
+    );
+}
+
+#[test]
+fn cur_018_inexact_share_is_omitted() {
+    let mut state = household(100);
+    adopt_perimeter(
+        &mut state,
+        None,
+        None,
+        SourceValue::Known(vec![share(CHECKING, 1, 1), share(SAVINGS, 1, 3)]),
+    );
+    let both = [CHECKING, SAVINGS];
+    assert_eq!(
+        subtotal(&total(&state, REQUESTED, &both)),
+        (amount(1000), vec![(id(SAVINGS + 1), "inexact_share")])
+    );
+    // 1/8 of 100.00 is exactly 12.50.
+    adopt_perimeter(
+        &mut state,
+        Some(1),
+        None,
+        SourceValue::Known(vec![share(CHECKING, 1, 1), share(SAVINGS, 1, 8)]),
+    );
+    assert_eq!(
+        total(&state, REQUESTED, &both),
+        AggregateV1::Exact(Amount::new(10125, 1, UnitId(id(1).0)).unwrap())
+    );
+}
+
+#[test]
+fn cur_018_liability_subtracts() {
+    let mut state = household(500);
+    add_account(&mut state, CARD, AccountClass::Liability, 1, "D");
+    // The card reports 400.00 owed.
+    publish(&mut state, report(2040, "D-1", 400, 1));
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, SAVINGS, CARD]),
+        AggregateV1::Exact(amount(850))
+    );
+}
+
+#[test]
+fn cur_018_outside_perimeter_contributes_nothing() {
+    let mut state = household(500);
+    adopt_perimeter(
+        &mut state,
+        None,
+        None,
+        SourceValue::Known(vec![share(CHECKING, 1, 1)]),
+    );
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, SAVINGS]),
+        AggregateV1::Exact(amount(1000))
+    );
 }

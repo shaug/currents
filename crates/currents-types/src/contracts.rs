@@ -94,10 +94,18 @@ dto!(FreshnessV1 {
     threshold_seconds: CommitSeq
 });
 dto!(AggregateComponentV1 { component:RecordId, amount:SourceValue<Amount>, evidence:Vec<RecordId> });
+// One in-perimeter component a known subtotal leaves out, with the one code
+// that names why (C09).
+dto!(AggregateOmissionV1 { component:RecordId, amount:SourceValue<Amount>, evidence:Vec<RecordId>, reason:String });
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", content = "value", deny_unknown_fields)]
 pub enum AggregateV1 {
     Exact(Amount),
+    KnownSubtotal {
+        known: Amount,
+        omitted: Vec<AggregateOmissionV1>,
+        obstructions: Vec<String>,
+    },
     Range {
         low: Amount,
         high: Amount,
@@ -111,7 +119,7 @@ impl Schema for AggregateV1 {
     fn schema() -> serde_json::Value {
         use serde_json::json;
         let v = |kind: &str, value: serde_json::Value| json!({"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":kind},"value":value}});
-        json!({"oneOf":[v("Exact",Amount::schema()),v("Range",json!({"type":"object","additionalProperties":false,"required":["low","high"],"properties":{"low":Amount::schema(),"high":Amount::schema()}})),v("Indeterminate",json!({"type":"object","additionalProperties":false,"required":["components","obstructions"],"properties":{"components":Vec::<AggregateComponentV1>::schema(),"obstructions":Vec::<String>::schema()}}))]})
+        json!({"oneOf":[v("Exact",Amount::schema()),v("KnownSubtotal",json!({"type":"object","additionalProperties":false,"required":["known","omitted","obstructions"],"properties":{"known":Amount::schema(),"omitted":Vec::<AggregateOmissionV1>::schema(),"obstructions":Vec::<String>::schema()}})),v("Range",json!({"type":"object","additionalProperties":false,"required":["low","high"],"properties":{"low":Amount::schema(),"high":Amount::schema()}})),v("Indeterminate",json!({"type":"object","additionalProperties":false,"required":["components","obstructions"],"properties":{"components":Vec::<AggregateComponentV1>::schema(),"obstructions":Vec::<String>::schema()}}))]})
     }
 }
 dto!(PositionResponseV1 { basis:ReadBasis, scope:AccountScope, assertions:Vec<PositionAssertionV1>, movements:Vec<AccountMovementV1>, anchored_balance:Vec<AnchoredBalanceV1>, selected_basis:Vec<RecordId>, pending:Vec<AccountMovementV1>, freshness:Vec<FreshnessV1>, coverage:Vec<CoverageV1>, discrepancies:Vec<ReconciliationClaimV1>, missing_inputs:Vec<String>, aggregate:AggregateV1 });
