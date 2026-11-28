@@ -1,6 +1,7 @@
 //! C08 replay admission uses the exact prior prefix, never a later repaired state.
 use crate::{
     catalog::CatalogEngine,
+    investments::{InvestmentEngine, quantity::declaration_in},
     recognition::{RecognitionEngine, restore},
 };
 use currents_types::*;
@@ -131,6 +132,17 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::PendingExpiry(expiry) => {
                 Some(crate::expiry::PendingExpiryEngine::expire(prior, expiry)?)
             }
+            // A new security's commit also declares its unit; a revision
+            // declares nothing.
+            AuthoritativeRecordV1::Security(security) if security.prior_revision.is_none() => Some(
+                InvestmentEngine::declare_security(prior, &declaration_in(next, security)?)?,
+            ),
+            AuthoritativeRecordV1::Security(security) => {
+                Some(InvestmentEngine::revise_security(prior, security)?)
+            }
+            AuthoritativeRecordV1::Position(position) => {
+                Some(InvestmentEngine::declare_position(prior, position)?)
+            }
             AuthoritativeRecordV1::RelationshipParseRevision(p) => {
                 let Some(AuthoritativeRecordV1::ImportReceipt(r)) = next.records.get(&p.receipt_id)
                 else {
@@ -233,7 +245,14 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::AssociationRevision(_)
             | AuthoritativeRecordV1::PendingExpiry(_)
             | AuthoritativeRecordV1::AccountingSegment(_)
-            | AuthoritativeRecordV1::SegmentReemission(_) => true,
+            | AuthoritativeRecordV1::SegmentReemission(_)
+            | AuthoritativeRecordV1::Security(_)
+            | AuthoritativeRecordV1::Position(_) => true,
+            // Only a security declaration declares a security unit.
+            AuthoritativeRecordV1::UnitCatalog(catalog) => catalog
+                .units
+                .iter()
+                .any(|unit| unit.kind == UnitKind::Security),
             AuthoritativeRecordV1::FinancialLeg(l) => !l.allocations.is_empty(),
             AuthoritativeRecordV1::Recognition(r) => {
                 !r.evidence_allocations.is_empty() || !r.leg_ids.is_empty()

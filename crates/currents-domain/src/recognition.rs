@@ -286,6 +286,7 @@ fn validate(
             return Err(EngineError::invalid());
         }
         let definition = lookup.unit(leg.movement.unit_id)?;
+        crate::investments::quantity::ordinary_unit(&definition)?;
         leg.movement.checked_rescale(definition.exponent)?;
         if leg.movement.coefficient == 0 {
             return Err(EngineError::invalid());
@@ -448,6 +449,7 @@ fn monetary(
             .get(&posting.account_id)
             .ok_or_else(incomplete)?;
         let u = lookup.unit(posting.amount.unit_id)?;
+        crate::investments::quantity::ordinary_unit(&u)?;
         if c.unit_id != posting.amount.unit_id
             || mapping.account_id != c.account_id
             || mapping.unit_id != c.unit_id
@@ -485,7 +487,12 @@ fn monetary(
                         && clearing_allowed(state, terms.recognition_id, mode) => {}
                 // Complete associations own quantified clearing/payroll terms;
                 // enabling catalog roles does not relax the old activity route.
-                ControlRoleV1::Clearing | ControlRoleV1::TaxPrepayment => {
+                // The investment engine owns quantity and carrying postings.
+                ControlRoleV1::Clearing
+                | ControlRoleV1::TaxPrepayment
+                | ControlRoleV1::QuantityControl
+                | ControlRoleV1::InvestmentCarrying
+                | ControlRoleV1::DisposalClearing => {
                     return Err(EngineError::version());
                 }
             },

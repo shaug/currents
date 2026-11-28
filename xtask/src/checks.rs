@@ -533,6 +533,19 @@ const CUR_017_SUITES: &Suites = &[
         ],
     ),
 ];
+/// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
+const CUR_021_SUITES: &Suites = &[(
+    "currents-domain",
+    "cur_021",
+    &[
+        "cur_021_security_identity_requires_source_identifier",
+        "cur_021_local_mapping_joins_sources",
+        "cur_021_control_roles_follow_unit_kind",
+        "cur_021_position_links_security_accounts",
+        "cur_021_ordinary_adoption_refuses_security_postings",
+        "cur_021_replay_readmits_declarations",
+    ],
+)];
 /// A suite qualifies only when its listed tests are exactly the required ones
 /// and every one of them ran and passed. An ignored test fails the suite.
 fn ticket_suite(
@@ -596,12 +609,22 @@ fn ticket_cur_017() -> Result<Value> {
         "scope":"synthetic reconciliation claim records through the encrypted writer and replay, and in-process Activity, Balance, Holdings and Relationship claim evaluation, confirmation and applicability, with holdings claims partial until journal quantities exist; no command route"
     }))
 }
+fn ticket_cur_021() -> Result<Value> {
+    Ok(json!({
+        "ticket":"CUR-021",
+        "suites":ticket_suites("CUR021", CUR_021_SUITES)?,
+        "scope":"synthetic security, security unit, control role and position declarations with replay, and the ordinary adoption and association refusal of security units; no trades, openings, valuation or command route"
+    }))
+}
 fn ticket(name: &str) -> Result<Value> {
     if name == "CUR-016" {
         return ticket_cur_016();
     }
     if name == "CUR-017" {
         return ticket_cur_017();
+    }
+    if name == "CUR-021" {
+        return ticket_cur_021();
     }
     if name == "CUR-044" {
         return crate::financekit_gate::ticket();
@@ -1317,7 +1340,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
 
 #[cfg(test)]
 mod ticket_gate_tests {
-    use super::{CUR_016_SUITES, CUR_017_SUITES, Suites, ticket_suite};
+    use super::{CUR_016_SUITES, CUR_017_SUITES, CUR_021_SUITES, Suites, ticket_suite};
     fn list(names: &[&str]) -> String {
         let mut text: String = names.iter().map(|name| format!("{name}: test\n")).collect();
         text.push_str(&format!("\n{} tests, 0 benchmarks\n", names.len()));
@@ -1377,6 +1400,10 @@ mod ticket_gate_tests {
     #[test]
     fn cur_017_gate_requires_full_inventory() {
         requires_full_inventory("CUR017", CUR_017_SUITES);
+    }
+    #[test]
+    fn cur_021_gate_requires_full_inventory() {
+        requires_full_inventory("CUR021", CUR_021_SUITES);
     }
 }
 
