@@ -1156,3 +1156,193 @@ fn cur_021_snapshot_replay() {
     let reused = ValidatedEvidenceBatchV1::new(receipted_batch(name, 7400, 7000)).unwrap();
     assert!(EvidenceEngine::publish_holdings(&next, reused).is_err());
 }
+
+/// Security SECW, with quantity exponent 0.
+const SECW: u32 = 6030;
+const SECW_UNIT: u32 = 6031;
+/// Quantity account QW in SECW, carrying account KW in USD and quantity
+/// control in SECW.
+const QW: u32 = 6230;
+const KW: u32 = 6240;
+const QW_CONTROL: u32 = 6250;
+/// Dividend income account I, in USD.
+const INCOME: u32 = 6260;
+/// Position PW holds SECW on QW in brokerage account X.
+const PW: u32 = 6270;
+
+/// The synthetic action rows by original ID: USD rows on B, SECA rows on Q
+/// and SECW rows on QW.
+struct ActionRows {
+    cash: BTreeMap<String, SourceFacetBindingV1>,
+    quantity: BTreeMap<String, SourceFacetBindingV1>,
+    secw: BTreeMap<String, SourceFacetBindingV1>,
+}
+
+fn secw() -> SecurityDeclarationV1 {
+    declaration(SECW, "SCW", "SYN-0003", 0)
+}
+
+/// Position P holds 6 SECA with carrying amount 600 USD, from trade 8200.
+/// Position PW holds 5 SECW, from trade 8300, with no cash side. Income
+/// account I is a dividend income account.
+fn acting() -> (DomainState, ActionRows) {
+    let mut state = world();
+    let plan = InvestmentEngine::declare_security(&state, &secw()).unwrap();
+    commit_metadata(&mut state, &plan);
+    for request in [
+        account(QW, unit_id(SECW_UNIT), AccountOriginV1::External),
+        account(KW, unit_id(1), control(ControlRoleV1::InvestmentCarrying)),
+        account(
+            QW_CONTROL,
+            unit_id(SECW_UNIT),
+            control(ControlRoleV1::QuantityControl),
+        ),
+        account(INCOME, unit_id(1), control(ControlRoleV1::IncomeFlow)),
+    ] {
+        let plan = CatalogEngine::set_complete(&state, &request).unwrap();
+        commit_metadata(&mut state, &plan);
+    }
+    for p in [position(P, SECA, Q, K), position(PW, SECW, QW, KW)] {
+        let plan = InvestmentEngine::declare_position(&state, &p).unwrap();
+        commit_metadata(&mut state, &plan);
+    }
+    for mapping in state.accounting.as_mut().unwrap().accounts.values_mut() {
+        mapping.path = format!("Currents:A{}", mapping.account_id.0.simple());
+    }
+    let fixture = |name: &str| {
+        let path = format!(
+            "{}/../../fixtures/investments/quantity/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        std::fs::read_to_string(path).unwrap()
+    };
+    let rows = ActionRows {
+        cash: import(&mut state, &fixture("actions-cash-b.csv"), usd(), 8000),
+        quantity: import(
+            &mut state,
+            &fixture("actions-quantity-q.csv"),
+            seca().unit,
+            8100,
+        ),
+        secw: import(
+            &mut state,
+            &fixture("actions-quantity-qw.csv"),
+            secw().unit,
+            8150,
+        ),
+    };
+    let buy = trade(
+        &state,
+        8200,
+        TradeSideV1::Buy,
+        Some(&rows.cash["buy-p"]),
+        Some(&rows.quantity["buy-p"]),
+        0,
+    );
+    let state = traded(&state, &buy);
+    let buy_w = quantity_buy(&state, 8300, PW, (QW, QW_CONTROL), &rows.secw["buy-w"]);
+    (traded(&state, &buy_w), rows)
+}
+
+/// `plan` frozen and admitted after `state`.
+fn committed(state: &DomainState, plan: &DecisionPlan) -> DomainState {
+    admit(state, &planned(state, plan)).unwrap()
+}
+
+/// `n` tenths of a SECA share.
+fn tenths(n: i128) -> Amount {
+    Amount::new(n, 1, unit_id(SECA_UNIT)).unwrap()
+}
+
+/// The 50 USD dividend reinvested in 0.4 SECA, as reinvestment 8400: the
+/// dividend's adoption from 8410 against I and the buy from 8420.
+fn reinvestment(state: &DomainState, rows: &ActionRows) -> ReinvestmentRequestV1 {
+    let received = &rows.cash["dividend"];
+    let mut dividend = posted(received.clone(), 8410, INCOME);
+    let day = row_date(state, received);
+    let leg = &mut dividend.legs[0].leg;
+    leg.effective = day.clone();
+    leg.posting = day.clone();
+    let terms = dividend.financial.as_mut().unwrap();
+    terms.bookkeeping_date = day.clone();
+    for posting in &mut terms.postings {
+        posting.effective = day.clone();
+        posting.posting = day.clone();
+    }
+    let purchase = trade(
+        state,
+        8420,
+        TradeSideV1::Buy,
+        Some(&rows.cash["reinvest"]),
+        Some(&rows.quantity["reinvest"]),
+        0,
+    );
+    ReinvestmentRequestV1 {
+        schema_version: 1,
+        id: id(8400),
+        dividend,
+        purchase,
+    }
+}
+
+/// The postings of each recognition `plan` holds, by account.
+fn entries(plan: &DecisionPlan) -> Vec<BTreeMap<AccountId, Amount>> {
+    let AccountingIntent::Recognitions(recognitions) = &plan.accounting else {
+        panic!("recognitions")
+    };
+    recognitions
+        .iter()
+        .map(|r| {
+            r.postings
+                .iter()
+                .map(|p| (p.account_id, p.amount.normalized().unwrap()))
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn cur_021_2_reinvested_dividend_is_one_pair() {
+    let (state, rows) = acting();
+    let request = reinvestment(&state, &rows);
+    let plan = InvestmentEngine::reinvest(&state, &request).unwrap();
+    // One plan with two linked recognitions: the dividend, then the buy.
+    let income = expect(&[(B, 50, 1), (INCOME, -50, 1)]);
+    let mut buy = expect(&[(B, -50, 1), (K, 50, 1)]);
+    buy.insert(account_id(Q), tenths(4));
+    buy.insert(account_id(QUANTITY_CONTROL), tenths(-4));
+    assert_eq!(entries(&plan), vec![income, buy]);
+    let Some(AuthoritativeRecordV1::Reinvestment(link)) = plan.records.last() else {
+        panic!("a reinvestment link")
+    };
+    assert_eq!(
+        (link.adoption, link.trade),
+        (request.dividend.adoption_id, request.purchase.id)
+    );
+
+    // B's balance does not change: the dividend's cash buys the shares.
+    let next = committed(&state, &plan);
+    let mut changed = expect(&[(INCOME, -50, 1), (K, 50, 1)]);
+    changed.insert(account_id(Q), tenths(4));
+    changed.insert(account_id(QUANTITY_CONTROL), tenths(-4));
+    assert_eq!(changes(&state, &next), changed);
+    let holdings = holdings_of(&next, P, "2026-11-30");
+    assert_eq!(holdings.quantity, tenths(64));
+    assert_eq!(holdings.carrying, balance(650, 1));
+
+    // The pair owns the dividend row, so it is not separate income again.
+    let again = posted(rows.cash["dividend"].clone(), 8800, INCOME);
+    assert!(RecognitionEngine::adopt(&state, &again).is_ok());
+    assert!(RecognitionEngine::adopt(&next, &again).is_err());
+    // A buy that pays other than the dividend is not its reinvestment.
+    let mut other = request.clone();
+    other.purchase = trade(
+        &state,
+        8420,
+        TradeSideV1::Buy,
+        Some(&rows.cash["buy-p"]),
+        Some(&rows.quantity["reinvest"]),
+        0,
+    );
+    assert!(InvestmentEngine::reinvest(&state, &other).is_err());
+}

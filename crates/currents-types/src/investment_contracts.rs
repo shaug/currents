@@ -53,3 +53,19 @@ dto!(HoldingAbsenceV1 { position:RecordId, security:RecordId, version:u32, prior
 // A source's holdings for an account scope as of one day. It records no
 // quantity change.
 dto!(HoldingsSnapshotV1 { id:RecordId, schema_version:u32, receipt:RecordId, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings:Vec<SnapshotHoldingV1>, market_value:Option<Amount>, absences:Vec<HoldingAbsenceV1> });
+// A reinvested dividend: the ordinary posted adoption of the dividend row
+// against an income account, and the buy of the position's security that
+// the dividend pays for. They plan and commit together.
+dto!(ReinvestmentRequestV1 {
+    schema_version: u32,
+    id: RecordId,
+    dividend: ActivityRequestV1,
+    purchase: TradeRequestV1
+});
+// Links a dividend's income adoption to the trade it reinvests in.
+dto!(ReinvestmentV1 {
+    id: RecordId,
+    schema_version: u32,
+    adoption: RecordId,
+    trade: RecordId
+});
