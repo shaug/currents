@@ -163,7 +163,7 @@ Historical `SetAccountCatalog` and `Recognize` tags and record bytes remain unch
 
 `ActivityRequestV1` supplies an adoption ID, explicit event and legs, exact source observation/addressed parse product/facet/amount bindings, owner interpretation and an exact governing DatasetPolicy reference. `Pending` is an explicit adopted assertion, not inferred from source age, absence or arbitrary text. Pending activity has no native entry or hold. A posted adoption may name one exact prior pending adoption; consuming that exposure does not recognize its earlier amount. Immutable `ActivityAdoptionV1` records the approved sources and pending relationship, so reparsing or enrichment cannot silently replace the adopted meaning. This initial route retains C07's one-facet-per-observation boundary: retained parser products and explicit source-revision ancestors must preserve that facet lineage. Multi-facet decomposition is unsupported rather than guessed.
 
-Financial terms separately identify recognition and lineage, postings, bookkeeping date and exact DateConversionPolicy. Governing DatasetPolicy and date conversion policy are distinct typed roles, never a latest-policy default. Reconstructed DomainState retains DatasetPolicy by exact (id, version), atomically with its processed prefix; date policies use C05's verified exact-version index. Later policy records do not reinterpret earlier adopted meaning. Unexplained movement requires an explicitly named unresolved-equity control account; it does not imply income or an absolute opening balance. Supported initial opening terms contain exact component, amount, evidence, cutoff and inclusion map. This initial-anchor path supports civil-date boundaries: every opening posting effective date must equal the cutoff, and subsequent postings to the anchored account must be strictly after it independently of leg dates. Instant-valued posting dates needing conversion are rejected for these boundary checks rather than guessed; unrelated unanchored C05 date-policy conversion is unchanged. Replacement/correction and general association inference remain later owners' contracts. All new records require typed persisted reference closure and exact-prefix replay validation; a merely deserializable or unsupported version is not healthy history.
+Financial terms separately identify recognition and lineage, postings, bookkeeping date and exact DateConversionPolicy. Governing DatasetPolicy and date conversion policy are distinct typed roles, never a latest-policy default. Reconstructed DomainState retains DatasetPolicy by exact (id, version), atomically with its processed prefix; date policies use C05's verified exact-version index. Later policy records do not reinterpret earlier adopted meaning. Unexplained movement requires an explicitly named unresolved-equity control account; it does not imply income or an absolute opening balance. Supported initial opening terms contain exact component, amount, evidence, cutoff and inclusion map. The opening amount equals its balance evidence in the source's convention, where a liability's balance is the positive amount owed. The opening leg posts that amount converted by the account's normal sign: a debit-normal account posts it unchanged, and a credit-normal account, such as a liability, posts its negation, a credit. This initial-anchor path supports civil-date boundaries: every opening posting effective date must equal the cutoff, and subsequent postings to the anchored account must be strictly after it independently of leg dates. Instant-valued posting dates needing conversion are rejected for these boundary checks rather than guessed; unrelated unanchored C05 date-policy conversion is unchanged. Replacement/correction and general association inference remain later owners' contracts. All new records require typed persisted reference closure and exact-prefix replay validation; a merely deserializable or unsupported version is not healthy history.
 
 ### CUR-016 bounded correction checkpoint
 
@@ -572,8 +572,9 @@ A `Balance` request names exactly one account and a `cutoffs` scope with no
 start and an end, the boundary. Its `evidence` names import receipts and
 observation versions that report exactly one balance facet and no movement
 facet, and it has no exclusions. The journal balance is the opening amount of
-the account's active anchor plus every live recognized leg on the account
-whose date by the request's basis is on or before the boundary. It counts as
+the account's active anchor, converted to journal sign by the account's normal
+sign, plus every live recognized leg on the account whose date by the
+request's basis is on or before the boundary. It counts as
 `Posted`. The claim is `Proposed` only when the source balance equals the
 journal balance exactly; there is no quantization. Its reasons are:
 
@@ -590,7 +591,10 @@ journal balance exactly; there is no quantization. Its reasons are:
   version-1 product is.
 - `IncompatibleUnits`: the source balance is not in the account's unit.
 - `UnexplainedResidual`: the balances compare and differ. `differences` holds
-  the source balance minus the journal balance.
+  the source balance minus the journal balance, in the source's convention:
+  the source balance converted to journal sign by the account's normal sign,
+  minus the journal balance, converted back. For a liability, a positive
+  difference means the source reports more owed than the journal.
 
 Only a balance with no reason, or with `CircularAnchor` alone, is compared.
 A balance that compares equal is listed in `matched_allocations`. A
@@ -848,8 +852,9 @@ selected. Receipt and commit order never decide. `selected_basis` lists the
 selected observation version IDs in ID order.
 
 When the component's account has an active anchor (C08) whose cutoff is on or
-before the requested date, `anchored_balance` reports the anchor's opening
-plus every live Activity leg on the account dated after the cutoff and on or
+before the requested date, `anchored_balance` reports, in journal sign, the
+anchor's opening converted by the account's normal sign plus every live
+Activity leg on the account dated after the cutoff and on or
 before the requested date by its effective date. It names the opening
 recognition, the requested date as `through`, and the segment and those legs
 as dependencies. Its amount is `Unknown` when a live leg on the account has
@@ -898,13 +903,12 @@ rate, ownership or value never counts as zero.
 A component's amount is its selected assertion's amount, with the selected
 observation version IDs as evidence. Without a selection it is the anchored
 balance, with the segment and legs as evidence. Without either it is
-`Unknown`. A liability's amount is the positive amount owed: a source
-balance reports it that way (ruling G5 on #27), and the anchored balance,
-which is debit-positive like the journal, is negated. C08 openings and the
-CUR-017 balance agreement still read a liability's source balance in journal
-sign; until #174 converts them, a liability anchored from a positive amount
-owed has a debit opening, and the aggregate counts its anchored balance with
-the wrong sign.
+`Unknown`. Every amount is in the source's convention, so a liability's
+amount is the positive amount owed (ruling G5 on #27). A selected source
+balance already reports it that way. The anchored balance is in journal sign
+and is converted by the account's normal sign, the same conversion C08
+openings and CUR-017 balance agreement use, so a credit-normal liability's
+anchored balance is negated.
 
 The governing ownership perimeter for the requested date
 (`PolicyEngine::governing`) decides each share. When it is `NotSet`, each

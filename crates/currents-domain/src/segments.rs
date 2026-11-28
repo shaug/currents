@@ -1,7 +1,7 @@
 //! Evidence-supported openings and one-component segment replacement.
 use crate::{
     associations::IdentityEngine,
-    catalog::incomplete,
+    catalog::{incomplete, journal_sign},
     dependents::{self, Change, Dependents, OrganizationQuestionV1},
     lookup::Lookup,
     recognition::{adopt_drafts, fact_in, restore},
@@ -73,7 +73,8 @@ fn opening_basis<'s, 'r>(
         || c.unit_id != opening.amount.unit_id
         || !matches!(c.opening_boundary, SourceValue::Unknown)
         || lookup.current(c.id)?.origin != AccountOriginV1::External
-        || opening.amount.normalized()? != leg.leg.movement.normalized()?
+        || journal_sign(c.normal_sign, opening.amount)?.normalized()?
+            != leg.leg.movement.normalized()?
         || opening.evidence.amount.normalized()? != opening.amount.normalized()?
         || leg.sources != vec![opening.evidence.clone()]
     {

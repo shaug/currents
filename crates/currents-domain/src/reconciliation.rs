@@ -2,7 +2,7 @@
 //! caller-selected Activity lines it uses. The holdings comparison is in
 //! `crate::holdings`.
 use crate::activity_predicate::ActivityPredicateV1;
-use crate::catalog::incomplete;
+use crate::catalog::{incomplete, journal_sign};
 use crate::dependencies::{self, ClaimInputs, ClaimScope};
 use currents_types::{
     AccountId, AccountScope, AccountingIntent, Amount, AuthoritativeRecordV1, BalanceKindV1,
@@ -706,7 +706,8 @@ fn balance(
     if !request.exclusions.is_empty() {
         return Err(EngineError::invalid());
     }
-    let unit = dependencies::catalog(state, scope.account)?.unit_id;
+    let catalog = dependencies::catalog(state, scope.account)?;
+    let unit = catalog.unit_id;
     let inputs = ClaimInputs::read(state, &scope)?;
 
     let mut reasons = Vec::new();
@@ -743,7 +744,9 @@ fn balance(
 
     // The claim names the anchor's segment and every leg it read.
     let mut accounting: BTreeSet<_> = inputs.anchor.iter().map(|a| a.segment).collect();
-    let mut journal = anchor.map(|a| a.opening.amount);
+    let mut journal = anchor
+        .map(|a| journal_sign(catalog.normal_sign, a.opening.amount))
+        .transpose()?;
     for leg in dependencies::live_legs(state)? {
         if scope.relevant(leg) {
             accounting.insert(RecordId(leg.id.0));
@@ -761,10 +764,14 @@ fn balance(
     let mut matched_allocations = Vec::new();
     let comparable = reasons.iter().all(|r| *r == ClaimReasonV1::CircularAnchor);
     if let (true, Some(journal)) = (comparable, journal) {
-        let difference = source
-            .amount
-            .checked_add(&journal.checked_neg()?)?
-            .normalized()?;
+        // The source balance in journal sign, minus the journal, reported
+        // back in the source's convention.
+        let posted = journal_sign(catalog.normal_sign, source.amount)?;
+        let difference = journal_sign(
+            catalog.normal_sign,
+            posted.checked_add(&journal.checked_neg()?)?,
+        )?
+        .normalized()?;
         if difference.coefficient != 0 {
             reasons.push(ClaimReasonV1::UnexplainedResidual);
             differences.push(difference);

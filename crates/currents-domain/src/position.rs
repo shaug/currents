@@ -5,7 +5,7 @@
 //! state and writes nothing. It never rolls a source balance forward.
 use crate::activity_predicate::civil_date;
 use crate::aggregation::{self, Found};
-use crate::catalog::CatalogEngine;
+use crate::catalog::{CatalogEngine, journal_sign};
 use crate::dependencies::{self, Anchor};
 use crate::policy::PolicyEngine;
 use crate::reconciliation::facets;
@@ -239,21 +239,26 @@ fn balances(
 }
 
 /// The journal side of `component`'s position on `day`. With an active
-/// anchor whose cutoff is on or before `day`, the anchored balance: the
-/// opening plus the live legs on the account after the cutoff through `day`.
-/// Without one, it pushes each live leg on the account through `day` to
-/// `movements` and adds `unknown_opening`.
+/// anchor whose cutoff is on or before `day`, the anchored balance in
+/// journal sign: the opening, converted by the account's normal sign, plus
+/// the live legs on the account after the cutoff through `day`. Without one,
+/// it pushes each live leg on the account through `day` to `movements` and
+/// adds `unknown_opening`.
 fn journal(
     state: &DomainState,
     legs: &[&FinancialLegV1],
     component: RecordId,
-    account: AccountId,
+    catalog: &SetAccountCatalogV1,
     day: Date,
     codes: &mut BTreeSet<&'static str>,
     movements: &mut Vec<AccountMovementV1>,
 ) -> Result<Option<AnchoredBalanceV1>, EngineError> {
+    let account = catalog.account_id;
     let anchor = Anchor::active(state, account)?.filter(|a| a.cutoff <= day);
-    let mut amount = anchor.as_ref().map(|a| a.opening.amount);
+    let mut amount = anchor
+        .as_ref()
+        .map(|a| journal_sign(catalog.normal_sign, a.opening.amount))
+        .transpose()?;
     let mut dependencies: Vec<RecordId> = anchor.iter().map(|a| a.segment).collect();
     let mut unmapped = false;
     for leg in legs.iter().filter(|l| l.account_id == account) {
@@ -352,12 +357,13 @@ impl PositionEngine {
                 state,
                 &legs,
                 *component,
-                catalog.account_id,
+                catalog,
                 day,
                 &mut codes,
                 &mut movements,
             )?;
-            // The selected amount, else the anchored balance.
+            // The selected amount, else the anchored balance, each in the
+            // source's convention: a liability's is the amount owed.
             let amount = match (chosen, &anchored) {
                 (None, _) => Found::Missing("conflict"),
                 (Some(chosen), _) if !chosen.is_empty() => {
@@ -367,14 +373,8 @@ impl PositionEngine {
                 }
                 (Some(_), None) => Found::Missing("unknown_opening"),
                 (Some(_), Some(anchored)) => match anchored.amount {
-                    // The journal is debit-positive, so a liability's
-                    // anchored balance is the negated amount owed.
                     SourceValue::Known(amount) => Found::Known(
-                        if catalog.account_class == AccountClass::Liability {
-                            amount.checked_neg()?
-                        } else {
-                            amount
-                        },
+                        journal_sign(catalog.normal_sign, amount)?,
                         anchored.dependencies.clone(),
                     ),
                     _ => Found::Missing("missing_date_mapping"),

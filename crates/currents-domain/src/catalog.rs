@@ -17,6 +17,16 @@ pub(crate) fn version(version: u32) -> Result<(), EngineError> {
         Err(EngineError::version())
     }
 }
+/// `amount` converted between a source's convention and the journal's by
+/// the account's normal sign. The journal is debit-positive, and a source
+/// reports a credit-normal balance, such as a card's amount owed, as
+/// positive. The conversion is its own inverse.
+pub(crate) fn journal_sign(sign: NormalSign, amount: Amount) -> Result<Amount, EngineError> {
+    match sign {
+        NormalSign::Debit => Ok(amount),
+        NormalSign::Credit => amount.checked_neg(),
+    }
+}
 pub(crate) fn known_time(time: &TemporalValue) -> bool {
     matches!(
         time,
