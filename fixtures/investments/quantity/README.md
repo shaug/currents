@@ -35,3 +35,4 @@ Identifier `SYN-0001` names SECA and `SYN-9999` names no security.
 | `holdings-x-complete-2026-12-31.json` | X     | Complete     | 2026-12-31 | SECA 6               |
 | `holdings-y-complete.json`            | Y     | Complete     | 2026-11-30 | SECA 2               |
 | `holdings-x-unmapped.json`            | X     | Partial      | 2026-11-30 | SECA 6, SYN-9999 5   |
+| `holdings-x-complete-unmapped.json`   | X     | Complete     | 2026-11-30 | SECA 6, SYN-9999 3   |

@@ -8,7 +8,7 @@ use currents_domain::{
     catalog::CatalogEngine,
     correction::CorrectionEngine,
     evidence::{EvidenceEngine, ValidatedEvidenceBatchV1},
-    investments::{InvestmentEngine, quantity::PositionHoldingsV1},
+    investments::{InvestmentEngine, holdings::SnapshotUnmappedV1, quantity::PositionHoldingsV1},
     recognition::RecognitionEngine,
     segments::{ReemissionV1, SegmentEngine, SegmentReplacementV1},
 };
@@ -1031,6 +1031,94 @@ fn cur_021_snapshot_keeps_unmapped_positions() {
     let a = holdings_of(&next, P, "2026-11-30");
     assert_eq!(a.snapshot.unwrap().quantity, units(6, SECA_UNIT));
     assert_eq!(a.quantity, balance(6, SECA_UNIT));
+}
+
+#[test]
+fn cur_021_3_unmapped_position_withholds_absences() {
+    let state = held();
+    let name = "holdings-x-complete-unmapped.json";
+    let (snapshot, next) = published(&state, name, 7000);
+    assert_eq!(snapshot.completeness, CoverageStatus::Complete);
+    let [listed, unmapped] = snapshot.holdings.as_slice() else {
+        panic!("two listed positions")
+    };
+    assert_eq!(listed.security, Some(id(SECA)));
+    assert_eq!(unmapped.security, None);
+    // SYN-9999 could be SECB, so the snapshot asserts no absence for PB.
+    assert!(snapshot.absences.is_empty());
+    let b = holdings_of(&next, PB, "2026-11-30");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!((b.snapshot, b.absence), (None, None));
+    // The read shows the unmapped position instead.
+    let shown = SnapshotUnmappedV1 {
+        snapshot: snapshot.id,
+        as_of: civil("2026-11-30"),
+        observations: vec![unmapped.observation],
+    };
+    assert_eq!(b.unmapped, Some(shown));
+
+    // Replay refuses a commit whose snapshot asserts that absence.
+    let plan = snapshot_plan(&state, name, 7000);
+    let batch = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    let mut forged = plan.records.clone();
+    let Some(AuthoritativeRecordV1::HoldingsSnapshot(draft)) = forged.last_mut() else {
+        panic!("a snapshot record")
+    };
+    draft.absences.push(HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    });
+    rejected(&state, &candidate(&state, forged, batch));
+
+    // A later complete snapshot with no unmapped position records the
+    // absence as usual.
+    let (later, last) = published(&next, "holdings-x-complete-2026-12-31.json", 7100);
+    let v1 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    };
+    assert_eq!(later.absences, vec![v1]);
+    let b = holdings_of(&last, PB, "2026-12-31");
+    assert_eq!(b.absence.unwrap().snapshot, later.id);
+    assert_eq!(b.unmapped, None);
+}
+
+#[test]
+fn cur_021_3_absence_versions_follow_publication_order() {
+    let state = held();
+    let (december, next) = published(&state, "holdings-x-complete-2026-12-31.json", 7000);
+    // The November statement is imported late.
+    let (november, last) = published(&next, "holdings-x-complete-2026-11-30.json", 7100);
+    let v1 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    };
+    assert_eq!(december.absences, vec![v1]);
+    // The version counts publications, so November's is version 2.
+    let v2 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 2,
+        prior: Some(december.id),
+    };
+    assert_eq!(november.absences, vec![v2]);
+    // The current absence has the latest as-of date.
+    let current = holdings_of(&last, PB, "2026-12-31").absence.unwrap();
+    assert_eq!(
+        (current.snapshot, current.as_of, current.version),
+        (december.id, civil("2026-12-31"), 1)
+    );
+    let current = holdings_of(&last, PB, "2026-11-30").absence.unwrap();
+    assert_eq!(
+        (current.snapshot, current.as_of, current.version),
+        (november.id, civil("2026-11-30"), 2)
+    );
 }
 
 #[test]

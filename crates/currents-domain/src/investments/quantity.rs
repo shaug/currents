@@ -317,9 +317,9 @@ impl InvestmentEngine {
 
 /// What one position holds through a date: its recognized quantity and
 /// carrying amount, the trades by then whose quantity or cash side is
-/// missing, the latest snapshot quantity and any current absence assertion.
-/// A snapshot never changes the recognized quantity. A read result, not a
-/// record.
+/// missing, the latest snapshot quantity, any current absence assertion and
+/// the unmapped positions of the latest snapshot that covers it. A snapshot
+/// never changes the recognized quantity. A read result, not a record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PositionHoldingsV1 {
     pub position: RecordId,
@@ -330,6 +330,7 @@ pub struct PositionHoldingsV1 {
     pub missing_cash: Vec<RecordId>,
     pub snapshot: Option<super::holdings::SnapshotQuantityV1>,
     pub absence: Option<super::holdings::SnapshotAbsenceV1>,
+    pub unmapped: Option<super::holdings::SnapshotUnmappedV1>,
 }
 
 /// Whether `recognition` posts a security quantity. Until CUR-022 (#31)
@@ -859,7 +860,7 @@ impl InvestmentEngine {
                 missing_cash.push(trade.id);
             }
         }
-        let (snapshot, absence) = super::holdings::latest(state, p, through)?;
+        let (snapshot, absence, unmapped) = super::holdings::latest(state, p, through)?;
         Ok(PositionHoldingsV1 {
             position,
             through,
@@ -869,6 +870,7 @@ impl InvestmentEngine {
             missing_cash,
             snapshot,
             absence,
+            unmapped,
         })
     }
 }
