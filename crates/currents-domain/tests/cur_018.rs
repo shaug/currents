@@ -2604,3 +2604,31 @@ fn cur_018_transfer_beside_an_omission() {
         (amount(7000), vec![(id(CASH + 1), "unknown_opening")])
     );
 }
+
+#[test]
+fn cur_018_transfer_into_a_represented_part() {
+    // Total T counts in place of its cash part C, so C's own lines never
+    // show whether T's balance includes a receipt on C.
+    let mut state = brokerage(Some(10000), Some(8000));
+    publish(&mut state, report(2030, "A-1", 4000, 1));
+    let sending = transfer_leg(&mut state, 5100, S1, account(CHECKING), -1000, SENT, true);
+    let receiving = transfer_leg(&mut state, 5200, S1, account(CASH), 1000, RECEIVED, true);
+    let legs = [sending.id, receiving.id];
+    publish(
+        &mut state,
+        vec![
+            AuthoritativeRecordV1::FinancialLeg(sending),
+            AuthoritativeRecordV1::FinancialLeg(receiving),
+            transfer_revision(TRANSFER, None, &legs, vec![]),
+        ],
+    );
+    // A includes the outflow. T may or may not include the receipt:
+    // 4,000.00 + 10,000.00, up to 1,000.00 more in flight.
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, BROKERAGE, CASH, HOLDINGS]),
+        AggregateV1::Range {
+            low: amount(14000),
+            high: amount(15000),
+        }
+    );
+}

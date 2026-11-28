@@ -583,6 +583,7 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_2_unknown_amount_is_indeterminate",
         "cur_018_journal_balance_membership",
         "cur_018_transfer_beside_an_omission",
+        "cur_018_transfer_into_a_represented_part",
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.

@@ -1040,10 +1040,11 @@ the household counts on its own.
 
 Funds that a transfer moves between two counting components count once
 (ruling G7 on #27). The aggregate reads the current revision of each
-`Transfer` association family and each of its legs on a counting
-component's account. A leg with a negative movement sends and one with a
-positive movement receives. Legs on components that do not count adjust
-nothing, and the aggregate never changes the association or its claims.
+`Transfer` association family and each of its legs on the account of a
+component that counts or that its total or parts represent. A leg
+with a negative movement sends and one with a positive movement receives.
+Legs on omitted components or outside the household adjust nothing, and
+the aggregate never changes the association or its claims.
 
 A leg's membership in a counted amount is included, excluded or unknown:
 
@@ -1058,6 +1059,8 @@ A leg's membership in a counted amount is included, excluded or unknown:
 - Several selected balances must agree; otherwise the leg is unknown.
 - The anchored balance includes the legs it adds as evidence and excludes a
   leg whose effective date is after the requested date.
+- A leg on a component that its total or parts represent is unknown,
+  because no counted balance of that component decides it.
 - Everything else is unknown. An as-of time alone never proves inclusion,
   and dates compare as in the position selection checkpoint, so an answer
   that depends on the timezone is unknown.

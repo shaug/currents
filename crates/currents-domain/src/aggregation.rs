@@ -255,19 +255,23 @@ fn covered(
 /// source reports complete posting-date coverage from the leg's posting date
 /// through the as-of. Several selected balances must agree. The anchored
 /// balance includes the legs it adds and excludes a leg dated after `day`.
-/// Anything else is unknown.
+/// A component that another counts in place of, `None`, has no counted
+/// amount to decide from. Anything else is unknown.
 fn member(
     state: &DomainState,
     day: Date,
     head: &AssociationRevisionV1,
     leg: &FinancialLegV1,
     evidence: &[RecordId],
-    basis: &Basis,
+    basis: Option<&Basis>,
 ) -> Result<Member, EngineError> {
     let reported = match basis {
-        Basis::Reported(reported) => reported,
-        Basis::Anchored if evidence.contains(&RecordId(leg.id.0)) => return Ok(Member::Included),
-        Basis::Anchored => {
+        None => return Ok(Member::Unknown),
+        Some(Basis::Reported(reported)) => reported,
+        Some(Basis::Anchored) if evidence.contains(&RecordId(leg.id.0)) => {
+            return Ok(Member::Included);
+        }
+        Some(Basis::Anchored) => {
             let later = civil_date(DateBasis::Effective, &leg.effective, &leg.posting)
                 .is_some_and(|leg_day| leg_day > day);
             return Ok(if later {
@@ -295,11 +299,12 @@ fn member(
     Ok(joined.unwrap_or(Member::Unknown))
 }
 
-/// A component that counts, by its account.
+/// A component that counts, or that another counts in place of, by its
+/// account. Only a component that counts has a `basis`.
 struct Counted<'a> {
     share: (i128, i128),
     evidence: &'a [RecordId],
-    basis: &'a Basis,
+    basis: Option<&'a Basis>,
 }
 
 /// What the current transfers between counted components add to the total:
@@ -437,12 +442,25 @@ pub(crate) fn aggregate(
                         Counted {
                             share: *share,
                             evidence: &c.evidence,
-                            basis,
+                            basis: Some(basis),
                         },
                     );
                 }
             }
-            Count::Represented => {}
+            // Another component counts its funds, so a transfer leg on it
+            // still decides the total, though its membership is unknown.
+            Count::Represented => {
+                if let Some(share) = share {
+                    counted.insert(
+                        *account,
+                        Counted {
+                            share: *share,
+                            evidence: &c.evidence,
+                            basis: None,
+                        },
+                    );
+                }
+            }
             Count::Omitted(reason) => omitted.push(AggregateOmissionV1 {
                 component: c.component,
                 amount: c.amount.clone(),
