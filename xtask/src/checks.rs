@@ -601,7 +601,14 @@ const CUR_018_SUITES: &Suites = &[
     (
         "currents-service",
         "cur_018",
-        &["cur_018_4_service_query_uses_one_basis"],
+        &[
+            "cur_018_4_service_query_uses_one_basis",
+            "cur_018_policy_commands_authorized_and_versioned",
+            "cur_018_policy_freshness_edit_affects_only_its_source",
+            "cur_018_policy_priority_edit_affects_only_ties",
+            "cur_018_policy_ownership_edit_affects_only_named_account",
+            "cur_018_policy_unknown_not_defaulted",
+        ],
     ),
 ];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
@@ -727,7 +734,7 @@ fn ticket_cur_018() -> Result<Value> {
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
         "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
         "transfer_overlap_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/transfer-overlap.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both, transfer membership from allocated source lines and complete coverage so in-flight funds count once as an exact amount, a range or an indeterminate total, and per-component explanations of the selection inputs at the same read basis, answered with position queries through the encrypted service's test planner; no command route or preview"
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both, transfer membership from allocated source lines and complete coverage so in-flight funds count once as an exact amount, a range or an indeterminate total, and per-component explanations of the selection inputs at the same read basis, answered with position queries through the encrypted service's test planner, and owner dataset policy commands whose preview lists the components whose position changes, submitted through the same planner; no production route"
     }))
 }
 fn ticket_cur_019() -> Result<Value> {

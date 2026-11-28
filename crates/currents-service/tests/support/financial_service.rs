@@ -21,6 +21,7 @@ impl currents_service::CommandPlanner for RelationshipPlanner {
         if self.state.accounting.as_ref().map(|v| &v.prefix) != Some(prefix) {
             return Err(EngineError::invalid());
         }
+        let mut accounts = Vec::new();
         let decision_plan = match &body.operation {
             currents_protocol::OperationV1::PublishImport(request) => {
                 let evidence = self.evidence.as_ref().ok_or_else(EngineError::invalid)?;
@@ -41,6 +42,25 @@ impl currents_service::CommandPlanner for RelationshipPlanner {
             currents_protocol::OperationV1::ExpirePending(request) => {
                 currents_domain::expiry::PendingExpiryEngine::expire(&self.state, request)?
             }
+            // A policy revision changes no accounting. The preview names the
+            // account of each component whose position changes at a basis
+            // the request's changes adopt (ruling G8 on #27).
+            currents_protocol::OperationV1::SetDatasetPolicy(request) => {
+                use currents_domain::policy::PolicyEngine;
+                for basis in adopted_bases(request) {
+                    for component in PolicyEngine::affected(&self.state, request, basis)? {
+                        accounts.push(
+                            currents_domain::catalog::CatalogEngine::current(
+                                &self.state,
+                                component,
+                            )?
+                            .catalog
+                            .account_id,
+                        );
+                    }
+                }
+                PolicyEngine::set(&self.state, request)?
+            }
             _ => return Err(EngineError::version()),
         };
         let frozen_batch =
@@ -53,7 +73,6 @@ impl currents_service::CommandPlanner for RelationshipPlanner {
                     .unwrap()
             })
             .collect();
-        let mut accounts = Vec::new();
         let mut amounts = Vec::new();
         for op in &frozen_batch.operations {
             match op {
@@ -117,9 +136,13 @@ impl currents_service::CommandPlanner for RelationshipPlanner {
                         DecisionKind::Catalog
                     }
                     currents_protocol::OperationV1::AdoptActivity(_) => DecisionKind::Recognition,
+                    currents_protocol::OperationV1::SetDatasetPolicy(_) => DecisionKind::Policy,
                     _ => DecisionKind::Interpretation,
                 },
-                fields: vec!["relationship-source".into()],
+                fields: vec![match &body.operation {
+                    currents_protocol::OperationV1::SetDatasetPolicy(_) => "dataset-policy".into(),
+                    _ => "relationship-source".into(),
+                }],
             },
             decision_id: support::id(body.command_id.0.as_u128() + 200_000),
             manifest_id: support::id(body.command_id.0.as_u128() + 300_000),
@@ -167,6 +190,26 @@ impl currents_service::CommandPlanner for RelationshipPlanner {
             output,
         })
     }
+}
+
+/// Each distinct basis a policy request's changes adopt.
+fn adopted_bases(request: &SetDatasetPolicyV1) -> Vec<&ReadBasis> {
+    let mut bases: Vec<&ReadBasis> = Vec::new();
+    for basis in [
+        request.ownership_perimeter.as_ref().map(|c| &c.basis),
+        request.source_priority.as_ref().map(|c| &c.basis),
+        request.freshness_thresholds.as_ref().map(|c| &c.basis),
+        request.timezone.as_ref().map(|c| &c.basis),
+        request.reporting_currency.as_ref().map(|c| &c.basis),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !bases.contains(&basis) {
+            bases.push(basis);
+        }
+    }
+    bases
 }
 
 pub(super) async fn open(path: &Path) -> EncryptedStore {
@@ -263,6 +306,15 @@ pub(super) async fn bootstrap_with_evidence(
     path: &Path,
     evidence: &[RetainedEvidence<'_>],
 ) -> (Fixture, NativeHead) {
+    bootstrap_genesis(path, evidence, |_, _, _| {}).await
+}
+/// The genesis commit, with `shape` applied to each observation and its parse
+/// product before its receipt takes the observation's source.
+pub(super) async fn bootstrap_genesis(
+    path: &Path,
+    evidence: &[RetainedEvidence<'_>],
+    shape: impl Fn(u32, &mut ObservationVersionV1, &mut AddressedParseProductV1),
+) -> (Fixture, NativeHead) {
     let f = Fixture::at_path(path.to_path_buf()).await;
     let empty = f.prefix().await.native_head;
     f.service.close().await.unwrap();
@@ -299,8 +351,13 @@ pub(super) async fn bootstrap_with_evidence(
             staged.push(content);
         }
         let digest = digests[bytes];
-        let Some(AuthoritativeRecordV1::ObservationVersion(o)) =
-            fixture.records.get_mut(&fixture::id(n))
+        let Some(AuthoritativeRecordV1::ObservationVersion(mut o)) =
+            fixture.records.remove(&fixture::id(n))
+        else {
+            panic!()
+        };
+        let Some(AuthoritativeRecordV1::AddressedParseProduct(mut p)) =
+            fixture.records.remove(&fixture::id(n + 1))
         else {
             panic!()
         };
@@ -308,6 +365,9 @@ pub(super) async fn bootstrap_with_evidence(
         o.sanitized_representation = bytes.into();
         o.semantic_kind = item.kind;
         o.temporal = fixture::date(item.day);
+        p.product.facets[0].kind = item.kind;
+        p.product.facets[0].temporal = fixture::date(item.day);
+        shape(n, &mut o, &mut p);
         let receipt = AuthoritativeRecordV1::ImportReceipt(ImportReceiptV1 {
             id: fixture::id(n + 2),
             source: o.source.clone(),
@@ -329,15 +389,8 @@ pub(super) async fn bootstrap_with_evidence(
         if first {
             records.push(receipt);
         }
-        let Some(AuthoritativeRecordV1::AddressedParseProduct(p)) =
-            fixture.records.get_mut(&fixture::id(n + 1))
-        else {
-            panic!()
-        };
-        p.product.facets[0].kind = item.kind;
-        p.product.facets[0].temporal = fixture::date(item.day);
-        records.push(fixture.records[&fixture::id(n)].clone());
-        records.push(fixture.records[&fixture::id(n + 1)].clone());
+        records.push(AuthoritativeRecordV1::ObservationVersion(o));
+        records.push(AuthoritativeRecordV1::AddressedParseProduct(p));
     }
     let units = records
         .iter()

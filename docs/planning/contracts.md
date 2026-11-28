@@ -793,6 +793,7 @@ or Balance claim whose accounting index lags the state with `StaleBasis`.
 DatasetPolicyRevisionV1 { id, policy_id, version, prior_version:Option<u32>, effective_scope:DateScope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }
 PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>
 PolicyEngine::governing(state:&DomainState,day:Date)->Result<GoverningPolicyV1,EngineError>
+PolicyEngine::affected(state:&DomainState,request:&SetDatasetPolicyV1,basis:&ReadBasis)->Result<Vec<RecordId>,EngineError>
 GoverningPolicyV1 { ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }
 PolicySettingV1<T> = NotSet | Set { version, value:SourceValue<T> }
 ```
@@ -839,8 +840,25 @@ yields the same record, so a stale prior version, a second revision on the
 same prior version and a share above one are refused. Storage checks that
 `policy_id` names a `DatasetPolicy` record. `DatasetPolicyV1` records,
 `PolicyHistory` and the exact `(id, version)` policy a recognition or
-adoption names are unchanged. The service route and its preview belong to
-later work.
+adoption names are unchanged.
+
+`affected` compares each component's position response at `basis`
+(`PositionEngine::query` for that component alone) without and with the
+revision `set` plans for the request. It lists, in ID order, each component
+whose response changes (ruling G8 on #27). It refuses what `set` refuses,
+and what the query refuses, such as a basis that names another commit. A
+revision whose effective dates exclude the requested date changes nothing.
+
+The service's synthetic test planner
+(`crates/currents-service/tests/support/financial_service.rs`) dispatches
+`SetDatasetPolicy` to `PolicyEngine::set`. Its preview's effects list the
+revision ID and the accounts of the components `affected` gives at each
+distinct basis the request's changes adopt. The approval scope covers those
+accounts as a `Policy` decision. The plan lists no invalidations: positions
+are computed, never stored, and reconciliation claims read no policy field
+(the CUR-017 claim applicability checkpoint). The command keeps the
+service's authorization, approval, retry and stale-head rules. There is no
+production planner.
 
 ### CUR-018 position selection checkpoint
 

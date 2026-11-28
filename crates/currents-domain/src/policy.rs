@@ -3,6 +3,7 @@
 //! lookup reads only revisions: never a bootstrap field, and never the latest
 //! revision outside its effective dates.
 use crate::catalog::{incomplete, unit};
+use crate::position::PositionEngine;
 use crate::reconciliation::derived_id;
 use currents_types::*;
 use std::collections::BTreeSet;
@@ -234,6 +235,41 @@ impl PolicyEngine {
                 reason: "Dataset policy revision".into(),
             }),
         })
+    }
+
+    /// The components whose position response at `basis` differs once the
+    /// revision `request` records applies, in ID order. Each component is
+    /// queried alone, before and after, at the state's commit; the query
+    /// refuses a basis that names another commit. Positions are computed,
+    /// so nothing stored needs invalidating.
+    pub fn affected(
+        state: &DomainState,
+        request: &SetDatasetPolicyV1,
+        basis: &ReadBasis,
+    ) -> Result<Vec<RecordId>, EngineError> {
+        let mut after = state.clone();
+        for record in Self::set(state, request)?.records {
+            let AuthoritativeRecordV1::DatasetPolicyRevision(revision) = &record else {
+                return Err(invalid());
+            };
+            after.records.insert(revision.id, record);
+        }
+        let mut changed = Vec::new();
+        for record in state.records.values() {
+            let AuthoritativeRecordV1::AccountComponent(component) = record else {
+                continue;
+            };
+            let scope = AccountScope {
+                accounts: vec![],
+                components: vec![component.id],
+            };
+            if PositionEngine::query(state, basis, &scope)?
+                != PositionEngine::query(&after, basis, &scope)?
+            {
+                changed.push(component.id);
+            }
+        }
+        Ok(changed)
     }
 
     /// For each field, the value of the highest-version revision whose
