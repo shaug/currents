@@ -1,6 +1,7 @@
 //! C11 investments. CUR-021 declares securities and positions, recognizes
-//! trades and reinvested dividends and publishes holdings snapshots;
-//! corporate actions, openings and valuation belong to later leaves.
+//! trades, reinvested dividends and splits, keeps other corporate actions
+//! unresolved and publishes holdings snapshots; openings and valuation
+//! belong to later leaves.
 pub mod actions;
 pub mod holdings;
 pub mod quantity;
