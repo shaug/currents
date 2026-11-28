@@ -255,7 +255,9 @@ correction, reinterpretation or leg correction starts from that live tip. The
 planner refuses a facet another adoption owns, a correction of a retired
 original and a second reversal. Merges of separate adoptions use the CUR-015
 duplicate route, and associated families use CUR-015 remaps. Trade quantity
-legs and allocation remaps stay unsupported. There is no command route.
+legs and allocation remaps stay unsupported: every correction path refuses a
+recognition with a security-unit posting (see CUR-021 trades in C11). There is
+no command route.
 
 A purchase that consumed a pending adoption keeps it consumed exactly once.
 The new adoption names the same pending adoption, and the same commit
@@ -800,9 +802,49 @@ record and has no accounting effect.
 Replay derives each security and position commit again from the prior prefix.
 A new security's unit must be declared by a unit catalog in the same commit,
 and a unit catalog that declares a security unit needs that security record.
-Trades, openings, snapshots, corporate actions, transfers and valuation belong
-to the later CUR-021 leaves; basis and lots to CUR-022. There is no command
-route.
+Openings, snapshots, corporate actions, transfers and valuation belong to the
+later CUR-021 leaves; basis and lots to CUR-022. There is no command route.
+
+### CUR-021 trades
+
+```text
+TradeSideV1 = Buy | Sell
+TradeRequestV1 { schema_version, id, position, side, event:FinancialEventV1, cash:SourceValue<AdoptedLegV1>, quantity:SourceValue<AdoptedLegV1>, fee:Amount, terms:RecognitionTermsV1, interpretation, governing_policy }
+TradeV1 { id, schema_version, position, side, event_id, cash:SourceValue<AdoptedFacetV1>, quantity:SourceValue<AdoptedFacetV1>, fee, recognition, interpretation, governing_policy }
+```
+
+`InvestmentEngine::recognize(state,&TradeRequestV1)` plans one buy or sale of
+a position's security. Each side is `Known`, one leg bound to one movement
+fact, or `Missing`. The cash leg moves an open external account in the
+carrying account's currency; the quantity leg moves the position's quantity
+account in the security's unit. Each observation keeps C07's one facet, so the
+two sides bind separate rows. `terms` holds the recognition's identities,
+postings and dates, with no unresolved account or opening. The planner refuses
+a request with neither side known, a fact another adoption or recognition
+already binds, and a movement at or before a supported opening's cutoff.
+
+The known sides post in one recognition, so they freeze as one C05 entry and
+commit together. Each unit balances on its own. A known buy posts the cash
+paid to the carrying account, so its fee is capitalized. A known sale posts
+the cash received, its fee once to an `ExpenseFlow` account, and its gross
+proceeds to a `DisposalClearing` account; it records no gain and leaves the
+carrying amount alone. A known quantity posts the quantity account against a
+`QuantityControl` account. A missing side posts nothing, and a fee needs a
+known cash side. The planner refuses a posting in another unit than its
+account's, any other account, and an amount beyond its unit's exponent; it
+never rounds. The plan holds the event, the known legs, a version 1
+`TradeV1` record and the recognition. `AuthoritativeRecordV1` adds
+`Trade(TradeV1)`.
+
+`InvestmentEngine::holdings(state,position,through)` reads one position
+through a date: the quantity and carrying amount that live recognitions post
+on or before it, and the trades by then whose quantity or cash side is
+missing. Replay restores each trade's request from its records and derives
+the plan again from the prior prefix; C05 then checks the frozen entry against
+the recognition, so a batch that holds only one side's postings is refused.
+Every correction path and segment replacement refuses a recognition that
+holds a security-unit posting, or a closure that includes one, until CUR-022
+extends `ReplacedLegs` to trade quantity legs.
 
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 

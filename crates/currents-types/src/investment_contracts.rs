@@ -30,3 +30,15 @@ dto!(PositionV1 {
     quantity_account: AccountId,
     carrying_account: AccountId
 });
+// Whether a trade adds to a position or takes from it.
+choices!(TradeSideV1 { Buy, Sell });
+// A buy or sale of one position's security. Each side is `Known`, one leg
+// bound to one movement fact, or explicitly `Missing`: `cash` moves an
+// external currency account and `quantity` moves the position's quantity
+// account. `fee` is in the cash side's unit and is zero when there is none.
+// `terms` carries the recognition's identities, postings and dates, and has
+// no unresolved account or opening.
+dto!(TradeRequestV1 { schema_version:u32, id:RecordId, position:RecordId, side:TradeSideV1, event:FinancialEventV1, cash:SourceValue<AdoptedLegV1>, quantity:SourceValue<AdoptedLegV1>, fee:Amount, terms:RecognitionTermsV1, interpretation:InterpretationV1, governing_policy:PolicyReferenceV1 });
+// One recognized trade: its position and side, each side's leg and source
+// or its explicit absence, the fee and the recognition of the known sides.
+dto!(TradeV1 { id:RecordId, schema_version:u32, position:RecordId, side:TradeSideV1, event_id:RecordId, cash:SourceValue<AdoptedFacetV1>, quantity:SourceValue<AdoptedFacetV1>, fee:Amount, recognition:RecognitionId, interpretation:InterpretationV1, governing_policy:PolicyReferenceV1 });

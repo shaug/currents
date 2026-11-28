@@ -17781,6 +17781,436 @@
             "value"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "Trade"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "cash": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Missing"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Unknown"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Null"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Absent"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Deleted"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Known"
+                        },
+                        "value": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "leg_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "source": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                "facet": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "observation": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "parse_product": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "observation",
+                                "parse_product",
+                                "facet",
+                                "amount"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "leg_id",
+                            "source"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "value"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "event_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "fee": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "coefficient": {
+                      "maxLength": 40,
+                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                      "type": "string"
+                    },
+                    "scale": {
+                      "maximum": 18,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "unit_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "coefficient",
+                    "scale",
+                    "unit_id"
+                  ],
+                  "type": "object"
+                },
+                "governing_policy": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "type": "object"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "interpretation": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "authority": {
+                      "enum": [
+                        "Owner",
+                        "StandingRule",
+                        "Source"
+                      ],
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 16384,
+                      "type": "array"
+                    },
+                    "kind": {
+                      "enum": [
+                        "Interpretation",
+                        "Recognition",
+                        "Correction",
+                        "Organization",
+                        "Review",
+                        "Reconciliation",
+                        "Planning",
+                        "Catalog",
+                        "Policy"
+                      ],
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "authority",
+                    "evidence",
+                    "reason"
+                  ],
+                  "type": "object"
+                },
+                "position": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "quantity": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Missing"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Unknown"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Null"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Absent"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Deleted"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "Known"
+                        },
+                        "value": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "leg_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "source": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coefficient": {
+                                      "maxLength": 40,
+                                      "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                      "type": "string"
+                                    },
+                                    "scale": {
+                                      "maximum": 18,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "coefficient",
+                                    "scale",
+                                    "unit_id"
+                                  ],
+                                  "type": "object"
+                                },
+                                "facet": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "observation": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "parse_product": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "observation",
+                                "parse_product",
+                                "facet",
+                                "amount"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "leg_id",
+                            "source"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "value"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "recognition": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "side": {
+                  "enum": [
+                    "Buy",
+                    "Sell"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "position",
+                "side",
+                "event_id",
+                "cash",
+                "quantity",
+                "fee",
+                "recognition",
+                "interpretation",
+                "governing_policy"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -52415,6 +52845,436 @@
                   "value"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Trade"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cash": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Missing"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Unknown"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Null"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Absent"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Deleted"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Known"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "leg_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "source": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "amount": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "coefficient": {
+                                            "maxLength": 40,
+                                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "type": "string"
+                                          },
+                                          "scale": {
+                                            "maximum": 18,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "unit_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "coefficient",
+                                          "scale",
+                                          "unit_id"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "facet": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "observation": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "parse_product": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "observation",
+                                      "parse_product",
+                                      "facet",
+                                      "amount"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "leg_id",
+                                  "source"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "event_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "fee": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "coefficient": {
+                            "maxLength": 40,
+                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                            "type": "string"
+                          },
+                          "scale": {
+                            "maximum": 18,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "unit_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "coefficient",
+                          "scale",
+                          "unit_id"
+                        ],
+                        "type": "object"
+                      },
+                      "governing_policy": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "interpretation": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "authority": {
+                            "enum": [
+                              "Owner",
+                              "StandingRule",
+                              "Source"
+                            ],
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "kind": {
+                            "enum": [
+                              "Interpretation",
+                              "Recognition",
+                              "Correction",
+                              "Organization",
+                              "Review",
+                              "Reconciliation",
+                              "Planning",
+                              "Catalog",
+                              "Policy"
+                            ],
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "authority",
+                          "evidence",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      "position": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Missing"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Unknown"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Null"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Absent"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Deleted"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Known"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "leg_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "source": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "amount": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "coefficient": {
+                                            "maxLength": 40,
+                                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "type": "string"
+                                          },
+                                          "scale": {
+                                            "maximum": 18,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "unit_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "coefficient",
+                                          "scale",
+                                          "unit_id"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "facet": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "observation": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "parse_product": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "observation",
+                                      "parse_product",
+                                      "facet",
+                                      "amount"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "leg_id",
+                                  "source"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "side": {
+                        "enum": [
+                          "Buy",
+                          "Sell"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "position",
+                      "side",
+                      "event_id",
+                      "cash",
+                      "quantity",
+                      "fee",
+                      "recognition",
+                      "interpretation",
+                      "governing_policy"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -66808,6 +67668,436 @@
                       "security",
                       "quantity_account",
                       "carrying_account"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Trade"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cash": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Missing"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Unknown"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Null"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Absent"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Deleted"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Known"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "leg_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "source": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "amount": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "coefficient": {
+                                            "maxLength": 40,
+                                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "type": "string"
+                                          },
+                                          "scale": {
+                                            "maximum": 18,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "unit_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "coefficient",
+                                          "scale",
+                                          "unit_id"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "facet": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "observation": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "parse_product": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "observation",
+                                      "parse_product",
+                                      "facet",
+                                      "amount"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "leg_id",
+                                  "source"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "event_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "fee": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "coefficient": {
+                            "maxLength": 40,
+                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                            "type": "string"
+                          },
+                          "scale": {
+                            "maximum": 18,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "unit_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "coefficient",
+                          "scale",
+                          "unit_id"
+                        ],
+                        "type": "object"
+                      },
+                      "governing_policy": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "version": {
+                            "maximum": 4294967295,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "version"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "interpretation": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "authority": {
+                            "enum": [
+                              "Owner",
+                              "StandingRule",
+                              "Source"
+                            ],
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "kind": {
+                            "enum": [
+                              "Interpretation",
+                              "Recognition",
+                              "Correction",
+                              "Organization",
+                              "Review",
+                              "Reconciliation",
+                              "Planning",
+                              "Catalog",
+                              "Policy"
+                            ],
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "authority",
+                          "evidence",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      "position": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Missing"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Unknown"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Null"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Absent"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Deleted"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "state": {
+                                "const": "Known"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "leg_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "source": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "amount": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "coefficient": {
+                                            "maxLength": 40,
+                                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                            "type": "string"
+                                          },
+                                          "scale": {
+                                            "maximum": 18,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "unit_id": {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "coefficient",
+                                          "scale",
+                                          "unit_id"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "facet": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "observation": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "parse_product": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "observation",
+                                      "parse_product",
+                                      "facet",
+                                      "amount"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "leg_id",
+                                  "source"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "side": {
+                        "enum": [
+                          "Buy",
+                          "Sell"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "position",
+                      "side",
+                      "event_id",
+                      "cash",
+                      "quantity",
+                      "fee",
+                      "recognition",
+                      "interpretation",
+                      "governing_policy"
                     ],
                     "type": "object"
                   }

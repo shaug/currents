@@ -1,0 +1,4 @@
+original_id,amount,unit,effective,description
+buy,10,SCA,2026-11-03,synthetic buy of 10 SECA
+sale,-4,SCA,2026-11-10,synthetic sale of 4 SECA
+buy-with-fee,10,SCA,2026-11-03,synthetic buy of 10 SECA with a 5.00 fee

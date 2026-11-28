@@ -331,6 +331,10 @@ fn live<'a>(
     {
         return Err(invalid());
     }
+    // CUR-022 (#31) defines how a trade's quantity is corrected.
+    if crate::investments::quantity::holds_quantity(state, original)? {
+        return Err(EngineError::version());
+    }
     let [replacement] = request.replacement.as_slice() else {
         return Err(EngineError::version());
     };

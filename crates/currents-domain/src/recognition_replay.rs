@@ -143,6 +143,10 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::Position(position) => {
                 Some(InvestmentEngine::declare_position(prior, position)?)
             }
+            AuthoritativeRecordV1::Trade(trade) => Some(InvestmentEngine::recognize(
+                prior,
+                &crate::investments::replay::trade_request(next, trade)?,
+            )?),
             AuthoritativeRecordV1::RelationshipParseRevision(p) => {
                 let Some(AuthoritativeRecordV1::ImportReceipt(r)) = next.records.get(&p.receipt_id)
                 else {
@@ -247,7 +251,8 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::AccountingSegment(_)
             | AuthoritativeRecordV1::SegmentReemission(_)
             | AuthoritativeRecordV1::Security(_)
-            | AuthoritativeRecordV1::Position(_) => true,
+            | AuthoritativeRecordV1::Position(_)
+            | AuthoritativeRecordV1::Trade(_) => true,
             // Only a security declaration declares a security unit.
             AuthoritativeRecordV1::UnitCatalog(catalog) => catalog
                 .units

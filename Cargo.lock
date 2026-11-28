@@ -441,6 +441,7 @@ name = "currents-domain"
 version = "0.0.0"
 dependencies = [
  "currents-accounting",
+ "currents-acquisition",
  "currents-cipher",
  "currents-types",
  "serde_json",
