@@ -1,8 +1,12 @@
-//! CUR-018 effective-dated dataset policy revisions, using synthetic
-//! identities and exact public interfaces.
-use currents_domain::{ReplayEngine, catalog::CatalogEngine, policy::PolicyEngine};
+//! CUR-018 effective-dated dataset policy revisions and position selection,
+//! using synthetic identities and exact public interfaces.
+use currents_domain::{
+    ReplayEngine, catalog::CatalogEngine, policy::PolicyEngine, position::PositionEngine,
+    recognition::RecognitionEngine,
+};
 use currents_types::*;
 use serde_json::json;
+use std::collections::BTreeMap;
 #[path = "support/recognition.rs"]
 #[allow(dead_code)]
 mod fixture;
@@ -525,4 +529,584 @@ fn cur_018_policy_replay_rejects_forged_revision() {
     );
     // The engine's own plan is admitted.
     replay(&mut state, plan.records);
+}
+
+// Position selection. Component A is the fixture's USD checking account,
+// with an alias for connection S1 and another for S2. Savings account B has
+// an alias for S1 only.
+
+/// The fixture's checking account (A) and a savings account (B).
+const CHECKING: u32 = 10;
+const SAVINGS: u32 = 60;
+const EXPENSE: u32 = 30;
+const EUR: u32 = 740;
+
+fn precedence() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../fixtures/journeys/position/source-precedence.json"
+    ))
+    .unwrap()
+}
+
+fn connection(name: &str) -> u32 {
+    match name {
+        "S1" => S1,
+        "S2" => S2,
+        _ => panic!("unknown source {name}"),
+    }
+}
+
+fn from(connection: u32) -> SourceIdentityV1 {
+    SourceIdentityV1 {
+        source: "synthetic".into(),
+        connection_id: id(connection),
+        device_id: None,
+    }
+}
+
+fn alias(connection: u32, original_id: &str) -> SourceAliasV1 {
+    SourceAliasV1 {
+        source: from(connection),
+        original_id: original_id.into(),
+    }
+}
+
+/// A date for a civil `YYYY-MM-DD` value, an instant for an RFC 3339 value.
+fn as_of(value: &str) -> TemporalValue {
+    if value.contains('T') {
+        serde_json::from_value(json!({
+            "kind": "Instant",
+            "utc": value,
+            "original_offset": null,
+            "original_zone": null,
+            "precision": "Second",
+            "original_text": value
+        }))
+        .unwrap()
+    } else {
+        date(value)
+    }
+}
+
+/// Publish `records` as the next commit. The accounting index follows it.
+fn publish(state: &mut DomainState, records: Vec<AuthoritativeRecordV1>) {
+    let plan = DecisionPlan {
+        records,
+        invalidations: vec![],
+        accounting: AccountingIntent::NoEffect(NoEffectV1 {
+            reason: "synthetic".into(),
+        }),
+    };
+    apply(state, &plan);
+}
+
+/// One source balance: observation `n`, its product `n + 1`, its facet
+/// `n + 2` and its receipt `n + 3`.
+struct Report {
+    n: u32,
+    connection: u32,
+    original_ids: Vec<&'static str>,
+    value: i128,
+    unit: u32,
+    as_of: TemporalValue,
+    kind: BalanceKindV1,
+}
+
+impl Report {
+    /// A posted USD balance for A from `connection`.
+    fn posted(n: u32, connection: u32, value: i128, day: &str) -> Self {
+        Self {
+            n,
+            connection,
+            original_ids: vec![if connection == S1 { "A-1" } else { "A-2" }],
+            value,
+            unit: 1,
+            as_of: as_of(day),
+            kind: BalanceKindV1::Posted,
+        }
+    }
+
+    fn records(&self) -> Vec<AuthoritativeRecordV1> {
+        let source = from(self.connection);
+        let facet = id(self.n + 2);
+        let receipt: ImportReceiptV1 = serde_json::from_value(json!({
+            "id": id(self.n + 3),
+            "source": source,
+            "adapter_version": "synthetic/1",
+            "parser_version": "1",
+            "requested_coverage": [],
+            "reported_coverage": [],
+            "received_time": "2026-11-07T00:00:00Z",
+            "result": "Complete",
+            "cursor": {"state": "Absent"},
+            "truncated": false,
+            "complete": true,
+            "contents": []
+        }))
+        .unwrap();
+        vec![
+            AuthoritativeRecordV1::ImportReceipt(receipt),
+            AuthoritativeRecordV1::ObservationVersion(ObservationVersionV1 {
+                id: id(self.n),
+                source,
+                original_ids: self.original_ids.iter().map(|s| s.to_string()).collect(),
+                sanitized_representation: "synthetic".into(),
+                reported_fields: vec![],
+                temporal: self.as_of.clone(),
+                semantic_kind: ObservationKind::Balance,
+                prior_version: None,
+                tombstone_of: None,
+                content_digest: Digest([0; 32]),
+            }),
+            AuthoritativeRecordV1::AddressedParseProduct(AddressedParseProductV1 {
+                id: id(self.n + 1),
+                schema_version: 2,
+                product: ParseProductV1 {
+                    source_version_id: id(self.n),
+                    parser_id: "synthetic".into(),
+                    parser_version: "1".into(),
+                    facets: vec![MovementFacetV1 {
+                        lineage_key: facet,
+                        kind: ObservationKind::Balance,
+                        amount: SourceValue::Known(
+                            Amount::new(self.value, 0, UnitId(id(self.unit).0)).unwrap(),
+                        ),
+                        relationships: vec![],
+                        temporal: self.as_of.clone(),
+                    }],
+                },
+                balance_kinds: vec![BalanceFacetKindV1 {
+                    facet,
+                    kind: self.kind,
+                }],
+            }),
+        ]
+    }
+}
+
+/// A with aliases for S1 and S2, B with an alias for S1, and a EUR unit.
+fn positions() -> DomainState {
+    let mut state = monetary_state();
+    let current = CatalogEngine::current(&state, id(CHECKING + 1)).unwrap();
+    let mut revision = catalog();
+    revision.revision_id = id(CHECKING + 3);
+    revision.prior_revision = Some(current.id);
+    revision.catalog = current.catalog;
+    revision.catalog.aliases = vec![alias(S1, "A-1"), alias(S2, "A-2")];
+    let plan = CatalogEngine::set_complete(&state, &revision).unwrap();
+    apply(&mut state, &plan);
+    let mut savings = catalog();
+    savings.revision_id = id(SAVINGS + 2);
+    savings.catalog.component_id = id(SAVINGS + 1);
+    savings.catalog.account_id = account(SAVINGS);
+    savings.ownership.account_id = account(SAVINGS);
+    savings.catalog.display_name = "Synthetic savings".into();
+    savings.catalog.aliases = vec![alias(S1, "B-1")];
+    let plan = CatalogEngine::set_complete(&state, &savings).unwrap();
+    apply(&mut state, &plan);
+    publish(
+        &mut state,
+        vec![AuthoritativeRecordV1::UnitCatalog(UnitCatalogV1 {
+            id: id(EUR + 1),
+            version: 1,
+            units: vec![UnitDefinition {
+                id: UnitId(id(EUR).0),
+                exponent: 2,
+                native_code: "EUR".into(),
+                kind: UnitKind::Currency,
+            }],
+        })],
+    );
+    state
+}
+
+fn read_basis(state: &DomainState, requested: &str) -> ReadBasis {
+    let mut read = basis(state);
+    read.effective_scope = scope(None, Some(requested));
+    read
+}
+
+fn only(component: u32) -> AccountScope {
+    AccountScope {
+        accounts: vec![],
+        components: vec![id(component + 1)],
+    }
+}
+
+fn query(state: &DomainState, requested: &str) -> PositionResponseV1 {
+    PositionEngine::query(state, &read_basis(state, requested), &only(CHECKING)).unwrap()
+}
+
+fn codes(response: &PositionResponseV1) -> Vec<&str> {
+    response.missing_inputs.iter().map(String::as_str).collect()
+}
+
+fn listed(response: &PositionResponseV1) -> Vec<RecordId> {
+    let mut ids: Vec<RecordId> = response.assertions.iter().map(|a| a.id).collect();
+    ids.sort();
+    ids
+}
+
+/// Commit the owner's source priority `order` from `start` on.
+fn adopt_priority(state: &mut DomainState, order: &[u32], start: &str) {
+    let mut r = request(None, scope(Some(start), None));
+    r.policy_id = id(104);
+    r.source_priority = change(
+        state,
+        SourceValue::Known(order.iter().map(|c| id(*c)).collect()),
+    );
+    let plan = PolicyEngine::set(state, &r).unwrap();
+    apply(state, &plan);
+}
+
+/// Commit the fixture case `name`'s reports, each in its own receipt, in
+/// fixture order or reversed, then check each query against the fixture.
+fn precedence_case(name: &str, reversed: bool) -> Vec<PositionResponseV1> {
+    let fixture = precedence();
+    let case = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == name)
+        .unwrap();
+    let mut state = positions();
+    let mut observations = BTreeMap::new();
+    let mut reports: Vec<_> = case["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .collect();
+    if reversed {
+        reports.reverse();
+    }
+    for (i, report) in reports {
+        let n = 2000 + 10 * u32::try_from(i).unwrap();
+        let posted = Report::posted(
+            n,
+            connection(report["source"].as_str().unwrap()),
+            report["amount"].as_i64().unwrap().into(),
+            report["as_of"].as_str().unwrap(),
+        );
+        publish(&mut state, posted.records());
+        observations.insert(report["name"].as_str().unwrap().to_string(), id(n));
+    }
+    let named = |names: &serde_json::Value| {
+        let mut ids: Vec<RecordId> = names
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| observations[n.as_str().unwrap()])
+            .collect();
+        ids.sort();
+        ids
+    };
+    let mut responses = Vec::new();
+    for q in case["queries"].as_array().unwrap() {
+        if let Some(priority) = q.get("priority") {
+            let order: Vec<u32> = priority["order"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| connection(s.as_str().unwrap()))
+                .collect();
+            adopt_priority(&mut state, &order, priority["from"].as_str().unwrap());
+        }
+        let response = query(&state, q["date"].as_str().unwrap());
+        assert_eq!(listed(&response), named(&q["listed"]), "{name} {q}");
+        assert_eq!(response.selected_basis, named(&q["selected"]), "{name} {q}");
+        assert_eq!(
+            codes(&response).contains(&"conflict"),
+            q["conflict"].as_bool().unwrap(),
+            "{name} {q}"
+        );
+        // No anchor, so the journal reports movements only.
+        assert!(codes(&response).contains(&"unknown_opening"));
+        assert!(response.anchored_balance.is_empty());
+        responses.push(response);
+    }
+    responses
+}
+
+#[test]
+fn cur_018_1_older_as_of_received_later_does_not_replace_newer() {
+    let [response] = precedence_case("older_as_of_received_later", false)
+        .try_into()
+        .unwrap();
+    let [newer, older] = [id(2000), id(2010)];
+    // The 1,000 report arrived later but is as of an earlier date.
+    let amounts: Vec<_> = response
+        .assertions
+        .iter()
+        .map(|a| (a.id, a.amount, a.as_of.clone()))
+        .collect();
+    assert_eq!(
+        amounts,
+        vec![
+            (newer, amount(1200), date("2026-11-05")),
+            (older, amount(1000), date("2026-11-03")),
+        ]
+    );
+    assert_eq!(response.selected_basis, vec![newer]);
+}
+
+#[test]
+fn cur_018_1_requested_date_limits_candidates() {
+    precedence_case("requested_date_limits_candidates", false);
+}
+
+#[test]
+fn cur_018_1_overlapping_boundaries_conflict() {
+    precedence_case("overlapping_boundaries_conflict", false);
+    precedence_case("overlapping_boundaries_corroborate", false);
+}
+
+#[test]
+fn cur_018_1_equal_boundary_needs_adopted_priority() {
+    let forward = precedence_case("equal_boundary_needs_adopted_priority", false);
+    let reversed = precedence_case("equal_boundary_needs_adopted_priority", true);
+    // Receipt order is not a selection key: committing S2's receipt first
+    // gives the same responses.
+    assert_eq!(forward, reversed);
+}
+
+/// Commit a posted activity on A of `value` on `day` against expense,
+/// recognized from movement observation `n`.
+fn movement(state: &mut DomainState, n: u32, value: i128, day: &str) -> LegId {
+    let binding = SourceFacetBindingV1 {
+        observation: id(n),
+        parse_product: id(n + 1),
+        facet: id(n + 2),
+        amount: amount(value),
+    };
+    publish(
+        state,
+        vec![
+            AuthoritativeRecordV1::ObservationVersion(ObservationVersionV1 {
+                id: id(n),
+                source: from(102),
+                original_ids: vec![format!("row:{n}")],
+                sanitized_representation: "synthetic".into(),
+                reported_fields: vec![],
+                temporal: date(day),
+                semantic_kind: ObservationKind::Movement,
+                prior_version: None,
+                tombstone_of: None,
+                content_digest: Digest([0; 32]),
+            }),
+            AuthoritativeRecordV1::AddressedParseProduct(AddressedParseProductV1 {
+                id: id(n + 1),
+                schema_version: 1,
+                product: ParseProductV1 {
+                    source_version_id: id(n),
+                    parser_id: "synthetic".into(),
+                    parser_version: "1".into(),
+                    facets: vec![MovementFacetV1 {
+                        lineage_key: binding.facet,
+                        kind: ObservationKind::Movement,
+                        amount: SourceValue::Known(amount(value)),
+                        relationships: vec![],
+                        temporal: date(day),
+                    }],
+                },
+                balance_kinds: vec![],
+            }),
+        ],
+    );
+    let mut request = posted(binding, n + 10, EXPENSE);
+    for item in &mut request.legs {
+        item.leg.effective = date(day);
+        item.leg.posting = date(day);
+    }
+    let terms = request.financial.as_mut().unwrap();
+    terms.bookkeeping_date = date(day);
+    for posting in &mut terms.postings {
+        posting.effective = date(day);
+        posting.posting = date(day);
+    }
+    let leg = request.legs[0].leg.id;
+    let plan = RecognitionEngine::adopt(state, &request).unwrap();
+    apply(state, &plan);
+    leg
+}
+
+#[test]
+fn cur_018_unknown_opening_returns_movements_only() {
+    let mut state = positions();
+    let leg = movement(&mut state, 3000, -40, "2026-11-03");
+    let response = query(&state, "2026-11-06");
+    assert!(response.anchored_balance.is_empty());
+    assert!(response.selected_basis.is_empty());
+    assert!(response.assertions.is_empty());
+    let [moved] = response.movements.as_slice() else {
+        panic!("one movement")
+    };
+    assert_eq!(moved.account, account(CHECKING));
+    assert_eq!(moved.component, id(CHECKING + 1));
+    assert_eq!(moved.amount, amount(-40));
+    assert_eq!(moved.effective, date("2026-11-03"));
+    assert_eq!(moved.evidence, vec![RecordId(leg.0), id(3000)]);
+    assert_eq!(codes(&response), vec!["unknown_opening"]);
+    assert!(!matches!(response.aggregate, AggregateV1::Exact(_)));
+    assert_eq!(
+        response.aggregate,
+        AggregateV1::Indeterminate {
+            components: vec![AggregateComponentV1 {
+                component: id(CHECKING + 1),
+                amount: SourceValue::Unknown,
+                evidence: vec![],
+            }],
+            obstructions: vec!["aggregation_unavailable".into()],
+        }
+    );
+    // A movement after the requested date is not listed.
+    movement(&mut state, 3100, -10, "2026-11-08");
+    assert_eq!(query(&state, "2026-11-06").movements.len(), 1);
+}
+
+#[test]
+fn cur_018_anchored_balance_is_not_rolled_forward() {
+    let mut state = positions();
+    // A's opening of 3,300 at the end of 2026-11-01.
+    let opening = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    apply(&mut state, &plan);
+    let first = movement(&mut state, 3000, -100, "2026-11-03");
+
+    let response = query(&state, "2026-11-06");
+    let [anchored] = response.anchored_balance.as_slice() else {
+        panic!("one anchored balance")
+    };
+    assert_eq!(anchored.component, id(CHECKING + 1));
+    assert_eq!(
+        anchored.opening,
+        RecordId(opening.financial.as_ref().unwrap().recognition_id.0)
+    );
+    assert_eq!(anchored.amount, SourceValue::Known(amount(3200)));
+    assert_eq!(anchored.through, date("2026-11-06"));
+    assert_eq!(anchored.dependencies, vec![id(707), RecordId(first.0)]);
+    assert!(response.movements.is_empty());
+    assert!(response.selected_basis.is_empty());
+    assert!(response.missing_inputs.is_empty());
+    // Before the anchor's cutoff, the opening is unknown.
+    let before = query(&state, "2026-10-31");
+    assert!(before.anchored_balance.is_empty());
+    assert_eq!(codes(&before), vec!["unknown_opening"]);
+
+    // S1 reports 3,250 as of 2026-11-03, and a -50 leg follows.
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 3250, "2026-11-03").records(),
+    );
+    movement(&mut state, 3100, -50, "2026-11-04");
+    let response = query(&state, "2026-11-06");
+    assert_eq!(response.selected_basis, vec![id(2000)]);
+    let [assertion] = response.assertions.as_slice() else {
+        panic!("one assertion")
+    };
+    assert_eq!(assertion.amount, amount(3250));
+    assert_eq!(assertion.as_of, date("2026-11-03"));
+    assert_eq!(assertion.source, from(S1));
+    assert_eq!(
+        response.anchored_balance[0].amount,
+        SourceValue::Known(amount(3150))
+    );
+}
+
+#[test]
+fn cur_018_incompatible_candidates_never_selected() {
+    type Edit = fn(&mut Report);
+    let cases: [(&str, Edit); 5] = [
+        ("incompatible_balance_kind", |r| {
+            r.kind = BalanceKindV1::Available
+        }),
+        ("unknown_balance_kind", |r| r.kind = BalanceKindV1::Unknown),
+        ("incompatible_unit", |r| r.unit = EUR),
+        ("unknown_as_of", |r| {
+            r.as_of = serde_json::from_value(json!({"kind":"Unknown","original_text":"recently"}))
+                .unwrap()
+        }),
+        ("ambiguous_alias", |r| r.original_ids = vec!["A-1", "B-1"]),
+    ];
+    for (code, edit) in cases {
+        // A posted 1,000 as of 2026-11-03, and a newer balance that cannot
+        // be selected.
+        let mut state = positions();
+        publish(
+            &mut state,
+            Report::posted(2000, S2, 1000, "2026-11-03").records(),
+        );
+        let mut newer = Report::posted(2010, S1, 1200, "2026-11-05");
+        edit(&mut newer);
+        publish(&mut state, newer.records());
+        let response = query(&state, "2026-11-06");
+        assert_eq!(listed(&response), vec![id(2000), id(2010)], "{code}");
+        assert_eq!(response.selected_basis, vec![id(2000)], "{code}");
+        assert_eq!(codes(&response), vec![code, "unknown_opening"], "{code}");
+    }
+}
+
+#[test]
+fn cur_018_query_refuses_stale_basis() {
+    let mut state = positions();
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 1200, "2026-11-05").records(),
+    );
+    let stale = |result: Result<PositionResponseV1, EngineError>| {
+        assert_eq!(result.unwrap_err().class, ErrorClass::StaleBasis);
+    };
+    // A basis that names an earlier commit.
+    let mut earlier = read_basis(&state, "2026-11-06");
+    earlier.through_commit = CommitSeq(state.through.0 - 1);
+    stale(PositionEngine::query(&state, &earlier, &only(CHECKING)));
+    // A state whose accounting index lags it.
+    let mut lagging = state.clone();
+    lagging.accounting.as_mut().unwrap().prefix.through = CommitSeq(state.through.0 - 1);
+    stale(PositionEngine::query(
+        &lagging,
+        &read_basis(&lagging, "2026-11-06"),
+        &only(CHECKING),
+    ));
+}
+
+#[test]
+fn cur_018_query_refuses_bad_scope() {
+    let state = positions();
+    let valid = read_basis(&state, "2026-11-06");
+    let refused = |read: &ReadBasis, scope: &AccountScope| {
+        let error = PositionEngine::query(&state, read, scope).unwrap_err();
+        assert_eq!(error.class, ErrorClass::InvalidReference, "{scope:?}");
+    };
+    let named = |accounts: Vec<AccountId>, components: Vec<RecordId>| AccountScope {
+        accounts,
+        components,
+    };
+    // An empty scope, an unknown component or account, and 257 components.
+    refused(&valid, &named(vec![], vec![]));
+    refused(&valid, &only(999));
+    refused(&valid, &named(vec![account(999)], vec![]));
+    refused(&valid, &named(vec![], vec![id(CHECKING + 1); 257]));
+    // An effective scope with no end, or on the posting basis.
+    let mut open = valid.clone();
+    open.effective_scope = scope(Some("2026-11-01"), None);
+    refused(&open, &only(CHECKING));
+    let mut posting = valid.clone();
+    posting.effective_scope.basis = DateBasis::Posting;
+    refused(&posting, &only(CHECKING));
+    // A named account reads its component, once.
+    let both = PositionEngine::query(
+        &state,
+        &valid,
+        &named(
+            vec![account(CHECKING), account(SAVINGS)],
+            vec![id(CHECKING + 1)],
+        ),
+    )
+    .unwrap();
+    let AggregateV1::Indeterminate { components, .. } = both.aggregate else {
+        panic!("indeterminate")
+    };
+    let ids: Vec<RecordId> = components.iter().map(|c| c.component).collect();
+    assert_eq!(ids, vec![id(CHECKING + 1), id(SAVINGS + 1)]);
 }

@@ -543,6 +543,15 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_policy_later_revision_wins_inside_its_dates",
         "cur_018_policy_rejects_bad_requests",
         "cur_018_policy_replay_rejects_forged_revision",
+        "cur_018_1_older_as_of_received_later_does_not_replace_newer",
+        "cur_018_1_requested_date_limits_candidates",
+        "cur_018_1_overlapping_boundaries_conflict",
+        "cur_018_1_equal_boundary_needs_adopted_priority",
+        "cur_018_unknown_opening_returns_movements_only",
+        "cur_018_anchored_balance_is_not_rolled_forward",
+        "cur_018_incompatible_candidates_never_selected",
+        "cur_018_query_refuses_stale_basis",
+        "cur_018_query_refuses_bad_scope",
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
@@ -631,7 +640,8 @@ fn ticket_cur_018() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-018",
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup; no command route, preview or position query"
+        "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements; no command route, preview, labels or household aggregate"
     }))
 }
 fn ticket_cur_021() -> Result<Value> {

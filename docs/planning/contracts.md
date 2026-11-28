@@ -802,6 +802,86 @@ same prior version and a share above one are refused. Storage checks that
 adoption names are unchanged. The service route and its preview belong to
 later work.
 
+### CUR-018 position selection checkpoint
+
+```text
+PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>
+```
+
+The query reports, for each component in scope, the source balances that
+assert its position, the one it selects, and the journal's anchored balance
+or known movements. It reads the state and writes nothing.
+
+It refuses with `StaleBasis` a basis whose `through_commit` is not the
+state's commit, and a state whose accounting index lags it. It refuses with
+`InvalidReference` a basis whose effective scope has no end or another date
+basis, a scope that names no component or account or more than 256 entries,
+and an unknown component or account. A named account stands for its
+component, and each component appears once. The requested date is
+`basis.effective_scope.end`.
+
+A balance facet of an observation version asserts a component's position
+when the version is current (no later explicit revision, and not a
+tombstone), its source identity equals the source of one of the component's
+aliases, and its original IDs contain that alias's original ID. A component's
+aliases are those its root and catalog revisions declare. `assertions` lists
+each such balance whose boundary does not start after the requested date
+ends, with the observation version's ID; a version with several balance
+facets lists each. Only a `Posted` balance in the component's unit with a
+known as-of time, bound to that component alone, is a candidate. Every other
+listed balance stays evidence and adds its code to `missing_inputs`.
+
+A date-only as-of is an interval and an instant is a point. All date-only
+values, the requested date included, read in one unknown timezone between
+UTC−12 and UTC+14, so two dates compare as civil dates. Against an instant, a
+date spans from its start at UTC+14 to its end at UTC−12. One boundary is
+later than another only when it starts after the other ends.
+
+Selection keeps the candidates no other candidate is later than. When they
+share one identical boundary, the governing `source_priority` for the
+requested date (`PolicyEngine::governing`) keeps only the candidates from the
+highest-ranked connection among them. A priority that is `NotSet`, `Unknown`
+or names none of them decides nothing. Overlapping boundaries that are not
+identical ignore priority. The remaining candidates are all selected when
+their normalized amounts are equal; otherwise they are a conflict and none is
+selected. Receipt and commit order never decide. `selected_basis` lists the
+selected observation version IDs in ID order.
+
+When the component's account has an active anchor (C08) whose cutoff is on or
+before the requested date, `anchored_balance` reports the anchor's opening
+plus every live Activity leg on the account dated after the cutoff and on or
+before the requested date by its effective date. It names the opening
+recognition, the requested date as `through`, and the segment and those legs
+as dependencies. Its amount is `Unknown` when a live leg on the account has
+no civil effective date. Without such an anchor, `movements` lists each live
+leg on the account dated on or before the requested date, with the leg ID and
+its allocated observations as evidence. A source balance is never rolled
+forward by later movements.
+
+`missing_inputs` lists each code that applies once, sorted:
+
+- `ambiguous_alias`: a balance's aliases bind two or more components.
+- `incompatible_balance_kind`: a balance is `Available` or `Statement`.
+- `unknown_balance_kind`: a balance is `Unknown`, as every balance of a
+  version-1 product is.
+- `incompatible_unit`: a balance is not in the component's unit.
+- `unknown_as_of`: a balance's as-of time is unknown.
+- `unknown_amount`: a balance's amount is not known. It is not listed in
+  `assertions`.
+- `conflict`: the remaining candidates' amounts differ.
+- `unknown_opening`: the component has no anchor at or before the requested
+  date.
+- `missing_date_mapping`: a live leg on the component's account has no civil
+  effective date. It leaves the movements and makes the anchored amount
+  `Unknown`.
+
+Until household aggregation exists, `aggregate` is `Indeterminate`, listing
+each component with an `Unknown` amount and no evidence, with the one
+obstruction `aggregation_unavailable`. `pending`, `freshness`, `coverage` and
+`discrepancies` are empty, and each assertion's `coverage` is an unbounded
+`Unknown` entry; later CUR-018 work fills them. There is no route or query
+dispatch.
+
 <a id="c10"></a>
 
 ## C10: Organization and deterministic rules, owner CUR-019

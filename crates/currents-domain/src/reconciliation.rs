@@ -1018,7 +1018,7 @@ fn sorted(ids: &[RecordId]) -> Vec<RecordId> {
 /// unaddressed product reports every kind as `Unknown`. Products that
 /// disagree about one facet or its kind are refused, so a facet's kind never
 /// changes once a product reports it.
-fn facets(
+pub(crate) fn facets(
     state: &DomainState,
     observation: RecordId,
 ) -> Result<Vec<(&MovementFacetV1, BalanceKindV1)>, EngineError> {

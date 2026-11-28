@@ -1,0 +1,59 @@
+{
+  "component": "A",
+  "unit": "USD",
+  "sources": ["S1", "S2"],
+  "cases": [
+    {
+      "name": "older_as_of_received_later",
+      "reports": [
+        {"name": "newer", "source": "S1", "as_of": "2026-11-05", "amount": 1200},
+        {"name": "older", "source": "S1", "as_of": "2026-11-03", "amount": 1000}
+      ],
+      "queries": [
+        {"date": "2026-11-06", "listed": ["newer", "older"], "selected": ["newer"], "conflict": false}
+      ]
+    },
+    {
+      "name": "requested_date_limits_candidates",
+      "reports": [
+        {"name": "newer", "source": "S1", "as_of": "2026-11-05", "amount": 1200},
+        {"name": "older", "source": "S1", "as_of": "2026-11-03", "amount": 1000}
+      ],
+      "queries": [
+        {"date": "2026-11-04", "listed": ["older"], "selected": ["older"], "conflict": false},
+        {"date": "2026-11-02", "listed": [], "selected": [], "conflict": false}
+      ]
+    },
+    {
+      "name": "overlapping_boundaries_conflict",
+      "reports": [
+        {"name": "date", "source": "S1", "as_of": "2026-11-05", "amount": 1200},
+        {"name": "instant", "source": "S2", "as_of": "2026-11-05T18:00:00Z", "amount": 1150}
+      ],
+      "queries": [
+        {"date": "2026-11-06", "listed": ["date", "instant"], "selected": [], "conflict": true}
+      ]
+    },
+    {
+      "name": "overlapping_boundaries_corroborate",
+      "reports": [
+        {"name": "date", "source": "S1", "as_of": "2026-11-05", "amount": 1200},
+        {"name": "instant", "source": "S2", "as_of": "2026-11-05T18:00:00Z", "amount": 1200}
+      ],
+      "queries": [
+        {"date": "2026-11-06", "listed": ["date", "instant"], "selected": ["date", "instant"], "conflict": false}
+      ]
+    },
+    {
+      "name": "equal_boundary_needs_adopted_priority",
+      "reports": [
+        {"name": "s1", "source": "S1", "as_of": "2026-11-05", "amount": 1200},
+        {"name": "s2", "source": "S2", "as_of": "2026-11-05", "amount": 1180}
+      ],
+      "queries": [
+        {"date": "2026-11-06", "listed": ["s1", "s2"], "selected": [], "conflict": true},
+        {"date": "2026-11-06", "priority": {"order": ["S2", "S1"], "from": "2026-11-01"}, "listed": ["s1", "s2"], "selected": ["s2"], "conflict": false}
+      ]
+    }
+  ]
+}
