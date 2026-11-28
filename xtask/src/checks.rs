@@ -563,6 +563,11 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_liability_opening_credits_the_amount_owed",
         "cur_018_card_opening_purchase_claim_and_aggregate_agree",
         "cur_018_outside_perimeter_contributes_nothing",
+        "cur_018_brokerage_total_counts_once",
+        "cur_018_brokerage_parts_when_total_unknown",
+        "cur_018_brokerage_unresolved_overlap",
+        "cur_018_brokerage_total_wins_when_parts_disagree",
+        "cur_018_overlap_declaration_rules",
         "cur_018_1_no_freshness_threshold_is_not_assessed",
         "cur_018_freshness_of_an_instant",
         "cur_018_freshness_of_a_date",
@@ -659,7 +664,7 @@ fn ticket_cur_018() -> Result<Value> {
         "ticket":"CUR-018",
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
         "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions; no command route, preview, brokerage overlap or transfer adjustment"
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, and version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both; no command route, preview or transfer adjustment"
     }))
 }
 fn ticket_cur_021() -> Result<Value> {

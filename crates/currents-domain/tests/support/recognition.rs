@@ -65,6 +65,7 @@ pub fn catalog() -> CatalogRequestV1 {
             denominator: CommitSeq(1),
         },
         origin: AccountOriginV1::External,
+        overlaps: vec![],
     }
 }
 

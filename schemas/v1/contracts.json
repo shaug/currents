@@ -19504,318 +19504,641 @@
       ]
     },
     "CatalogRequestV1": {
-      "additionalProperties": false,
-      "properties": {
-        "catalog": {
+      "oneOf": [
+        {
           "additionalProperties": false,
           "properties": {
-            "account_class": {
-              "enum": [
-                "Asset",
-                "Liability",
-                "Income",
-                "Expense",
-                "Equity"
-              ],
-              "type": "string"
-            },
-            "account_id": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "aliases": {
-              "items": {
-                "additionalProperties": false,
-                "properties": {
-                  "original_id": {
-                    "maxLength": 1048576,
-                    "type": "string"
-                  },
-                  "source": {
+            "catalog": {
+              "additionalProperties": false,
+              "properties": {
+                "account_class": {
+                  "enum": [
+                    "Asset",
+                    "Liability",
+                    "Income",
+                    "Expense",
+                    "Equity"
+                  ],
+                  "type": "string"
+                },
+                "account_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "aliases": {
+                  "items": {
                     "additionalProperties": false,
                     "properties": {
-                      "connection_id": {
-                        "format": "uuid",
+                      "original_id": {
+                        "maxLength": 1048576,
                         "type": "string"
                       },
-                      "device_id": {
-                        "anyOf": [
-                          {
+                      "source": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "connection_id": {
                             "format": "uuid",
                             "type": "string"
                           },
-                          {
-                            "type": "null"
+                          "device_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "maxLength": 1048576,
+                            "type": "string"
                           }
-                        ]
-                      },
-                      "source": {
-                        "maxLength": 1048576,
-                        "type": "string"
+                        },
+                        "required": [
+                          "source",
+                          "connection_id",
+                          "device_id"
+                        ],
+                        "type": "object"
                       }
                     },
                     "required": [
                       "source",
-                      "connection_id",
-                      "device_id"
+                      "original_id"
                     ],
                     "type": "object"
-                  }
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
                 },
-                "required": [
-                  "source",
-                  "original_id"
-                ],
-                "type": "object"
+                "component_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "display_name": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "enum": [
+                    "Open",
+                    "Closed",
+                    "Unknown"
+                  ],
+                  "type": "string"
+                },
+                "normal_sign": {
+                  "enum": [
+                    "Debit",
+                    "Credit"
+                  ],
+                  "type": "string"
+                },
+                "unit_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "account_id",
+                "component_id",
+                "account_class",
+                "unit_id",
+                "normal_sign",
+                "aliases",
+                "lifecycle",
+                "display_name"
+              ],
+              "type": "object"
+            },
+            "origin": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "External"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "Internal"
+                    },
+                    "value": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "created_at": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "civil": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "Date"
+                                },
+                                "original_text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "civil",
+                                "original_text"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Instant"
+                                },
+                                "original_offset": {
+                                  "anyOf": [
+                                    {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "original_text": {
+                                  "type": "string"
+                                },
+                                "original_zone": {
+                                  "anyOf": [
+                                    {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "precision": {
+                                  "enum": [
+                                    "Second",
+                                    "Millisecond",
+                                    "Microsecond",
+                                    "Nanosecond",
+                                    "Unknown"
+                                  ],
+                                  "type": "string"
+                                },
+                                "utc": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "utc",
+                                "original_offset",
+                                "original_zone",
+                                "precision",
+                                "original_text"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Unknown"
+                                },
+                                "original_text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "original_text"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "role": {
+                          "enum": [
+                            "UnresolvedEquity",
+                            "OpeningEquity",
+                            "IncomeFlow",
+                            "ExpenseFlow",
+                            "Clearing",
+                            "TaxPrepayment",
+                            "QuantityControl",
+                            "InvestmentCarrying",
+                            "DisposalClearing"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "created_at"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "ownership": {
+              "additionalProperties": false,
+              "properties": {
+                "account_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "denominator": {
+                  "maxLength": 20,
+                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                  "type": "string"
+                },
+                "numerator": {
+                  "maxLength": 20,
+                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "account_id",
+                "numerator",
+                "denominator"
+              ],
+              "type": "object"
+            },
+            "prior_revision": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "revision_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "schema_version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "schema_version",
+            "revision_id",
+            "prior_revision",
+            "catalog",
+            "ownership",
+            "origin"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "catalog": {
+              "additionalProperties": false,
+              "properties": {
+                "account_class": {
+                  "enum": [
+                    "Asset",
+                    "Liability",
+                    "Income",
+                    "Expense",
+                    "Equity"
+                  ],
+                  "type": "string"
+                },
+                "account_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "aliases": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "original_id": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      "source": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "connection_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "device_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "connection_id",
+                          "device_id"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "original_id"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "component_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "display_name": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "enum": [
+                    "Open",
+                    "Closed",
+                    "Unknown"
+                  ],
+                  "type": "string"
+                },
+                "normal_sign": {
+                  "enum": [
+                    "Debit",
+                    "Credit"
+                  ],
+                  "type": "string"
+                },
+                "unit_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "account_id",
+                "component_id",
+                "account_class",
+                "unit_id",
+                "normal_sign",
+                "aliases",
+                "lifecycle",
+                "display_name"
+              ],
+              "type": "object"
+            },
+            "origin": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "External"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "Internal"
+                    },
+                    "value": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "created_at": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "civil": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "Date"
+                                },
+                                "original_text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "civil",
+                                "original_text"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Instant"
+                                },
+                                "original_offset": {
+                                  "anyOf": [
+                                    {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "original_text": {
+                                  "type": "string"
+                                },
+                                "original_zone": {
+                                  "anyOf": [
+                                    {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "precision": {
+                                  "enum": [
+                                    "Second",
+                                    "Millisecond",
+                                    "Microsecond",
+                                    "Nanosecond",
+                                    "Unknown"
+                                  ],
+                                  "type": "string"
+                                },
+                                "utc": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "utc",
+                                "original_offset",
+                                "original_zone",
+                                "precision",
+                                "original_text"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Unknown"
+                                },
+                                "original_text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "original_text"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "role": {
+                          "enum": [
+                            "UnresolvedEquity",
+                            "OpeningEquity",
+                            "IncomeFlow",
+                            "ExpenseFlow",
+                            "Clearing",
+                            "TaxPrepayment",
+                            "QuantityControl",
+                            "InvestmentCarrying",
+                            "DisposalClearing"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "created_at"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "overlaps": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
               },
               "maxItems": 16384,
               "type": "array"
             },
-            "component_id": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "display_name": {
-              "maxLength": 1048576,
-              "type": "string"
-            },
-            "lifecycle": {
-              "enum": [
-                "Open",
-                "Closed",
-                "Unknown"
-              ],
-              "type": "string"
-            },
-            "normal_sign": {
-              "enum": [
-                "Debit",
-                "Credit"
-              ],
-              "type": "string"
-            },
-            "unit_id": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          "required": [
-            "account_id",
-            "component_id",
-            "account_class",
-            "unit_id",
-            "normal_sign",
-            "aliases",
-            "lifecycle",
-            "display_name"
-          ],
-          "type": "object"
-        },
-        "origin": {
-          "oneOf": [
-            {
+            "ownership": {
               "additionalProperties": false,
               "properties": {
-                "kind": {
-                  "const": "External"
-                }
-              },
-              "required": [
-                "kind"
-              ],
-              "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "kind": {
-                  "const": "Internal"
+                "account_id": {
+                  "format": "uuid",
+                  "type": "string"
                 },
-                "value": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "created_at": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "civil": {
-                              "format": "date",
-                              "type": "string"
-                            },
-                            "kind": {
-                              "const": "Date"
-                            },
-                            "original_text": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "civil",
-                            "original_text"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "Instant"
-                            },
-                            "original_offset": {
-                              "anyOf": [
-                                {
-                                  "maxLength": 1048576,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "original_text": {
-                              "type": "string"
-                            },
-                            "original_zone": {
-                              "anyOf": [
-                                {
-                                  "maxLength": 1048576,
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "precision": {
-                              "enum": [
-                                "Second",
-                                "Millisecond",
-                                "Microsecond",
-                                "Nanosecond",
-                                "Unknown"
-                              ],
-                              "type": "string"
-                            },
-                            "utc": {
-                              "format": "date-time",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "utc",
-                            "original_offset",
-                            "original_zone",
-                            "precision",
-                            "original_text"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "Unknown"
-                            },
-                            "original_text": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "original_text"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "role": {
-                      "enum": [
-                        "UnresolvedEquity",
-                        "OpeningEquity",
-                        "IncomeFlow",
-                        "ExpenseFlow",
-                        "Clearing",
-                        "TaxPrepayment",
-                        "QuantityControl",
-                        "InvestmentCarrying",
-                        "DisposalClearing"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "role",
-                    "created_at"
-                  ],
-                  "type": "object"
+                "denominator": {
+                  "maxLength": 20,
+                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                  "type": "string"
+                },
+                "numerator": {
+                  "maxLength": 20,
+                  "pattern": "^(0|[1-9][0-9]{0,19})$",
+                  "type": "string"
                 }
               },
               "required": [
-                "kind",
-                "value"
+                "account_id",
+                "numerator",
+                "denominator"
               ],
               "type": "object"
-            }
-          ]
-        },
-        "ownership": {
-          "additionalProperties": false,
-          "properties": {
-            "account_id": {
+            },
+            "prior_revision": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "revision_id": {
               "format": "uuid",
               "type": "string"
             },
-            "denominator": {
-              "maxLength": 20,
-              "pattern": "^(0|[1-9][0-9]{0,19})$",
-              "type": "string"
-            },
-            "numerator": {
-              "maxLength": 20,
-              "pattern": "^(0|[1-9][0-9]{0,19})$",
-              "type": "string"
+            "schema_version": {
+              "const": 2
             }
           },
           "required": [
-            "account_id",
-            "numerator",
-            "denominator"
+            "schema_version",
+            "revision_id",
+            "prior_revision",
+            "catalog",
+            "ownership",
+            "origin",
+            "overlaps"
           ],
           "type": "object"
-        },
-        "prior_revision": {
-          "anyOf": [
-            {
-              "format": "uuid",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "revision_id": {
-          "format": "uuid",
-          "type": "string"
-        },
-        "schema_version": {
-          "maximum": 4294967295,
-          "minimum": 0,
-          "type": "integer"
         }
-      },
-      "required": [
-        "schema_version",
-        "revision_id",
-        "prior_revision",
-        "catalog",
-        "ownership",
-        "origin"
-      ],
-      "type": "object"
+      ]
     },
     "CommandBodyV1": {
       "additionalProperties": false,
@@ -31895,318 +32218,641 @@
                   "const": "SetAccountCatalogComplete"
                 },
                 "value": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "catalog": {
+                  "oneOf": [
+                    {
                       "additionalProperties": false,
                       "properties": {
-                        "account_class": {
-                          "enum": [
-                            "Asset",
-                            "Liability",
-                            "Income",
-                            "Expense",
-                            "Equity"
-                          ],
-                          "type": "string"
-                        },
-                        "account_id": {
-                          "format": "uuid",
-                          "type": "string"
-                        },
-                        "aliases": {
-                          "items": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "original_id": {
-                                "maxLength": 1048576,
-                                "type": "string"
-                              },
-                              "source": {
+                        "catalog": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "account_class": {
+                              "enum": [
+                                "Asset",
+                                "Liability",
+                                "Income",
+                                "Expense",
+                                "Equity"
+                              ],
+                              "type": "string"
+                            },
+                            "account_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "aliases": {
+                              "items": {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "connection_id": {
-                                    "format": "uuid",
+                                  "original_id": {
+                                    "maxLength": 1048576,
                                     "type": "string"
                                   },
-                                  "device_id": {
-                                    "anyOf": [
-                                      {
+                                  "source": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "connection_id": {
                                         "format": "uuid",
                                         "type": "string"
                                       },
-                                      {
-                                        "type": "null"
+                                      "device_id": {
+                                        "anyOf": [
+                                          {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "source": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
                                       }
-                                    ]
-                                  },
-                                  "source": {
-                                    "maxLength": 1048576,
-                                    "type": "string"
+                                    },
+                                    "required": [
+                                      "source",
+                                      "connection_id",
+                                      "device_id"
+                                    ],
+                                    "type": "object"
                                   }
                                 },
                                 "required": [
                                   "source",
-                                  "connection_id",
-                                  "device_id"
+                                  "original_id"
                                 ],
                                 "type": "object"
-                              }
+                              },
+                              "maxItems": 16384,
+                              "type": "array"
                             },
-                            "required": [
-                              "source",
-                              "original_id"
-                            ],
-                            "type": "object"
+                            "component_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "display_name": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "lifecycle": {
+                              "enum": [
+                                "Open",
+                                "Closed",
+                                "Unknown"
+                              ],
+                              "type": "string"
+                            },
+                            "normal_sign": {
+                              "enum": [
+                                "Debit",
+                                "Credit"
+                              ],
+                              "type": "string"
+                            },
+                            "unit_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "account_id",
+                            "component_id",
+                            "account_class",
+                            "unit_id",
+                            "normal_sign",
+                            "aliases",
+                            "lifecycle",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "origin": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "External"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Internal"
+                                },
+                                "value": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "created_at": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "civil": {
+                                              "format": "date",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "Date"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "civil",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Instant"
+                                            },
+                                            "original_offset": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            },
+                                            "original_zone": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "precision": {
+                                              "enum": [
+                                                "Second",
+                                                "Millisecond",
+                                                "Microsecond",
+                                                "Nanosecond",
+                                                "Unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "format": "date-time",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "utc",
+                                            "original_offset",
+                                            "original_zone",
+                                            "precision",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Unknown"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "role": {
+                                      "enum": [
+                                        "UnresolvedEquity",
+                                        "OpeningEquity",
+                                        "IncomeFlow",
+                                        "ExpenseFlow",
+                                        "Clearing",
+                                        "TaxPrepayment",
+                                        "QuantityControl",
+                                        "InvestmentCarrying",
+                                        "DisposalClearing"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "created_at"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "ownership": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "account_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "denominator": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "numerator": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "account_id",
+                            "numerator",
+                            "denominator"
+                          ],
+                          "type": "object"
+                        },
+                        "prior_revision": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "revision_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "schema_version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "schema_version",
+                        "revision_id",
+                        "prior_revision",
+                        "catalog",
+                        "ownership",
+                        "origin"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalog": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "account_class": {
+                              "enum": [
+                                "Asset",
+                                "Liability",
+                                "Income",
+                                "Expense",
+                                "Equity"
+                              ],
+                              "type": "string"
+                            },
+                            "account_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "aliases": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "original_id": {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  "source": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "connection_id": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      },
+                                      "device_id": {
+                                        "anyOf": [
+                                          {
+                                            "format": "uuid",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "source": {
+                                        "maxLength": 1048576,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "connection_id",
+                                      "device_id"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "source",
+                                  "original_id"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 16384,
+                              "type": "array"
+                            },
+                            "component_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "display_name": {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            "lifecycle": {
+                              "enum": [
+                                "Open",
+                                "Closed",
+                                "Unknown"
+                              ],
+                              "type": "string"
+                            },
+                            "normal_sign": {
+                              "enum": [
+                                "Debit",
+                                "Credit"
+                              ],
+                              "type": "string"
+                            },
+                            "unit_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "account_id",
+                            "component_id",
+                            "account_class",
+                            "unit_id",
+                            "normal_sign",
+                            "aliases",
+                            "lifecycle",
+                            "display_name"
+                          ],
+                          "type": "object"
+                        },
+                        "origin": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "External"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "Internal"
+                                },
+                                "value": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "created_at": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "civil": {
+                                              "format": "date",
+                                              "type": "string"
+                                            },
+                                            "kind": {
+                                              "const": "Date"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "civil",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Instant"
+                                            },
+                                            "original_offset": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            },
+                                            "original_zone": {
+                                              "anyOf": [
+                                                {
+                                                  "maxLength": 1048576,
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "precision": {
+                                              "enum": [
+                                                "Second",
+                                                "Millisecond",
+                                                "Microsecond",
+                                                "Nanosecond",
+                                                "Unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "utc": {
+                                              "format": "date-time",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "utc",
+                                            "original_offset",
+                                            "original_zone",
+                                            "precision",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Unknown"
+                                            },
+                                            "original_text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "original_text"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "role": {
+                                      "enum": [
+                                        "UnresolvedEquity",
+                                        "OpeningEquity",
+                                        "IncomeFlow",
+                                        "ExpenseFlow",
+                                        "Clearing",
+                                        "TaxPrepayment",
+                                        "QuantityControl",
+                                        "InvestmentCarrying",
+                                        "DisposalClearing"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "role",
+                                    "created_at"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "overlaps": {
+                          "items": {
+                            "format": "uuid",
+                            "type": "string"
                           },
                           "maxItems": 16384,
                           "type": "array"
                         },
-                        "component_id": {
-                          "format": "uuid",
-                          "type": "string"
-                        },
-                        "display_name": {
-                          "maxLength": 1048576,
-                          "type": "string"
-                        },
-                        "lifecycle": {
-                          "enum": [
-                            "Open",
-                            "Closed",
-                            "Unknown"
-                          ],
-                          "type": "string"
-                        },
-                        "normal_sign": {
-                          "enum": [
-                            "Debit",
-                            "Credit"
-                          ],
-                          "type": "string"
-                        },
-                        "unit_id": {
-                          "format": "uuid",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "account_id",
-                        "component_id",
-                        "account_class",
-                        "unit_id",
-                        "normal_sign",
-                        "aliases",
-                        "lifecycle",
-                        "display_name"
-                      ],
-                      "type": "object"
-                    },
-                    "origin": {
-                      "oneOf": [
-                        {
+                        "ownership": {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "External"
-                            }
-                          },
-                          "required": [
-                            "kind"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "kind": {
-                              "const": "Internal"
+                            "account_id": {
+                              "format": "uuid",
+                              "type": "string"
                             },
-                            "value": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "created_at": {
-                                  "oneOf": [
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "civil": {
-                                          "format": "date",
-                                          "type": "string"
-                                        },
-                                        "kind": {
-                                          "const": "Date"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "civil",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Instant"
-                                        },
-                                        "original_offset": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        },
-                                        "original_zone": {
-                                          "anyOf": [
-                                            {
-                                              "maxLength": 1048576,
-                                              "type": "string"
-                                            },
-                                            {
-                                              "type": "null"
-                                            }
-                                          ]
-                                        },
-                                        "precision": {
-                                          "enum": [
-                                            "Second",
-                                            "Millisecond",
-                                            "Microsecond",
-                                            "Nanosecond",
-                                            "Unknown"
-                                          ],
-                                          "type": "string"
-                                        },
-                                        "utc": {
-                                          "format": "date-time",
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "utc",
-                                        "original_offset",
-                                        "original_zone",
-                                        "precision",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Unknown"
-                                        },
-                                        "original_text": {
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind",
-                                        "original_text"
-                                      ],
-                                      "type": "object"
-                                    }
-                                  ]
-                                },
-                                "role": {
-                                  "enum": [
-                                    "UnresolvedEquity",
-                                    "OpeningEquity",
-                                    "IncomeFlow",
-                                    "ExpenseFlow",
-                                    "Clearing",
-                                    "TaxPrepayment",
-                                    "QuantityControl",
-                                    "InvestmentCarrying",
-                                    "DisposalClearing"
-                                  ],
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "role",
-                                "created_at"
-                              ],
-                              "type": "object"
+                            "denominator": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
+                            },
+                            "numerator": {
+                              "maxLength": 20,
+                              "pattern": "^(0|[1-9][0-9]{0,19})$",
+                              "type": "string"
                             }
                           },
                           "required": [
-                            "kind",
-                            "value"
+                            "account_id",
+                            "numerator",
+                            "denominator"
                           ],
                           "type": "object"
-                        }
-                      ]
-                    },
-                    "ownership": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "account_id": {
+                        },
+                        "prior_revision": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "revision_id": {
                           "format": "uuid",
                           "type": "string"
                         },
-                        "denominator": {
-                          "maxLength": 20,
-                          "pattern": "^(0|[1-9][0-9]{0,19})$",
-                          "type": "string"
-                        },
-                        "numerator": {
-                          "maxLength": 20,
-                          "pattern": "^(0|[1-9][0-9]{0,19})$",
-                          "type": "string"
+                        "schema_version": {
+                          "const": 2
                         }
                       },
                       "required": [
-                        "account_id",
-                        "numerator",
-                        "denominator"
+                        "schema_version",
+                        "revision_id",
+                        "prior_revision",
+                        "catalog",
+                        "ownership",
+                        "origin",
+                        "overlaps"
                       ],
                       "type": "object"
-                    },
-                    "prior_revision": {
-                      "anyOf": [
-                        {
-                          "format": "uuid",
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "revision_id": {
-                      "format": "uuid",
-                      "type": "string"
-                    },
-                    "schema_version": {
-                      "maximum": 4294967295,
-                      "minimum": 0,
-                      "type": "integer"
                     }
-                  },
-                  "required": [
-                    "schema_version",
-                    "revision_id",
-                    "prior_revision",
-                    "catalog",
-                    "ownership",
-                    "origin"
-                  ],
-                  "type": "object"
+                  ]
                 }
               },
               "required": [
@@ -93561,318 +94207,641 @@
                           "const": "SetAccountCatalogComplete"
                         },
                         "value": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "catalog": {
+                          "oneOf": [
+                            {
                               "additionalProperties": false,
                               "properties": {
-                                "account_class": {
-                                  "enum": [
-                                    "Asset",
-                                    "Liability",
-                                    "Income",
-                                    "Expense",
-                                    "Equity"
-                                  ],
-                                  "type": "string"
-                                },
-                                "account_id": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
-                                "aliases": {
-                                  "items": {
-                                    "additionalProperties": false,
-                                    "properties": {
-                                      "original_id": {
-                                        "maxLength": 1048576,
-                                        "type": "string"
-                                      },
-                                      "source": {
+                                "catalog": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "account_class": {
+                                      "enum": [
+                                        "Asset",
+                                        "Liability",
+                                        "Income",
+                                        "Expense",
+                                        "Equity"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "account_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "aliases": {
+                                      "items": {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "connection_id": {
-                                            "format": "uuid",
+                                          "original_id": {
+                                            "maxLength": 1048576,
                                             "type": "string"
                                           },
-                                          "device_id": {
-                                            "anyOf": [
-                                              {
+                                          "source": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "connection_id": {
                                                 "format": "uuid",
                                                 "type": "string"
                                               },
-                                              {
-                                                "type": "null"
+                                              "device_id": {
+                                                "anyOf": [
+                                                  {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "source": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
                                               }
-                                            ]
-                                          },
-                                          "source": {
-                                            "maxLength": 1048576,
-                                            "type": "string"
+                                            },
+                                            "required": [
+                                              "source",
+                                              "connection_id",
+                                              "device_id"
+                                            ],
+                                            "type": "object"
                                           }
                                         },
                                         "required": [
                                           "source",
-                                          "connection_id",
-                                          "device_id"
+                                          "original_id"
                                         ],
                                         "type": "object"
-                                      }
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
                                     },
-                                    "required": [
-                                      "source",
-                                      "original_id"
-                                    ],
-                                    "type": "object"
+                                    "component_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "display_name": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    "lifecycle": {
+                                      "enum": [
+                                        "Open",
+                                        "Closed",
+                                        "Unknown"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "normal_sign": {
+                                      "enum": [
+                                        "Debit",
+                                        "Credit"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "account_id",
+                                    "component_id",
+                                    "account_class",
+                                    "unit_id",
+                                    "normal_sign",
+                                    "aliases",
+                                    "lifecycle",
+                                    "display_name"
+                                  ],
+                                  "type": "object"
+                                },
+                                "origin": {
+                                  "oneOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "External"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "Internal"
+                                        },
+                                        "value": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "created_at": {
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "civil": {
+                                                      "format": "date",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "Date"
+                                                    },
+                                                    "original_text": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "civil",
+                                                    "original_text"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "Instant"
+                                                    },
+                                                    "original_offset": {
+                                                      "anyOf": [
+                                                        {
+                                                          "maxLength": 1048576,
+                                                          "type": "string"
+                                                        },
+                                                        {
+                                                          "type": "null"
+                                                        }
+                                                      ]
+                                                    },
+                                                    "original_text": {
+                                                      "type": "string"
+                                                    },
+                                                    "original_zone": {
+                                                      "anyOf": [
+                                                        {
+                                                          "maxLength": 1048576,
+                                                          "type": "string"
+                                                        },
+                                                        {
+                                                          "type": "null"
+                                                        }
+                                                      ]
+                                                    },
+                                                    "precision": {
+                                                      "enum": [
+                                                        "Second",
+                                                        "Millisecond",
+                                                        "Microsecond",
+                                                        "Nanosecond",
+                                                        "Unknown"
+                                                      ],
+                                                      "type": "string"
+                                                    },
+                                                    "utc": {
+                                                      "format": "date-time",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "utc",
+                                                    "original_offset",
+                                                    "original_zone",
+                                                    "precision",
+                                                    "original_text"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "Unknown"
+                                                    },
+                                                    "original_text": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "original_text"
+                                                  ],
+                                                  "type": "object"
+                                                }
+                                              ]
+                                            },
+                                            "role": {
+                                              "enum": [
+                                                "UnresolvedEquity",
+                                                "OpeningEquity",
+                                                "IncomeFlow",
+                                                "ExpenseFlow",
+                                                "Clearing",
+                                                "TaxPrepayment",
+                                                "QuantityControl",
+                                                "InvestmentCarrying",
+                                                "DisposalClearing"
+                                              ],
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "role",
+                                            "created_at"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "value"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                },
+                                "ownership": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "account_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "denominator": {
+                                      "maxLength": 20,
+                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                      "type": "string"
+                                    },
+                                    "numerator": {
+                                      "maxLength": 20,
+                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "account_id",
+                                    "numerator",
+                                    "denominator"
+                                  ],
+                                  "type": "object"
+                                },
+                                "prior_revision": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revision_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "schema_version": {
+                                  "const": 1
+                                }
+                              },
+                              "required": [
+                                "schema_version",
+                                "revision_id",
+                                "prior_revision",
+                                "catalog",
+                                "ownership",
+                                "origin"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "catalog": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "account_class": {
+                                      "enum": [
+                                        "Asset",
+                                        "Liability",
+                                        "Income",
+                                        "Expense",
+                                        "Equity"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "account_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "aliases": {
+                                      "items": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "original_id": {
+                                            "maxLength": 1048576,
+                                            "type": "string"
+                                          },
+                                          "source": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "connection_id": {
+                                                "format": "uuid",
+                                                "type": "string"
+                                              },
+                                              "device_id": {
+                                                "anyOf": [
+                                                  {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "source": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "source",
+                                              "connection_id",
+                                              "device_id"
+                                            ],
+                                            "type": "object"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "original_id"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 16384,
+                                      "type": "array"
+                                    },
+                                    "component_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "display_name": {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    "lifecycle": {
+                                      "enum": [
+                                        "Open",
+                                        "Closed",
+                                        "Unknown"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "normal_sign": {
+                                      "enum": [
+                                        "Debit",
+                                        "Credit"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "unit_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "account_id",
+                                    "component_id",
+                                    "account_class",
+                                    "unit_id",
+                                    "normal_sign",
+                                    "aliases",
+                                    "lifecycle",
+                                    "display_name"
+                                  ],
+                                  "type": "object"
+                                },
+                                "origin": {
+                                  "oneOf": [
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "External"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "const": "Internal"
+                                        },
+                                        "value": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "created_at": {
+                                              "oneOf": [
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "civil": {
+                                                      "format": "date",
+                                                      "type": "string"
+                                                    },
+                                                    "kind": {
+                                                      "const": "Date"
+                                                    },
+                                                    "original_text": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "civil",
+                                                    "original_text"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "Instant"
+                                                    },
+                                                    "original_offset": {
+                                                      "anyOf": [
+                                                        {
+                                                          "maxLength": 1048576,
+                                                          "type": "string"
+                                                        },
+                                                        {
+                                                          "type": "null"
+                                                        }
+                                                      ]
+                                                    },
+                                                    "original_text": {
+                                                      "type": "string"
+                                                    },
+                                                    "original_zone": {
+                                                      "anyOf": [
+                                                        {
+                                                          "maxLength": 1048576,
+                                                          "type": "string"
+                                                        },
+                                                        {
+                                                          "type": "null"
+                                                        }
+                                                      ]
+                                                    },
+                                                    "precision": {
+                                                      "enum": [
+                                                        "Second",
+                                                        "Millisecond",
+                                                        "Microsecond",
+                                                        "Nanosecond",
+                                                        "Unknown"
+                                                      ],
+                                                      "type": "string"
+                                                    },
+                                                    "utc": {
+                                                      "format": "date-time",
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "utc",
+                                                    "original_offset",
+                                                    "original_zone",
+                                                    "precision",
+                                                    "original_text"
+                                                  ],
+                                                  "type": "object"
+                                                },
+                                                {
+                                                  "additionalProperties": false,
+                                                  "properties": {
+                                                    "kind": {
+                                                      "const": "Unknown"
+                                                    },
+                                                    "original_text": {
+                                                      "type": "string"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "kind",
+                                                    "original_text"
+                                                  ],
+                                                  "type": "object"
+                                                }
+                                              ]
+                                            },
+                                            "role": {
+                                              "enum": [
+                                                "UnresolvedEquity",
+                                                "OpeningEquity",
+                                                "IncomeFlow",
+                                                "ExpenseFlow",
+                                                "Clearing",
+                                                "TaxPrepayment",
+                                                "QuantityControl",
+                                                "InvestmentCarrying",
+                                                "DisposalClearing"
+                                              ],
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "role",
+                                            "created_at"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "value"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  ]
+                                },
+                                "overlaps": {
+                                  "items": {
+                                    "format": "uuid",
+                                    "type": "string"
                                   },
                                   "maxItems": 16384,
                                   "type": "array"
                                 },
-                                "component_id": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
-                                "display_name": {
-                                  "maxLength": 1048576,
-                                  "type": "string"
-                                },
-                                "lifecycle": {
-                                  "enum": [
-                                    "Open",
-                                    "Closed",
-                                    "Unknown"
-                                  ],
-                                  "type": "string"
-                                },
-                                "normal_sign": {
-                                  "enum": [
-                                    "Debit",
-                                    "Credit"
-                                  ],
-                                  "type": "string"
-                                },
-                                "unit_id": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "account_id",
-                                "component_id",
-                                "account_class",
-                                "unit_id",
-                                "normal_sign",
-                                "aliases",
-                                "lifecycle",
-                                "display_name"
-                              ],
-                              "type": "object"
-                            },
-                            "origin": {
-                              "oneOf": [
-                                {
+                                "ownership": {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "External"
-                                    }
-                                  },
-                                  "required": [
-                                    "kind"
-                                  ],
-                                  "type": "object"
-                                },
-                                {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "kind": {
-                                      "const": "Internal"
+                                    "account_id": {
+                                      "format": "uuid",
+                                      "type": "string"
                                     },
-                                    "value": {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "created_at": {
-                                          "oneOf": [
-                                            {
-                                              "additionalProperties": false,
-                                              "properties": {
-                                                "civil": {
-                                                  "format": "date",
-                                                  "type": "string"
-                                                },
-                                                "kind": {
-                                                  "const": "Date"
-                                                },
-                                                "original_text": {
-                                                  "type": "string"
-                                                }
-                                              },
-                                              "required": [
-                                                "kind",
-                                                "civil",
-                                                "original_text"
-                                              ],
-                                              "type": "object"
-                                            },
-                                            {
-                                              "additionalProperties": false,
-                                              "properties": {
-                                                "kind": {
-                                                  "const": "Instant"
-                                                },
-                                                "original_offset": {
-                                                  "anyOf": [
-                                                    {
-                                                      "maxLength": 1048576,
-                                                      "type": "string"
-                                                    },
-                                                    {
-                                                      "type": "null"
-                                                    }
-                                                  ]
-                                                },
-                                                "original_text": {
-                                                  "type": "string"
-                                                },
-                                                "original_zone": {
-                                                  "anyOf": [
-                                                    {
-                                                      "maxLength": 1048576,
-                                                      "type": "string"
-                                                    },
-                                                    {
-                                                      "type": "null"
-                                                    }
-                                                  ]
-                                                },
-                                                "precision": {
-                                                  "enum": [
-                                                    "Second",
-                                                    "Millisecond",
-                                                    "Microsecond",
-                                                    "Nanosecond",
-                                                    "Unknown"
-                                                  ],
-                                                  "type": "string"
-                                                },
-                                                "utc": {
-                                                  "format": "date-time",
-                                                  "type": "string"
-                                                }
-                                              },
-                                              "required": [
-                                                "kind",
-                                                "utc",
-                                                "original_offset",
-                                                "original_zone",
-                                                "precision",
-                                                "original_text"
-                                              ],
-                                              "type": "object"
-                                            },
-                                            {
-                                              "additionalProperties": false,
-                                              "properties": {
-                                                "kind": {
-                                                  "const": "Unknown"
-                                                },
-                                                "original_text": {
-                                                  "type": "string"
-                                                }
-                                              },
-                                              "required": [
-                                                "kind",
-                                                "original_text"
-                                              ],
-                                              "type": "object"
-                                            }
-                                          ]
-                                        },
-                                        "role": {
-                                          "enum": [
-                                            "UnresolvedEquity",
-                                            "OpeningEquity",
-                                            "IncomeFlow",
-                                            "ExpenseFlow",
-                                            "Clearing",
-                                            "TaxPrepayment",
-                                            "QuantityControl",
-                                            "InvestmentCarrying",
-                                            "DisposalClearing"
-                                          ],
-                                          "type": "string"
-                                        }
-                                      },
-                                      "required": [
-                                        "role",
-                                        "created_at"
-                                      ],
-                                      "type": "object"
+                                    "denominator": {
+                                      "maxLength": 20,
+                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                      "type": "string"
+                                    },
+                                    "numerator": {
+                                      "maxLength": 20,
+                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
-                                    "kind",
-                                    "value"
+                                    "account_id",
+                                    "numerator",
+                                    "denominator"
                                   ],
                                   "type": "object"
-                                }
-                              ]
-                            },
-                            "ownership": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "account_id": {
+                                },
+                                "prior_revision": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revision_id": {
                                   "format": "uuid",
                                   "type": "string"
                                 },
-                                "denominator": {
-                                  "maxLength": 20,
-                                  "pattern": "^(0|[1-9][0-9]{0,19})$",
-                                  "type": "string"
-                                },
-                                "numerator": {
-                                  "maxLength": 20,
-                                  "pattern": "^(0|[1-9][0-9]{0,19})$",
-                                  "type": "string"
+                                "schema_version": {
+                                  "const": 2
                                 }
                               },
                               "required": [
-                                "account_id",
-                                "numerator",
-                                "denominator"
+                                "schema_version",
+                                "revision_id",
+                                "prior_revision",
+                                "catalog",
+                                "ownership",
+                                "origin",
+                                "overlaps"
                               ],
                               "type": "object"
-                            },
-                            "prior_revision": {
-                              "anyOf": [
-                                {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "revision_id": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "schema_version": {
-                              "maximum": 4294967295,
-                              "minimum": 0,
-                              "type": "integer"
                             }
-                          },
-                          "required": [
-                            "schema_version",
-                            "revision_id",
-                            "prior_revision",
-                            "catalog",
-                            "ownership",
-                            "origin"
-                          ],
-                          "type": "object"
+                          ]
                         }
                       },
                       "required": [
@@ -109242,318 +110211,641 @@
                               "const": "SetAccountCatalogComplete"
                             },
                             "value": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "catalog": {
+                              "oneOf": [
+                                {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "account_class": {
-                                      "enum": [
-                                        "Asset",
-                                        "Liability",
-                                        "Income",
-                                        "Expense",
-                                        "Equity"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "account_id": {
-                                      "format": "uuid",
-                                      "type": "string"
-                                    },
-                                    "aliases": {
-                                      "items": {
-                                        "additionalProperties": false,
-                                        "properties": {
-                                          "original_id": {
-                                            "maxLength": 1048576,
-                                            "type": "string"
-                                          },
-                                          "source": {
+                                    "catalog": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "account_class": {
+                                          "enum": [
+                                            "Asset",
+                                            "Liability",
+                                            "Income",
+                                            "Expense",
+                                            "Equity"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "account_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "aliases": {
+                                          "items": {
                                             "additionalProperties": false,
                                             "properties": {
-                                              "connection_id": {
-                                                "format": "uuid",
+                                              "original_id": {
+                                                "maxLength": 1048576,
                                                 "type": "string"
                                               },
-                                              "device_id": {
-                                                "anyOf": [
-                                                  {
+                                              "source": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "connection_id": {
                                                     "format": "uuid",
                                                     "type": "string"
                                                   },
-                                                  {
-                                                    "type": "null"
+                                                  "device_id": {
+                                                    "anyOf": [
+                                                      {
+                                                        "format": "uuid",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ]
+                                                  },
+                                                  "source": {
+                                                    "maxLength": 1048576,
+                                                    "type": "string"
                                                   }
-                                                ]
-                                              },
-                                              "source": {
-                                                "maxLength": 1048576,
-                                                "type": "string"
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "connection_id",
+                                                  "device_id"
+                                                ],
+                                                "type": "object"
                                               }
                                             },
                                             "required": [
                                               "source",
-                                              "connection_id",
-                                              "device_id"
+                                              "original_id"
                                             ],
                                             "type": "object"
-                                          }
+                                          },
+                                          "maxItems": 16384,
+                                          "type": "array"
                                         },
-                                        "required": [
-                                          "source",
-                                          "original_id"
-                                        ],
-                                        "type": "object"
+                                        "component_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "display_name": {
+                                          "maxLength": 1048576,
+                                          "type": "string"
+                                        },
+                                        "lifecycle": {
+                                          "enum": [
+                                            "Open",
+                                            "Closed",
+                                            "Unknown"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "normal_sign": {
+                                          "enum": [
+                                            "Debit",
+                                            "Credit"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "unit_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "account_id",
+                                        "component_id",
+                                        "account_class",
+                                        "unit_id",
+                                        "normal_sign",
+                                        "aliases",
+                                        "lifecycle",
+                                        "display_name"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "origin": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "External"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Internal"
+                                            },
+                                            "value": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "created_at": {
+                                                  "oneOf": [
+                                                    {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "civil": {
+                                                          "format": "date",
+                                                          "type": "string"
+                                                        },
+                                                        "kind": {
+                                                          "const": "Date"
+                                                        },
+                                                        "original_text": {
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "civil",
+                                                        "original_text"
+                                                      ],
+                                                      "type": "object"
+                                                    },
+                                                    {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "kind": {
+                                                          "const": "Instant"
+                                                        },
+                                                        "original_offset": {
+                                                          "anyOf": [
+                                                            {
+                                                              "maxLength": 1048576,
+                                                              "type": "string"
+                                                            },
+                                                            {
+                                                              "type": "null"
+                                                            }
+                                                          ]
+                                                        },
+                                                        "original_text": {
+                                                          "type": "string"
+                                                        },
+                                                        "original_zone": {
+                                                          "anyOf": [
+                                                            {
+                                                              "maxLength": 1048576,
+                                                              "type": "string"
+                                                            },
+                                                            {
+                                                              "type": "null"
+                                                            }
+                                                          ]
+                                                        },
+                                                        "precision": {
+                                                          "enum": [
+                                                            "Second",
+                                                            "Millisecond",
+                                                            "Microsecond",
+                                                            "Nanosecond",
+                                                            "Unknown"
+                                                          ],
+                                                          "type": "string"
+                                                        },
+                                                        "utc": {
+                                                          "format": "date-time",
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "utc",
+                                                        "original_offset",
+                                                        "original_zone",
+                                                        "precision",
+                                                        "original_text"
+                                                      ],
+                                                      "type": "object"
+                                                    },
+                                                    {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "kind": {
+                                                          "const": "Unknown"
+                                                        },
+                                                        "original_text": {
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "original_text"
+                                                      ],
+                                                      "type": "object"
+                                                    }
+                                                  ]
+                                                },
+                                                "role": {
+                                                  "enum": [
+                                                    "UnresolvedEquity",
+                                                    "OpeningEquity",
+                                                    "IncomeFlow",
+                                                    "ExpenseFlow",
+                                                    "Clearing",
+                                                    "TaxPrepayment",
+                                                    "QuantityControl",
+                                                    "InvestmentCarrying",
+                                                    "DisposalClearing"
+                                                  ],
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "role",
+                                                "created_at"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "ownership": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "account_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "denominator": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "numerator": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "account_id",
+                                        "numerator",
+                                        "denominator"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "prior_revision": {
+                                      "anyOf": [
+                                        {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "revision_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "schema_version": {
+                                      "const": 1
+                                    }
+                                  },
+                                  "required": [
+                                    "schema_version",
+                                    "revision_id",
+                                    "prior_revision",
+                                    "catalog",
+                                    "ownership",
+                                    "origin"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "catalog": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "account_class": {
+                                          "enum": [
+                                            "Asset",
+                                            "Liability",
+                                            "Income",
+                                            "Expense",
+                                            "Equity"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "account_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "aliases": {
+                                          "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "original_id": {
+                                                "maxLength": 1048576,
+                                                "type": "string"
+                                              },
+                                              "source": {
+                                                "additionalProperties": false,
+                                                "properties": {
+                                                  "connection_id": {
+                                                    "format": "uuid",
+                                                    "type": "string"
+                                                  },
+                                                  "device_id": {
+                                                    "anyOf": [
+                                                      {
+                                                        "format": "uuid",
+                                                        "type": "string"
+                                                      },
+                                                      {
+                                                        "type": "null"
+                                                      }
+                                                    ]
+                                                  },
+                                                  "source": {
+                                                    "maxLength": 1048576,
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "connection_id",
+                                                  "device_id"
+                                                ],
+                                                "type": "object"
+                                              }
+                                            },
+                                            "required": [
+                                              "source",
+                                              "original_id"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 16384,
+                                          "type": "array"
+                                        },
+                                        "component_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        "display_name": {
+                                          "maxLength": 1048576,
+                                          "type": "string"
+                                        },
+                                        "lifecycle": {
+                                          "enum": [
+                                            "Open",
+                                            "Closed",
+                                            "Unknown"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "normal_sign": {
+                                          "enum": [
+                                            "Debit",
+                                            "Credit"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "unit_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "account_id",
+                                        "component_id",
+                                        "account_class",
+                                        "unit_id",
+                                        "normal_sign",
+                                        "aliases",
+                                        "lifecycle",
+                                        "display_name"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "origin": {
+                                      "oneOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "External"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "kind": {
+                                              "const": "Internal"
+                                            },
+                                            "value": {
+                                              "additionalProperties": false,
+                                              "properties": {
+                                                "created_at": {
+                                                  "oneOf": [
+                                                    {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "civil": {
+                                                          "format": "date",
+                                                          "type": "string"
+                                                        },
+                                                        "kind": {
+                                                          "const": "Date"
+                                                        },
+                                                        "original_text": {
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "civil",
+                                                        "original_text"
+                                                      ],
+                                                      "type": "object"
+                                                    },
+                                                    {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "kind": {
+                                                          "const": "Instant"
+                                                        },
+                                                        "original_offset": {
+                                                          "anyOf": [
+                                                            {
+                                                              "maxLength": 1048576,
+                                                              "type": "string"
+                                                            },
+                                                            {
+                                                              "type": "null"
+                                                            }
+                                                          ]
+                                                        },
+                                                        "original_text": {
+                                                          "type": "string"
+                                                        },
+                                                        "original_zone": {
+                                                          "anyOf": [
+                                                            {
+                                                              "maxLength": 1048576,
+                                                              "type": "string"
+                                                            },
+                                                            {
+                                                              "type": "null"
+                                                            }
+                                                          ]
+                                                        },
+                                                        "precision": {
+                                                          "enum": [
+                                                            "Second",
+                                                            "Millisecond",
+                                                            "Microsecond",
+                                                            "Nanosecond",
+                                                            "Unknown"
+                                                          ],
+                                                          "type": "string"
+                                                        },
+                                                        "utc": {
+                                                          "format": "date-time",
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "utc",
+                                                        "original_offset",
+                                                        "original_zone",
+                                                        "precision",
+                                                        "original_text"
+                                                      ],
+                                                      "type": "object"
+                                                    },
+                                                    {
+                                                      "additionalProperties": false,
+                                                      "properties": {
+                                                        "kind": {
+                                                          "const": "Unknown"
+                                                        },
+                                                        "original_text": {
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "kind",
+                                                        "original_text"
+                                                      ],
+                                                      "type": "object"
+                                                    }
+                                                  ]
+                                                },
+                                                "role": {
+                                                  "enum": [
+                                                    "UnresolvedEquity",
+                                                    "OpeningEquity",
+                                                    "IncomeFlow",
+                                                    "ExpenseFlow",
+                                                    "Clearing",
+                                                    "TaxPrepayment",
+                                                    "QuantityControl",
+                                                    "InvestmentCarrying",
+                                                    "DisposalClearing"
+                                                  ],
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "role",
+                                                "created_at"
+                                              ],
+                                              "type": "object"
+                                            }
+                                          },
+                                          "required": [
+                                            "kind",
+                                            "value"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "overlaps": {
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
                                       },
                                       "maxItems": 16384,
                                       "type": "array"
                                     },
-                                    "component_id": {
-                                      "format": "uuid",
-                                      "type": "string"
-                                    },
-                                    "display_name": {
-                                      "maxLength": 1048576,
-                                      "type": "string"
-                                    },
-                                    "lifecycle": {
-                                      "enum": [
-                                        "Open",
-                                        "Closed",
-                                        "Unknown"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "normal_sign": {
-                                      "enum": [
-                                        "Debit",
-                                        "Credit"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "unit_id": {
-                                      "format": "uuid",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "account_id",
-                                    "component_id",
-                                    "account_class",
-                                    "unit_id",
-                                    "normal_sign",
-                                    "aliases",
-                                    "lifecycle",
-                                    "display_name"
-                                  ],
-                                  "type": "object"
-                                },
-                                "origin": {
-                                  "oneOf": [
-                                    {
+                                    "ownership": {
                                       "additionalProperties": false,
                                       "properties": {
-                                        "kind": {
-                                          "const": "External"
-                                        }
-                                      },
-                                      "required": [
-                                        "kind"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "kind": {
-                                          "const": "Internal"
+                                        "account_id": {
+                                          "format": "uuid",
+                                          "type": "string"
                                         },
-                                        "value": {
-                                          "additionalProperties": false,
-                                          "properties": {
-                                            "created_at": {
-                                              "oneOf": [
-                                                {
-                                                  "additionalProperties": false,
-                                                  "properties": {
-                                                    "civil": {
-                                                      "format": "date",
-                                                      "type": "string"
-                                                    },
-                                                    "kind": {
-                                                      "const": "Date"
-                                                    },
-                                                    "original_text": {
-                                                      "type": "string"
-                                                    }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "civil",
-                                                    "original_text"
-                                                  ],
-                                                  "type": "object"
-                                                },
-                                                {
-                                                  "additionalProperties": false,
-                                                  "properties": {
-                                                    "kind": {
-                                                      "const": "Instant"
-                                                    },
-                                                    "original_offset": {
-                                                      "anyOf": [
-                                                        {
-                                                          "maxLength": 1048576,
-                                                          "type": "string"
-                                                        },
-                                                        {
-                                                          "type": "null"
-                                                        }
-                                                      ]
-                                                    },
-                                                    "original_text": {
-                                                      "type": "string"
-                                                    },
-                                                    "original_zone": {
-                                                      "anyOf": [
-                                                        {
-                                                          "maxLength": 1048576,
-                                                          "type": "string"
-                                                        },
-                                                        {
-                                                          "type": "null"
-                                                        }
-                                                      ]
-                                                    },
-                                                    "precision": {
-                                                      "enum": [
-                                                        "Second",
-                                                        "Millisecond",
-                                                        "Microsecond",
-                                                        "Nanosecond",
-                                                        "Unknown"
-                                                      ],
-                                                      "type": "string"
-                                                    },
-                                                    "utc": {
-                                                      "format": "date-time",
-                                                      "type": "string"
-                                                    }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "utc",
-                                                    "original_offset",
-                                                    "original_zone",
-                                                    "precision",
-                                                    "original_text"
-                                                  ],
-                                                  "type": "object"
-                                                },
-                                                {
-                                                  "additionalProperties": false,
-                                                  "properties": {
-                                                    "kind": {
-                                                      "const": "Unknown"
-                                                    },
-                                                    "original_text": {
-                                                      "type": "string"
-                                                    }
-                                                  },
-                                                  "required": [
-                                                    "kind",
-                                                    "original_text"
-                                                  ],
-                                                  "type": "object"
-                                                }
-                                              ]
-                                            },
-                                            "role": {
-                                              "enum": [
-                                                "UnresolvedEquity",
-                                                "OpeningEquity",
-                                                "IncomeFlow",
-                                                "ExpenseFlow",
-                                                "Clearing",
-                                                "TaxPrepayment",
-                                                "QuantityControl",
-                                                "InvestmentCarrying",
-                                                "DisposalClearing"
-                                              ],
-                                              "type": "string"
-                                            }
-                                          },
-                                          "required": [
-                                            "role",
-                                            "created_at"
-                                          ],
-                                          "type": "object"
+                                        "denominator": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
+                                        },
+                                        "numerator": {
+                                          "maxLength": 20,
+                                          "pattern": "^(0|[1-9][0-9]{0,19})$",
+                                          "type": "string"
                                         }
                                       },
                                       "required": [
-                                        "kind",
-                                        "value"
+                                        "account_id",
+                                        "numerator",
+                                        "denominator"
                                       ],
                                       "type": "object"
-                                    }
-                                  ]
-                                },
-                                "ownership": {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "account_id": {
+                                    },
+                                    "prior_revision": {
+                                      "anyOf": [
+                                        {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "revision_id": {
                                       "format": "uuid",
                                       "type": "string"
                                     },
-                                    "denominator": {
-                                      "maxLength": 20,
-                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
-                                      "type": "string"
-                                    },
-                                    "numerator": {
-                                      "maxLength": 20,
-                                      "pattern": "^(0|[1-9][0-9]{0,19})$",
-                                      "type": "string"
+                                    "schema_version": {
+                                      "const": 2
                                     }
                                   },
                                   "required": [
-                                    "account_id",
-                                    "numerator",
-                                    "denominator"
+                                    "schema_version",
+                                    "revision_id",
+                                    "prior_revision",
+                                    "catalog",
+                                    "ownership",
+                                    "origin",
+                                    "overlaps"
                                   ],
                                   "type": "object"
-                                },
-                                "prior_revision": {
-                                  "anyOf": [
-                                    {
-                                      "format": "uuid",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "revision_id": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
-                                "schema_version": {
-                                  "maximum": 4294967295,
-                                  "minimum": 0,
-                                  "type": "integer"
                                 }
-                              },
-                              "required": [
-                                "schema_version",
-                                "revision_id",
-                                "prior_revision",
-                                "catalog",
-                                "ownership",
-                                "origin"
-                              ],
-                              "type": "object"
+                              ]
                             }
                           },
                           "required": [
