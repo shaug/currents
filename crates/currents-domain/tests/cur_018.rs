@@ -11,6 +11,9 @@ use std::collections::BTreeMap;
 #[allow(dead_code)]
 mod fixture;
 use fixture::*;
+#[path = "support/associations.rs"]
+#[allow(dead_code)]
+mod association_fixtures;
 
 /// Policy family P, and a second family Q.
 const P: u32 = 700;
@@ -2150,6 +2153,753 @@ fn cur_018_coverage_of_selected_source() {
     let response = query(&state, "2026-11-06");
     assert_eq!(response.selected_basis, vec![id(2000)]);
     assert_eq!(response.coverage, vec![october, november]);
+}
+
+// Transfer overlap. Checking A, whose S1 alias is "A-1", sends 1,000.00 to
+// savings B, whose S2 alias is "B-2", by one transfer association. Both are
+// USD assets owned 1/1. The sending leg is dated 2026-11-04 and each
+// receiving leg 2026-11-05. Each balance is as of 2026-11-05.
+
+/// Savings B.
+const SAVINGS_B: u32 = 4600;
+/// The transfer association's family.
+const TRANSFER: u32 = 5000;
+const SENT: &str = "2026-11-04";
+const RECEIVED: &str = "2026-11-05";
+const AS_OF: &str = "2026-11-05";
+const ASKED: &str = "2026-11-06";
+const SCOPED: &[u32] = &[CHECKING, SAVINGS_B];
+
+/// Declare B, owned 1/1.
+fn declare_savings_b(state: &mut DomainState) {
+    declare_savings_b_owned(state, 1, 1);
+}
+
+/// Declare B, owned `numerator / denominator`.
+fn declare_savings_b_owned(state: &mut DomainState, numerator: u64, denominator: u64) {
+    let mut request = catalog();
+    request.revision_id = id(SAVINGS_B + 2);
+    request.catalog.component_id = id(SAVINGS_B + 1);
+    request.catalog.account_id = account(SAVINGS_B);
+    request.ownership.account_id = account(SAVINGS_B);
+    request.ownership.numerator = CommitSeq(numerator);
+    request.ownership.denominator = CommitSeq(denominator);
+    request.catalog.display_name = "B".into();
+    request.catalog.aliases = vec![alias(S2, "B-2")];
+    let plan = CatalogEngine::set_complete(state, &request).unwrap();
+    apply(state, &plan);
+}
+
+/// A and B, with no balance or transfer yet.
+fn transfer_world() -> DomainState {
+    let mut state = positions();
+    declare_savings_b(&mut state);
+    state
+}
+
+/// Movement line `n` from `connection` of `value` dated `day`: observation
+/// `n`, its product `n + 1` and its facet `n + 2`.
+fn line(
+    n: u32,
+    connection: u32,
+    value: i128,
+    day: &str,
+) -> (Vec<AuthoritativeRecordV1>, SourceFacetBindingV1) {
+    let binding = SourceFacetBindingV1 {
+        observation: id(n),
+        parse_product: id(n + 1),
+        facet: id(n + 2),
+        amount: amount(value),
+    };
+    let records = vec![
+        AuthoritativeRecordV1::ObservationVersion(ObservationVersionV1 {
+            id: id(n),
+            source: from(connection),
+            original_ids: vec![format!("line:{n}")],
+            sanitized_representation: "synthetic".into(),
+            reported_fields: vec![],
+            temporal: date(day),
+            semantic_kind: ObservationKind::Movement,
+            prior_version: None,
+            tombstone_of: None,
+            content_digest: Digest([0; 32]),
+        }),
+        AuthoritativeRecordV1::AddressedParseProduct(AddressedParseProductV1 {
+            id: id(n + 1),
+            schema_version: 1,
+            product: ParseProductV1 {
+                source_version_id: id(n),
+                parser_id: "synthetic".into(),
+                parser_version: "1".into(),
+                facets: vec![MovementFacetV1 {
+                    lineage_key: binding.facet,
+                    kind: ObservationKind::Movement,
+                    amount: SourceValue::Known(amount(value)),
+                    relationships: vec![],
+                    temporal: date(day),
+                }],
+            },
+            balance_kinds: vec![],
+        }),
+    ];
+    (records, binding)
+}
+
+/// Transfer leg `n + 5` on `account` of `value` dated `day`. With `lined`,
+/// it commits line `n` from `connection` and allocates it to the leg.
+fn transfer_leg(
+    state: &mut DomainState,
+    n: u32,
+    connection: u32,
+    account: AccountId,
+    value: i128,
+    day: &str,
+    lined: bool,
+) -> FinancialLegV1 {
+    let mut allocations = vec![];
+    if lined {
+        let (records, binding) = line(n, connection, value, day);
+        publish(state, records);
+        allocations.push(EvidenceAllocationV1 {
+            observation: binding.observation,
+            facet: binding.facet,
+            amount: binding.amount,
+        });
+    }
+    FinancialLegV1 {
+        id: LegId(id(n + 5).0),
+        event_id: id(TRANSFER + 9),
+        account_id: account,
+        movement: amount(value),
+        allocations,
+        effective: date(day),
+        posting: date(day),
+        relationships: vec![],
+        unresolved_residual: SourceValue::Absent,
+        interpretation: SourceValue::Known(interpretation()),
+    }
+}
+
+/// Revision `n` of the transfer family over `legs`, after `prior`, which
+/// allocates `allocations` to the legs.
+fn transfer_revision(
+    n: u32,
+    prior: Option<u32>,
+    legs: &[LegId],
+    allocations: Vec<QuantifiedFacetAllocationV1>,
+) -> AuthoritativeRecordV1 {
+    AuthoritativeRecordV1::AssociationRevision(AssociationRevisionV1 {
+        id: id(n),
+        schema_version: 1,
+        root: id(TRANSFER),
+        prior_revision: prior.map(id),
+        kind: RelationshipKind::Transfer,
+        legs: legs.to_vec(),
+        allocations,
+        captured_allocations: vec![],
+        recognitions: vec![],
+        residuals: vec![amount(0)],
+        superseded_adoptions: vec![],
+        survivor: None,
+        retired_recognitions: vec![],
+        interpretation: interpretation(),
+        governing_policy: PolicyReferenceV1 {
+            id: id(104),
+            version: 1,
+        },
+    })
+}
+
+/// Commit the transfer: A's sending leg of 1,000.00, whose outflow line is
+/// committed when `sent`, and one receiving leg on B for each of
+/// `received`, whose receipt line is committed when its flag is set. It
+/// returns the receiving legs.
+fn transfer(state: &mut DomainState, sent: bool, received: &[(i128, bool)]) -> Vec<LegId> {
+    let mut legs = vec![transfer_leg(
+        state,
+        5100,
+        S1,
+        account(CHECKING),
+        -1000,
+        SENT,
+        sent,
+    )];
+    for (i, (value, lined)) in received.iter().enumerate() {
+        let n = 5200 + 10 * u32::try_from(i).unwrap();
+        legs.push(transfer_leg(
+            state,
+            n,
+            S2,
+            account(SAVINGS_B),
+            *value,
+            RECEIVED,
+            *lined,
+        ));
+    }
+    let ids: Vec<LegId> = legs.iter().map(|l| l.id).collect();
+    let mut records: Vec<_> = legs
+        .into_iter()
+        .map(AuthoritativeRecordV1::FinancialLeg)
+        .collect();
+    records.push(transfer_revision(TRANSFER, None, &ids, vec![]));
+    publish(state, records);
+    ids[1..].to_vec()
+}
+
+/// Complete posting-date coverage from `start` through `end`.
+fn posting_coverage(start: &str, end: &str) -> CoverageV1 {
+    let mut scope = scope(Some(start), Some(end));
+    scope.basis = DateBasis::Posting;
+    CoverageV1 {
+        scope,
+        status: CoverageStatus::Complete,
+    }
+}
+
+/// Receipt `n` from `connection` that reports complete posting-date
+/// coverage from 2026-11-01 through 2026-11-05.
+fn complete_through_as_of(n: u32, connection: u32) -> AuthoritativeRecordV1 {
+    receipt(n, connection, vec![posting_coverage("2026-11-01", AS_OF)])
+}
+
+/// A reports `a` and B reports `b`, each a posted balance as of 2026-11-05.
+/// The receipt of each source in `complete` reports complete posting-date
+/// coverage from 2026-11-01 through 2026-11-05.
+fn transfer_balances(state: &mut DomainState, a: i128, b: i128, complete: &[u32]) {
+    for (n, connection, original, value) in [(2000, S1, "A-1", a), (2010, S2, "B-2", b)] {
+        let mut report = Report::posted(n, connection, value, AS_OF);
+        report.original_ids = vec![original];
+        if complete.contains(&connection) {
+            report.coverage = vec![posting_coverage("2026-11-01", AS_OF)];
+        }
+        publish(state, report.records());
+    }
+}
+
+#[test]
+fn cur_018_2_sender_included_receiver_excluded_adds_clearing_once() {
+    let mut state = transfer_world();
+    transfer(&mut state, true, &[(1000, false)]);
+    transfer_balances(&mut state, 4000, 2000, &[S2]);
+    // The 1,000.00 has left A and has not reached B, so it counts once as
+    // clearing: 4,000.00 + 2,000.00 + 1,000.00.
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(7000))
+    );
+}
+
+#[test]
+fn cur_018_2_receiver_included_suppresses_clearing() {
+    let mut state = transfer_world();
+    transfer(&mut state, true, &[(1000, true)]);
+    transfer_balances(&mut state, 4000, 3000, &[]);
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(7000))
+    );
+}
+
+#[test]
+fn cur_018_2_both_included_removes_overlap_once() {
+    let mut state = transfer_world();
+    transfer(&mut state, false, &[(1000, true)]);
+    transfer_balances(&mut state, 5000, 3000, &[S1]);
+    let response = PositionEngine::query(
+        &state,
+        &read_basis(&state, ASKED),
+        &AccountScope {
+            accounts: vec![],
+            components: SCOPED.iter().map(|n| id(n + 1)).collect(),
+        },
+    )
+    .unwrap();
+    // A still holds the 1,000.00 and B already holds it, so it is removed
+    // once: 5,000.00 + 3,000.00 - 1,000.00.
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(7000)));
+    // Neither assertion is rewritten.
+    let mut amounts: Vec<Amount> = response.assertions.iter().map(|a| a.amount).collect();
+    amounts.sort_by_key(|a| a.coefficient);
+    assert_eq!(amounts, vec![amount(3000), amount(5000)]);
+    assert_eq!(response.selected_basis, vec![id(2000), id(2010)]);
+}
+
+#[test]
+fn cur_018_2_balance_receipt_before_feed() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/journeys/position/transfer-overlap.json"
+    ))
+    .unwrap();
+    let whole = |v: &serde_json::Value| -> i128 { v.as_i64().unwrap().into() };
+    assert_eq!(fixture["unit"], "USD");
+    assert_eq!(whole(&fixture["transfer"]["amount"]), 1000);
+    assert_eq!(fixture["transfer"]["sent"], SENT);
+    assert_eq!(fixture["transfer"]["received"], RECEIVED);
+    let requested = fixture["requested"].as_str().unwrap();
+    let [a, b] = fixture["balances"].as_array().unwrap().as_slice() else {
+        panic!("two balances")
+    };
+    assert_eq!((&a["component"], &a["source"]), (&json!("A"), &json!("S1")));
+    assert_eq!((&b["component"], &b["source"]), (&json!("B"), &json!("S2")));
+    assert_eq!((&a["as_of"], &b["as_of"]), (&json!(AS_OF), &json!(AS_OF)));
+
+    let mut state = transfer_world();
+    let [receiving] = transfer(
+        &mut state,
+        a["line"].as_bool().unwrap(),
+        &[(1000, b["line"].as_bool().unwrap())],
+    )[..] else {
+        panic!("one receiving leg")
+    };
+    transfer_balances(&mut state, whole(&a["amount"]), whole(&b["amount"]), &[]);
+    // B's balance arrived before B's feed, so it may or may not include the
+    // receipt.
+    let before = &fixture["before_feed"];
+    assert_eq!(
+        total(&state, requested, SCOPED),
+        AggregateV1::Range {
+            low: amount(whole(&before["low"])),
+            high: amount(whole(&before["high"])),
+        }
+    );
+
+    // B's feed brings the receipt line and complete coverage, and the next
+    // revision of the association allocates the line to the receiving leg.
+    let feed = &fixture["feed"];
+    assert_eq!(
+        (&feed["component"], &feed["source"]),
+        (&json!("B"), &json!("S2"))
+    );
+    assert!(feed["line"].as_bool().unwrap());
+    let (records, binding) = line(5300, S2, 1000, RECEIVED);
+    publish(&mut state, records);
+    let coverage = &feed["complete_coverage"];
+    publish(
+        &mut state,
+        vec![receipt(
+            5310,
+            S2,
+            vec![posting_coverage(
+                coverage["start"].as_str().unwrap(),
+                coverage["end"].as_str().unwrap(),
+            )],
+        )],
+    );
+    publish(
+        &mut state,
+        vec![transfer_revision(
+            TRANSFER + 1,
+            Some(TRANSFER),
+            &[LegId(id(5105).0), receiving],
+            vec![QuantifiedFacetAllocationV1 {
+                source: binding,
+                leg: receiving,
+                allocated: amount(1000),
+                mode: FacetAllocationModeV1::Additive,
+            }],
+        )],
+    );
+    assert_eq!(
+        total(&state, requested, SCOPED),
+        AggregateV1::Exact(amount(whole(&fixture["after_feed"]["exact"])))
+    );
+}
+
+#[test]
+fn cur_018_2_partial_receipts() {
+    let mut state = transfer_world();
+    transfer(&mut state, true, &[(600, true), (400, false)]);
+    transfer_balances(&mut state, 4000, 2600, &[S2]);
+    // Only the 400.00 receipt is in flight: 4,000.00 + 2,600.00 + 400.00.
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(7000))
+    );
+}
+
+#[test]
+fn cur_018_2_unknown_amount_is_indeterminate() {
+    let mut state = transfer_world();
+    let [receiving] = transfer(&mut state, true, &[(1000, false)])[..] else {
+        panic!("one receiving leg")
+    };
+    let Some(AuthoritativeRecordV1::FinancialLeg(leg)) =
+        state.records.get_mut(&RecordId(receiving.0))
+    else {
+        panic!("the receiving leg")
+    };
+    leg.unresolved_residual = SourceValue::Unknown;
+    transfer_balances(&mut state, 4000, 2000, &[S2]);
+    let AggregateV1::Indeterminate {
+        components,
+        obstructions,
+    } = total(&state, ASKED, SCOPED)
+    else {
+        panic!("an indeterminate aggregate")
+    };
+    assert_eq!(obstructions, vec!["transfer_membership"]);
+    assert_eq!(
+        components
+            .iter()
+            .map(|c| (c.component, c.amount.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            (id(CHECKING + 1), SourceValue::Known(amount(4000))),
+            (id(SAVINGS_B + 1), SourceValue::Known(amount(2000))),
+        ]
+    );
+}
+
+#[test]
+fn cur_018_journal_balance_membership() {
+    // A's anchored balance adds its live legs after the cutoff, so it
+    // includes a sending leg dated on or before the requested date.
+    let mut state = anchored();
+    declare_savings_b(&mut state);
+    let sending = movement(&mut state, 3100, -1000, SENT);
+    let receiving = transfer_leg(
+        &mut state,
+        5200,
+        S2,
+        account(SAVINGS_B),
+        1000,
+        RECEIVED,
+        false,
+    );
+    let receiving_id = receiving.id;
+    publish(
+        &mut state,
+        vec![
+            AuthoritativeRecordV1::FinancialLeg(receiving),
+            transfer_revision(TRANSFER, None, &[sending, receiving_id], vec![]),
+        ],
+    );
+    let mut report = Report::posted(2010, S2, 2000, AS_OF);
+    report.original_ids = vec!["B-2"];
+    publish(&mut state, report.records());
+    // A's 3,300.00 opening less 100.00 and 1,000.00 is 2,200.00. B may or
+    // may not include the receipt: 4,200.00 to 5,200.00.
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Range {
+            low: amount(4200),
+            high: amount(5200),
+        }
+    );
+    // Complete coverage shows that B excludes it, so it is in flight.
+    publish(&mut state, vec![complete_through_as_of(5310, S2)]);
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(5200))
+    );
+}
+
+#[test]
+fn cur_018_transfer_beside_an_omission() {
+    let mut state = transfer_world();
+    add_account(&mut state, CASH, AccountClass::Asset, 1, "C");
+    transfer(&mut state, true, &[(1000, false)]);
+    transfer_balances(&mut state, 4000, 2000, &[]);
+    let scoped = [CHECKING, SAVINGS_B, CASH];
+    // C has no amount, and B may or may not include the receipt. A known
+    // subtotal holds one amount, so the aggregate has none.
+    let AggregateV1::Indeterminate { obstructions, .. } = total(&state, ASKED, &scoped) else {
+        panic!("an indeterminate aggregate")
+    };
+    assert_eq!(obstructions, vec!["transfer_membership", "unknown_opening"]);
+    // Once coverage shows that B excludes the receipt, the subtotal adds it.
+    publish(&mut state, vec![complete_through_as_of(5310, S2)]);
+    assert_eq!(
+        subtotal(&total(&state, ASKED, &scoped)),
+        (amount(7000), vec![(id(CASH + 1), "unknown_opening")])
+    );
+}
+
+#[test]
+fn cur_018_transfer_into_a_represented_part() {
+    // Total T counts in place of its cash part C, so C's own lines never
+    // show whether T's balance includes a receipt on C.
+    let mut state = brokerage(Some(10000), Some(8000));
+    publish(&mut state, report(2030, "A-1", 4000, 1));
+    let sending = transfer_leg(&mut state, 5100, S1, account(CHECKING), -1000, SENT, true);
+    let receiving = transfer_leg(&mut state, 5200, S1, account(CASH), 1000, RECEIVED, true);
+    let legs = [sending.id, receiving.id];
+    publish(
+        &mut state,
+        vec![
+            AuthoritativeRecordV1::FinancialLeg(sending),
+            AuthoritativeRecordV1::FinancialLeg(receiving),
+            transfer_revision(TRANSFER, None, &legs, vec![]),
+        ],
+    );
+    // A includes the outflow. T may or may not include the receipt:
+    // 4,000.00 + 10,000.00, up to 1,000.00 more in flight.
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, BROKERAGE, CASH, HOLDINGS]),
+        AggregateV1::Range {
+            low: amount(14000),
+            high: amount(15000),
+        }
+    );
+}
+
+#[test]
+fn cur_018_transfer_inside_one_counted_total() {
+    // Total T counts in place of cash C and holdings H, so 1,000.00 moving
+    // from C to H stays inside T's amount.
+    let mut state = brokerage(Some(10000), Some(8000));
+    let sending = transfer_leg(&mut state, 5100, S1, account(CASH), -1000, SENT, false);
+    let receiving = transfer_leg(
+        &mut state,
+        5200,
+        S1,
+        account(HOLDINGS),
+        1000,
+        RECEIVED,
+        false,
+    );
+    let legs = [sending.id, receiving.id];
+    publish(
+        &mut state,
+        vec![
+            AuthoritativeRecordV1::FinancialLeg(sending),
+            AuthoritativeRecordV1::FinancialLeg(receiving),
+            transfer_revision(TRANSFER, None, &legs, vec![]),
+        ],
+    );
+    assert_eq!(
+        total(&state, REQUESTED, BROKERED),
+        AggregateV1::Exact(amount(10000))
+    );
+}
+
+/// The relationship source of the S2 transfer's captured rows.
+const RELATIONSHIPS: u32 = 900;
+
+/// The S2 transfer as admitted: 1,000.00 leaves checking A (account 10)
+/// for accounts 60 and 70 as 600.00 and 400.00, and a separate 10.00 fee
+/// leg leaves A as well. Each leg allocates a captured row from the
+/// relationship source. Each account gets an alias from `connection`.
+fn admitted_s2(connection: u32) -> (DomainState, CompleteAssociationRequestV1) {
+    let (mut state, request) = association_fixtures::transfer_request();
+    for (n, original) in [(CHECKING, "A-1"), (60, "S-1"), (70, "T-1")] {
+        let current = CatalogEngine::current(&state, id(n + 1)).unwrap();
+        let mut revision = catalog();
+        revision.revision_id = id(n + 3);
+        revision.prior_revision = Some(current.id);
+        revision.catalog = current.catalog;
+        revision.catalog.aliases = vec![alias(connection, original)];
+        revision.ownership.account_id = account(n);
+        let plan = CatalogEngine::set_complete(&state, &revision).unwrap();
+        apply(&mut state, &plan);
+    }
+    (state, request)
+}
+
+/// Commit `request`'s legs and association revision.
+fn admit(state: &mut DomainState, request: CompleteAssociationRequestV1) {
+    let mut records: Vec<_> = request
+        .legs
+        .into_iter()
+        .map(AuthoritativeRecordV1::FinancialLeg)
+        .collect();
+    records.push(AuthoritativeRecordV1::AssociationRevision(request.revision));
+    publish(state, records);
+}
+
+/// Posted balances from `connection` as of 2026-11-10 of 4,000.00 for A,
+/// 600.00 for 60 and 400.00 for 70, each receipt reporting `coverage`.
+fn s2_balances(state: &mut DomainState, connection: u32, coverage: Vec<CoverageV1>) {
+    for (n, original, value) in [(6000, "A-1", 4000), (6010, "S-1", 600), (6020, "T-1", 400)] {
+        let mut report = Report::posted(n, connection, value, "2026-11-10");
+        report.original_ids = vec![original];
+        report.coverage = coverage.clone();
+        publish(state, report.records());
+    }
+}
+
+#[test]
+fn cur_018_transfer_fee_leg_moves_no_funds() {
+    let (mut state, mut request) = admitted_s2(S1);
+    // Each S1 balance as of 2026-11-10 includes its movement line. The fee
+    // line has not arrived, and no coverage rules it out.
+    for (i, leg) in request.legs.iter_mut().take(3).enumerate() {
+        let n = 6100 + 10 * u32::try_from(i).unwrap();
+        let TemporalValue::Date { civil, .. } = leg.effective else {
+            panic!("a dated leg")
+        };
+        let (records, binding) = line(n, S1, leg.movement.coefficient, &civil.to_string());
+        publish(&mut state, records);
+        leg.allocations = vec![EvidenceAllocationV1 {
+            observation: binding.observation,
+            facet: binding.facet,
+            amount: binding.amount,
+        }];
+    }
+    admit(&mut state, request);
+    s2_balances(&mut state, S1, vec![]);
+    // Every balance includes its share of the transfer, and the fee moves
+    // no funds between them, so nothing is in flight.
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, 60, 70]),
+        AggregateV1::Exact(amount(5000))
+    );
+}
+
+#[test]
+fn cur_018_admitted_transfer_rows_decide_membership() {
+    // The balances come from the relationship source, whose captured rows,
+    // dated 2026-11-01 to 2026-11-05, are on or before their as-of.
+    let (mut state, request) = admitted_s2(RELATIONSHIPS);
+    admit(&mut state, request);
+    s2_balances(&mut state, RELATIONSHIPS, vec![]);
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, 60, 70]),
+        AggregateV1::Exact(amount(5000))
+    );
+    // Balances from S1 have no line of their own on the legs, which the
+    // relationship rows already stand for, so complete S1 coverage proves
+    // nothing: 5,000.00, less or plus 1,000.00.
+    let (mut state, request) = admitted_s2(S1);
+    admit(&mut state, request);
+    s2_balances(
+        &mut state,
+        S1,
+        vec![posting_coverage("2026-11-01", "2026-11-10")],
+    );
+    assert_eq!(
+        total(&state, REQUESTED, &[CHECKING, 60, 70]),
+        AggregateV1::Range {
+            low: amount(4000),
+            high: amount(6000),
+        }
+    );
+}
+
+#[test]
+fn cur_018_transfer_between_unequal_shares() {
+    // B is owned 1/2. After the transfer the household holds 1,000.00 less
+    // in A and 500.00 more through B, so both orders of arrival give
+    // 5,500.00.
+    let half = || {
+        let mut state = positions();
+        declare_savings_b_owned(&mut state, 1, 2);
+        state
+    };
+    // A still holds the funds and B holds them too: 5,000.00 + 1,500.00,
+    // less A's copy of 1,000.00 at A's share.
+    let mut state = half();
+    transfer(&mut state, false, &[(1000, true)]);
+    transfer_balances(&mut state, 5000, 3000, &[S1]);
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(5500))
+    );
+    // The funds are in flight: 4,000.00 + 1,000.00, plus 1,000.00 at B's
+    // share.
+    let mut state = half();
+    transfer(&mut state, true, &[(1000, false)]);
+    transfer_balances(&mut state, 4000, 2000, &[S2]);
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(5500))
+    );
+}
+
+/// A, owned 1/1, and savings S, owned 1/2, send 600.00 and 400.00 to B.
+/// A and S report under complete S1 coverage without their outflow lines,
+/// so both still hold the funds, and B holds them too.
+fn two_senders() -> DomainState {
+    let mut state = transfer_world();
+    let legs = [
+        transfer_leg(&mut state, 5100, S1, account(CHECKING), -600, SENT, false),
+        transfer_leg(&mut state, 5110, S1, account(SAVINGS), -400, SENT, false),
+        transfer_leg(
+            &mut state,
+            5200,
+            S2,
+            account(SAVINGS_B),
+            1000,
+            RECEIVED,
+            true,
+        ),
+    ];
+    let ids: Vec<LegId> = legs.iter().map(|l| l.id).collect();
+    let mut records: Vec<_> = legs
+        .into_iter()
+        .map(AuthoritativeRecordV1::FinancialLeg)
+        .collect();
+    records.push(transfer_revision(TRANSFER, None, &ids, vec![]));
+    publish(&mut state, records);
+    transfer_balances(&mut state, 5000, 3000, &[S1]);
+    let mut savings = Report::posted(2020, S1, 2000, AS_OF);
+    savings.original_ids = vec!["B-1"];
+    publish(&mut state, savings.records());
+    state
+}
+
+#[test]
+fn cur_018_senders_at_different_shares() {
+    // The copy to remove has no single share.
+    let AggregateV1::Indeterminate { obstructions, .. } =
+        total(&two_senders(), ASKED, &[CHECKING, SAVINGS, SAVINGS_B])
+    else {
+        panic!("an indeterminate aggregate")
+    };
+    assert_eq!(obstructions, vec!["transfer_membership"]);
+}
+
+#[test]
+fn cur_018_uncounted_sender_leaves_amount_unknown() {
+    // With S out of scope, only A's 600.00 of B's receipt is counted twice,
+    // and the receipt alone does not say how much that is.
+    let AggregateV1::Indeterminate { obstructions, .. } =
+        total(&two_senders(), ASKED, &[CHECKING, SAVINGS_B])
+    else {
+        panic!("an indeterminate aggregate")
+    };
+    assert_eq!(obstructions, vec!["transfer_membership"]);
+}
+
+#[test]
+fn cur_018_later_transfer_needs_coverage() {
+    // Both balances are as of 2026-11-03. The outflow and receipt lines are
+    // dated 2026-11-04 and 2026-11-05, after the as-of.
+    let mut state = transfer_world();
+    transfer(&mut state, true, &[(1000, true)]);
+    for (n, connection, original, value) in [(2000, S1, "A-1", 5000), (2010, S2, "B-2", 2000)] {
+        let mut report = Report::posted(n, connection, value, "2026-11-03");
+        report.original_ids = vec![original];
+        publish(&mut state, report.records());
+    }
+    // A later line does not show that the balance excludes the leg, and the
+    // leg's own date comes from another source, so without coverage each
+    // membership is unknown: 7,000.00, less or plus 1,000.00.
+    assert_eq!(
+        total(&state, "2026-11-03", SCOPED),
+        AggregateV1::Range {
+            low: amount(6000),
+            high: amount(8000),
+        }
+    );
+    // Complete coverage from each source through 2026-11-03 shows that
+    // neither balance holds its leg, so no funds have moved for either.
+    for (n, connection) in [(5400, S1), (5410, S2)] {
+        publish(
+            &mut state,
+            vec![receipt(
+                n,
+                connection,
+                vec![posting_coverage("2026-11-01", "2026-11-03")],
+            )],
+        );
+    }
+    for requested in ["2026-11-03", ASKED] {
+        assert_eq!(
+            total(&state, requested, SCOPED),
+            AggregateV1::Exact(amount(7000))
+        );
+    }
 }
 
 // One read basis (C09). Components A (checking) and B (savings). Basis B0

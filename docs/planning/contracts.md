@@ -1045,18 +1045,89 @@ perimeter or the reporting currency is `Unknown`, nothing counts, so each
 component keeps its own reason. A part whose total is out of scope or outside
 the household counts on its own.
 
-- `Exact(total)`: no in-perimeter component is omitted. A scope the known
-  perimeter leaves wholly outside the household gives `Exact` zero.
-- `KnownSubtotal`: some components are omitted and at least one counts.
-  `known` is the total of those that count, and `omitted` lists each omitted
-  component in component order with its amount in its own unit, its evidence
-  and its reason. A known subtotal is not complete net worth.
-- `Indeterminate`: every in-perimeter component is omitted, or the reporting
-  currency is `Unknown`. `components` lists each in-perimeter component in
-  component order with its amount in its own unit and its evidence.
+Funds that a transfer moves between two counting components count once
+(ruling G7 on #27). The aggregate reads the current revision of each
+`Transfer` association family and each of its legs on the account of a
+component that counts or that its total or parts represent. A leg
+with a negative movement sends and one with a positive movement receives.
+A leg with a captured `Fee` allocation moves no funds between accounts, so
+it neither sends nor receives. The aggregate never adjusts by a receipt on
+an omitted component or outside the household, and it never changes the
+association or its claims.
 
-`obstructions` lists each omission reason once, sorted. The query never
-returns `Range`; transfer adjustments belong to later CUR-018 work.
+A leg's membership in a counted amount is included, excluded or unknown:
+
+- A selected source balance includes the leg when a source line allocated to
+  the leg comes from the balance's source and is dated on or before the
+  balance's as-of. A line is a movement facet that the leg's own
+  `allocations` or the revision's `allocations` name, dated by the facet's
+  one reported date, or a captured relationship row that the revision's
+  `captured_allocations` name, from the capture's source and dated by the
+  row. Admission allocates only captured rows to transfer legs.
+- It excludes the leg when every such line is dated after the as-of and a
+  receipt from that source reports `Complete` coverage by posting date from
+  the leg's posting date through the as-of. Coverage counts only when no
+  line from another source is allocated to the leg: such a line already
+  stands for the leg, so the balance's own line would never be allocated to
+  it.
+- Several selected balances must agree; otherwise the leg is unknown.
+- The leg's own dates are journal dates, not the balance source's, so they
+  never decide a reported balance's membership.
+- The anchored balance includes the legs it adds as evidence. It adds none
+  after the requested date, so it excludes a leg whose effective date is
+  after that date.
+- A leg on a component that its total or parts represent is unknown,
+  because no counted balance of that component decides it.
+- Everything else is unknown. An as-of time alone never proves inclusion,
+  and dates compare as in the position selection checkpoint, so an answer
+  that depends on the timezone is unknown.
+
+The sending side of a transfer is included when every sending leg is, and
+excluded when every one is; otherwise it is unknown. For each receiving
+leg, the aggregate adjusts once by the leg's movement:
+
+- The sending side is included and the receiving leg is excluded: the funds
+  are in flight to the receiver, so the aggregate adds the amount at the
+  receiving component's share.
+- The sending side is excluded and the receiving leg is included: both
+  balances count the funds, so the aggregate removes the sender's copy at
+  the sending components' share. Sending components at different shares
+  leave that amount unknown.
+- The two agree: no adjustment.
+
+When a sending leg is on a component that does not count, such as one out
+of scope, the counted part of each receipt is not known, so any adjustment
+the transfer needs is unknown.
+
+A receiving leg whose funds one counted amount holds on both sides, such as
+a move from a brokerage's cash part to its holdings part while the total
+counts, adjusts nothing. Each receiving leg adjusts only its own amount, so
+partial receipts each count once. Neither assertion nor any anchored
+balance is rewritten. When either side is unknown, the aggregate takes the
+least and the most total over the memberships the known sides allow. An
+amount that matters is not known when the receiving leg has an unresolved
+residual or is in a unit other than the reporting currency, or when its
+movement times the share has no exact decimal.
+
+- `Exact(total)`: no in-perimeter component is omitted, and every transfer
+  adjustment is known. A scope the known perimeter leaves wholly outside the
+  household gives `Exact` zero.
+- `KnownSubtotal`: some components are omitted, at least one counts, and
+  every transfer adjustment is known. `known` is the total of those that
+  count with the adjustments, and `omitted` lists each omitted component in
+  component order with its amount in its own unit, its evidence and its
+  reason. A known subtotal is not complete net worth.
+- `Range { low, high }`: no component is omitted, and the transfer
+  memberships allow totals from `low` to `high`, both normalized.
+- `Indeterminate`: every in-perimeter component is omitted, the reporting
+  currency is `Unknown`, a transfer amount that matters is not known, or the
+  transfer memberships allow several totals while a component is omitted.
+  `components` lists each in-perimeter component in component order with its
+  amount in its own unit and its evidence.
+
+`obstructions` lists each omission reason once, sorted, with
+`transfer_membership` when a transfer leaves the total without one amount
+or range.
 
 ### CUR-018 position explanation checkpoint
 
