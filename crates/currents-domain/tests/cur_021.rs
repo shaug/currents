@@ -8,7 +8,7 @@ use currents_domain::{
     catalog::CatalogEngine,
     correction::CorrectionEngine,
     evidence::{EvidenceEngine, ValidatedEvidenceBatchV1},
-    investments::InvestmentEngine,
+    investments::{InvestmentEngine, quantity::PositionHoldingsV1},
     recognition::RecognitionEngine,
     segments::{ReemissionV1, SegmentEngine, SegmentReplacementV1},
 };
@@ -924,6 +924,91 @@ fn published(state: &DomainState, name: &str, n: u32) -> (HoldingsSnapshotV1, Do
     (snapshot_of(&plan).clone(), next)
 }
 
+fn holdings_of(state: &DomainState, position: u32, day: &str) -> PositionHoldingsV1 {
+    InvestmentEngine::holdings(state, id(position), civil(day)).unwrap()
+}
+
+#[test]
+fn cur_021_3_incomplete_snapshot_keeps_missing_security() {
+    let state = held();
+    let (snapshot, next) = published(&state, "holdings-x-partial.json", 7000);
+    assert_eq!(snapshot.completeness, CoverageStatus::Partial);
+    assert!(snapshot.absences.is_empty());
+    let b = holdings_of(&next, PB, "2026-11-30");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!((b.snapshot, b.absence), (None, None));
+    let a = holdings_of(&next, P, "2026-11-30");
+    assert_eq!(a.quantity, balance(6, SECA_UNIT));
+    let listed = a.snapshot.unwrap();
+    assert_eq!(listed.snapshot, id(7090));
+    assert_eq!(listed.quantity, units(6, SECA_UNIT));
+    assert_eq!(
+        listed.market_value,
+        Some(Amount::new(60000, 2, unit_id(1)).unwrap())
+    );
+}
+
+#[test]
+fn cur_021_3_complete_snapshot_records_absence_assertion() {
+    let state = held();
+    let (first, next) = published(&state, "holdings-x-complete-2026-11-30.json", 7000);
+    let v1 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 1,
+        prior: None,
+    };
+    assert_eq!(first.absences, vec![v1]);
+    assert_eq!(first.scope, vec![account_id(Q), account_id(QB)]);
+    assert_eq!(
+        first.market_value,
+        Some(Amount::new(60000, 2, unit_id(1)).unwrap())
+    );
+    let b = holdings_of(&next, PB, "2026-11-30");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!(b.snapshot, None);
+    assert_eq!(b.absence.unwrap().snapshot, first.id);
+    // A later complete snapshot that again omits SECB adds version 2.
+    let (second, last) = published(&next, "holdings-x-complete-2026-12-31.json", 7100);
+    let v2 = HoldingAbsenceV1 {
+        position: id(PB),
+        security: id(SECB),
+        version: 2,
+        prior: Some(first.id),
+    };
+    assert_eq!(second.absences, vec![v2]);
+    let b = holdings_of(&last, PB, "2026-12-31");
+    assert_eq!(b.quantity, balance(3, SECB_UNIT));
+    assert_eq!(b.absence.unwrap().version, 2);
+    // Through the earlier day, version 1 is the current assertion.
+    assert_eq!(
+        holdings_of(&last, PB, "2026-11-30")
+            .absence
+            .unwrap()
+            .version,
+        1
+    );
+    // SECA is listed, so it has no absence.
+    let a = holdings_of(&last, P, "2026-12-31");
+    assert_eq!(a.quantity, balance(6, SECA_UNIT));
+    assert_eq!(a.snapshot.unwrap().snapshot, second.id);
+    assert_eq!(a.absence, None);
+}
+
+#[test]
+fn cur_021_3_absence_follows_scope() {
+    let state = held();
+    let (snapshot, next) = published(&state, "holdings-y-complete.json", 7000);
+    assert_eq!(snapshot.completeness, CoverageStatus::Complete);
+    assert!(snapshot.absences.is_empty());
+    assert_eq!(holdings_of(&next, PB, "2026-11-30").absence, None);
+    // Only Y's position reads the snapshot.
+    let y = holdings_of(&next, PY, "2026-11-30");
+    assert_eq!(y.quantity, balance(2, SECA_UNIT));
+    assert_eq!(y.snapshot.unwrap().quantity, units(2, SECA_UNIT));
+    assert_eq!(holdings_of(&next, P, "2026-11-30").snapshot, None);
+}
+
 #[test]
 fn cur_021_snapshot_keeps_unmapped_positions() {
     let state = held();
@@ -943,7 +1028,9 @@ fn cur_021_snapshot_keeps_unmapped_positions() {
     assert_eq!(observation.semantic_kind, ObservationKind::Holding);
     assert!(observation.sanitized_representation.contains("SYN-9999"));
     // It does not count toward SECA.
-    assert_eq!(listed.quantity, Some(units(6, SECA_UNIT)));
+    let a = holdings_of(&next, P, "2026-11-30");
+    assert_eq!(a.snapshot.unwrap().quantity, units(6, SECA_UNIT));
+    assert_eq!(a.quantity, balance(6, SECA_UNIT));
 }
 
 #[test]
@@ -960,14 +1047,19 @@ fn cur_021_snapshot_replay() {
     }
     assert_eq!(next.through.0, state.through.0 + 4);
 
-    // A commit whose snapshot says SECA's row names SECB.
+    // A commit whose absence names SECA, which the snapshot lists.
     let plan = snapshot_plan(&next, "holdings-x-complete-2026-12-31.json", 7400);
     let batch = AccountingAdapter::freeze(&plan.accounting, &next).unwrap();
     let mut forged = plan.records.clone();
     let Some(AuthoritativeRecordV1::HoldingsSnapshot(snapshot)) = forged.last_mut() else {
         panic!("a snapshot record")
     };
-    snapshot.holdings[0].security = Some(id(SECB));
+    snapshot.absences.push(HoldingAbsenceV1 {
+        position: id(P),
+        security: id(SECA),
+        version: 1,
+        prior: None,
+    });
     rejected(&next, &candidate(&next, forged, batch.clone()));
     // The commit as planned still replays at that head.
     admit(&next, &candidate(&next, plan.records, batch)).unwrap();

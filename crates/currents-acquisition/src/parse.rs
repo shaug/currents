@@ -523,6 +523,7 @@ impl FileParser {
             currency: profile.currency.id,
             holdings,
             market_value: price(source.market_value.as_ref())?,
+            absences: vec![],
         };
         assemble(
             input.bytes,

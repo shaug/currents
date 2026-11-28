@@ -63,8 +63,8 @@ pub struct CaptureBatchV1 {
     pub receipt: ImportReceiptV1,
     pub products: Vec<AddressedParseProductV1>,
     pub contents: Vec<EvidenceContentV1>,
-    /// The holdings snapshot a `SyntheticHoldings` batch publishes; every
-    /// other format has none.
+    /// The holdings snapshot a `SyntheticHoldings` batch publishes, with no
+    /// absences yet; every other format has none.
     pub snapshot: Option<Box<HoldingsSnapshotV1>>,
 }
 

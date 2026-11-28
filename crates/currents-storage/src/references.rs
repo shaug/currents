@@ -757,6 +757,11 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 m.reference(&["ObservationVersion"], &holding["observation"], None);
                 m.reference(&["Security"], &holding["security"], None);
             }
+            for absence in v["absences"].as_array().ok_or_else(EngineError::invalid)? {
+                m.reference(&["Position"], &absence["position"], None);
+                m.reference(&["Security"], &absence["security"], None);
+                m.reference(&["HoldingsSnapshot"], &absence["prior"], None);
+            }
         }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);

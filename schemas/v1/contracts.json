@@ -19510,6 +19510,46 @@
             "value": {
               "additionalProperties": false,
               "properties": {
+                "absences": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "position": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "prior": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "security": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "security",
+                      "version",
+                      "prior"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
                 "as_of": {
                   "oneOf": [
                     {
@@ -19777,7 +19817,8 @@
                 "completeness",
                 "currency",
                 "holdings",
-                "market_value"
+                "market_value",
+                "absences"
               ],
               "type": "object"
             }
@@ -55959,6 +56000,46 @@
                   "value": {
                     "additionalProperties": false,
                     "properties": {
+                      "absences": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "prior": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "security": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "security",
+                            "version",
+                            "prior"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
                       "as_of": {
                         "oneOf": [
                           {
@@ -56226,7 +56307,8 @@
                       "completeness",
                       "currency",
                       "holdings",
-                      "market_value"
+                      "market_value",
+                      "absences"
                     ],
                     "type": "object"
                   }
@@ -72176,6 +72258,46 @@
                   "value": {
                     "additionalProperties": false,
                     "properties": {
+                      "absences": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "prior": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "security": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "version": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "security",
+                            "version",
+                            "prior"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
                       "as_of": {
                         "oneOf": [
                           {
@@ -72443,7 +72565,8 @@
                       "completeness",
                       "currency",
                       "holdings",
-                      "market_value"
+                      "market_value",
+                      "absences"
                     ],
                     "type": "object"
                   }

@@ -46,6 +46,10 @@ dto!(TradeV1 { id:RecordId, schema_version:u32, position:RecordId, side:TradeSid
 // its identifier names with the quantity in that security's unit, or none
 // when the identifier names no declared security.
 dto!(SnapshotHoldingV1 { observation:RecordId, security:Option<RecordId>, quantity:Option<Amount>, market_value:Option<Amount> });
+// A complete snapshot's assertion that a position in its scope holds none
+// of its security. Each later assertion for the position is the next
+// version and names the snapshot that holds the one before.
+dto!(HoldingAbsenceV1 { position:RecordId, security:RecordId, version:u32, prior:Option<RecordId> });
 // A source's holdings for an account scope as of one day. It records no
 // quantity change.
-dto!(HoldingsSnapshotV1 { id:RecordId, schema_version:u32, receipt:RecordId, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings:Vec<SnapshotHoldingV1>, market_value:Option<Amount> });
+dto!(HoldingsSnapshotV1 { id:RecordId, schema_version:u32, receipt:RecordId, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings:Vec<SnapshotHoldingV1>, market_value:Option<Amount>, absences:Vec<HoldingAbsenceV1> });

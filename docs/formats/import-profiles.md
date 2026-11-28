@@ -55,7 +55,8 @@ facet with its quantity in that security's unit; a quantity beyond the unit's
 exponent is refused. Any other position keeps its observation with an
 `Unknown` facet amount, and the snapshot lists it as unmapped. The symbol is
 retained and never matched. A file that names one identifier twice is
-refused.
+refused. The batch's snapshot draft has no absences; publication derives them
+from the dataset's positions.
 
 ## Limits and completion
 

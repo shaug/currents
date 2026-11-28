@@ -293,8 +293,8 @@ impl EvidenceEngine {
 
 impl EvidenceEngine {
     /// Publish a holdings snapshot: its receipt, one new observation and
-    /// product for each position, and the snapshot record. It changes no
-    /// quantity.
+    /// product for each position, and the snapshot record with the absences
+    /// a complete snapshot asserts. It changes no quantity.
     pub fn publish_holdings(
         state: &DomainState,
         batch: ValidatedEvidenceBatchV1,
@@ -406,6 +406,7 @@ fn snapshot_file(
         || snapshot.completeness != source.completeness
         || snapshot.currency != batch.unit.id
         || snapshot.market_value != total
+        || !snapshot.absences.is_empty()
         || snapshot.holdings.len() != source.positions.len()
         || source.positions.len() != batch.observations.len()
     {

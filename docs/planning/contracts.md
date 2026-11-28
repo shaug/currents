@@ -1070,7 +1070,8 @@ extends `ReplacedLegs` to trade quantity legs.
 
 ```text
 SnapshotHoldingV1 { observation, security:Option<RecordId>, quantity:Option<Amount>, market_value:Option<Amount> }
-HoldingsSnapshotV1 { id, schema_version, receipt, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings, market_value:Option<Amount> }
+HoldingAbsenceV1 { position, security, version, prior:Option<RecordId> }
+HoldingsSnapshotV1 { id, schema_version, receipt, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings, market_value:Option<Amount>, absences }
 ```
 
 A holdings snapshot is evidence of what a source reports an account scope
@@ -1087,10 +1088,23 @@ unit. A position whose identifier names no security keeps its observation,
 with an `Unknown` facet amount and no security; the snapshot lists it as
 unmapped. A display symbol never names a security. The planner refuses a
 snapshot that names one security twice, a quantity or market value beyond its
-unit's exponent, and a scope account that is not declared. Replay derives the
-snapshot record again from the prior prefix and the commit's own
-observations, so a forged holding is refused. Holdings claims stay with
-CUR-017.
+unit's exponent, a scope account that is not declared, and a scope whose
+positions hold one security twice.
+
+`scope` names the local accounts the snapshot covers. Only a `Complete`
+snapshot records absences. For each position whose quantity account is in its
+scope and whose security it omits, it records a `HoldingAbsenceV1`. The first
+absence for a position is version 1; each later one is the next version and
+names, as `prior`, the snapshot that holds the version before. A `Partial` or
+`Unknown` snapshot records no absence.
+
+`InvestmentEngine::holdings` adds `snapshot`, the latest snapshot whose scope
+covers the position's quantity account and lists its security, with that
+quantity and market value, and `absence`, the latest absence for the position
+when no snapshot at least as late lists the security. Snapshots order by
+as-of date, then by the commit of their receipt. Replay derives the snapshot
+record again from the prior prefix and the commit's own observations, so a
+forged holding or absence is refused. Holdings claims stay with CUR-017.
 
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 

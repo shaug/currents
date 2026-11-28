@@ -583,6 +583,9 @@ const CUR_021_SUITES: &Suites = &[
             "cur_021_1_missing_side_stays_explicit",
             "cur_021_1_no_sum_of_dollars_and_shares",
             "cur_021_corrections_refuse_trades",
+            "cur_021_3_incomplete_snapshot_keeps_missing_security",
+            "cur_021_3_complete_snapshot_records_absence_assertion",
+            "cur_021_3_absence_follows_scope",
             "cur_021_snapshot_keeps_unmapped_positions",
             "cur_021_snapshot_replay",
         ],
@@ -668,7 +671,7 @@ fn ticket_cur_021() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-021",
         "suites":ticket_suites("CUR021", CUR_021_SUITES)?,
-        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, the correction and segment refusal of quantity postings, and synthetic holdings snapshots that change no quantity; no openings, valuation, basis or command route"
+        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, the correction and segment refusal of quantity postings, and synthetic holdings snapshots with versioned absence assertions that change no quantity; no openings, valuation, basis or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {
