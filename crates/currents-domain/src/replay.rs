@@ -126,6 +126,14 @@ impl ReplayEngine {
         state
             .invalidated
             .extend(commit.command_result.effects.invalidations.iter().copied());
+        for record in &commit.records {
+            if let AuthoritativeRecordV1::ImportReceipt(receipt) = record {
+                state
+                    .receipt_commits
+                    .entry(receipt.id)
+                    .or_insert(commit.seq);
+            }
+        }
         Ok(())
     }
 }

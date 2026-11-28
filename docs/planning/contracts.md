@@ -494,7 +494,12 @@ The claim is `Proposed` only when it has no reasons. Otherwise it is
 `PartiallySupported`. `ClaimReasonV1` reasons are:
 
 - `IncompleteInterval`: no named receipt reports `Complete` coverage of the
-  whole interval by the request's date basis.
+  whole interval by the request's date basis, or a later receipt contradicts
+  the one the claim uses. When several named receipts report it, the claim
+  uses the one committed last. A receipt contradicts it when it comes from the
+  same source (an equal `SourceIdentityV1`), was committed after it, and
+  reports coverage by the request's date basis that overlaps the interval and
+  is not `Complete`. Commit order decides, not a receipt's received time.
 - `UnknownOpening` or `UnknownClosing`: the statement reports no single
   balance at the end of the day before the interval, or at the end of its last
   day. The opening is also unknown when the interval starts on or before the
@@ -535,11 +540,13 @@ and interval, each named observation with its latest explicit revision, each
 compared leg by its stable leg ID with its account, unit, effective date,
 posting date, normalized amount and evidence allocations, the account's
 current catalog terms except its display name, and the receipt coverage the
-claim used. Recognition and posting IDs are not inputs, so an identity-only
-correction keeps the digest. Neither organization records nor the display
-name enter the digest. When an anchor makes the opening unknown, the digest
-also covers the anchor's segment and opening terms; otherwise the digest is
-unchanged.
+claim used. When a later receipt contradicts that coverage, the digest also
+covers each contradicting receipt's ID and its overlapping coverage entries;
+a later receipt that reports the interval complete changes no input.
+Recognition and posting IDs are not inputs, so an identity-only correction
+keeps the digest. Neither organization records nor the display name enter
+the digest. When an anchor makes the opening unknown, the digest also covers
+the anchor's segment and opening terms; otherwise the digest is unchanged.
 
 ### CUR-017 balance agreement checkpoint
 
@@ -698,14 +705,17 @@ computed at `state` differs from the claim's recorded digest, or when
 - `EvidenceRevision`: a named observation has a later explicit revision.
   Evaluation refuses a revised observation, so the revision came after the
   claim.
-- `Coverage`: whether the named receipts report the interval complete differs
-  from the claim's own `IncompleteInterval` reason. Balance claims use no
-  coverage.
+- `Coverage`: whether the interval is complete differs from the claim's own
+  `IncompleteInterval` reason, or a receipt that contradicts the coverage the
+  claim used was committed after the claim's basis commit. A later import from
+  the same source that reports part of the interval `Partial` is one. A
+  receipt from another connection, by the other date basis, or outside the
+  interval leaves the claim `Current`. Balance claims use no coverage.
 - `Anchor`: the active anchor that decides the claim differs from the segment
   the claim names (balance agreement checkpoint).
 - `AccountMapping`: the account's catalog terms, other than its display name,
   changed. A named receipt never changes, so when the interval's completeness
-  is unchanged, a digest difference left after comparing the legs, anchor and
+  and its contradicting receipts are unchanged, a digest difference left after comparing the legs, anchor and
   named versions is in the catalog.
 - `Relationship`: the association a Relationship claim compared has a later
   revision. Activity, Balance and Holdings claims compare no relationship.
