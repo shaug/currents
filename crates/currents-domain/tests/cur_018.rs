@@ -588,7 +588,8 @@ fn as_of(value: &str) -> TemporalValue {
     }
 }
 
-/// Publish `records` as the next commit. The accounting index follows it.
+/// Publish `records` as the next commit. The accounting index follows it,
+/// and each receipt records this commit, as replay does.
 fn publish(state: &mut DomainState, records: Vec<AuthoritativeRecordV1>) {
     let plan = DecisionPlan {
         records,
@@ -598,6 +599,35 @@ fn publish(state: &mut DomainState, records: Vec<AuthoritativeRecordV1>) {
         }),
     };
     apply(state, &plan);
+    for record in &plan.records {
+        if let AuthoritativeRecordV1::ImportReceipt(receipt) = record {
+            state
+                .receipt_commits
+                .entry(receipt.id)
+                .or_insert(state.through);
+        }
+    }
+}
+
+/// Receipt `n` from `connection`, which reports `coverage`.
+fn receipt(n: u32, connection: u32, coverage: Vec<CoverageV1>) -> AuthoritativeRecordV1 {
+    AuthoritativeRecordV1::ImportReceipt(
+        serde_json::from_value(json!({
+            "id": id(n),
+            "source": from(connection),
+            "adapter_version": "synthetic/1",
+            "parser_version": "1",
+            "requested_coverage": [],
+            "reported_coverage": coverage,
+            "received_time": "2026-11-07T00:00:00Z",
+            "result": "Complete",
+            "cursor": {"state": "Absent"},
+            "truncated": false,
+            "complete": true,
+            "contents": []
+        }))
+        .unwrap(),
+    )
 }
 
 /// One source balance: observation `n`, its product `n + 1`, its facet
@@ -610,6 +640,7 @@ struct Report {
     unit: u32,
     as_of: TemporalValue,
     kind: BalanceKindV1,
+    coverage: Vec<CoverageV1>,
 }
 
 impl Report {
@@ -623,29 +654,15 @@ impl Report {
             unit: 1,
             as_of: as_of(day),
             kind: BalanceKindV1::Posted,
+            coverage: vec![],
         }
     }
 
     fn records(&self) -> Vec<AuthoritativeRecordV1> {
         let source = from(self.connection);
         let facet = id(self.n + 2);
-        let receipt: ImportReceiptV1 = serde_json::from_value(json!({
-            "id": id(self.n + 3),
-            "source": source,
-            "adapter_version": "synthetic/1",
-            "parser_version": "1",
-            "requested_coverage": [],
-            "reported_coverage": [],
-            "received_time": "2026-11-07T00:00:00Z",
-            "result": "Complete",
-            "cursor": {"state": "Absent"},
-            "truncated": false,
-            "complete": true,
-            "contents": []
-        }))
-        .unwrap();
         vec![
-            AuthoritativeRecordV1::ImportReceipt(receipt),
+            receipt(self.n + 3, self.connection, self.coverage.clone()),
             AuthoritativeRecordV1::ObservationVersion(ObservationVersionV1 {
                 id: id(self.n),
                 source,
@@ -1830,4 +1847,307 @@ fn cur_018_overlap_declaration_rules() {
     refuses(&state, &second(vec![id(C + 1)]));
     refuses(&state, &second(vec![id(BROKERAGE + 1)]));
     assert!(CatalogEngine::set_complete(&state, &second(vec![id(Q + 1)])).is_ok());
+}
+
+/// A's position on `requested`, evaluated at `instant`.
+fn query_at(state: &DomainState, requested: &str, instant: &str) -> PositionResponseV1 {
+    let mut read = serde_json::to_value(read_basis(state, requested)).unwrap();
+    read["evaluation_instant"] = json!(instant);
+    let read: ReadBasis = serde_json::from_value(read).unwrap();
+    PositionEngine::query(state, &read, &only(CHECKING)).unwrap()
+}
+
+/// Commit family 104's next revision, effective from 2026-11-01, which sets
+/// the freshness thresholds to `thresholds`.
+fn adopt_thresholds(
+    state: &mut DomainState,
+    prior: Option<u32>,
+    thresholds: SourceValue<Vec<FreshnessThresholdV1>>,
+) {
+    let mut r = request(prior, scope(Some("2026-11-01"), None));
+    r.policy_id = id(104);
+    r.freshness_thresholds = change(state, thresholds);
+    let plan = PolicyEngine::set(state, &r).unwrap();
+    apply(state, &plan);
+}
+
+/// The one freshness label, on the one selected assertion, with its
+/// threshold in seconds.
+fn label(response: &PositionResponseV1) -> (FreshnessStatus, u64) {
+    let [freshness] = response.freshness.as_slice() else {
+        panic!("one label, not {:?}", response.freshness)
+    };
+    assert_eq!(response.selected_basis, vec![freshness.source]);
+    let selected = response
+        .assertions
+        .iter()
+        .find(|a| a.id == freshness.source)
+        .unwrap();
+    assert_eq!(freshness.as_of, selected.as_of);
+    (freshness.status, freshness.threshold_seconds.0)
+}
+
+#[test]
+fn cur_018_1_no_freshness_threshold_is_not_assessed() {
+    let mut state = positions();
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 1200, "2026-11-05").records(),
+    );
+    // No revision sets a threshold.
+    let response = query(&state, "2026-11-06");
+    assert_eq!(label(&response), (FreshnessStatus::NotAssessed, 0));
+    // A threshold for S2 alone sets none for S1.
+    adopt_thresholds(
+        &mut state,
+        None,
+        SourceValue::Known(vec![threshold(S2, 60)]),
+    );
+    for instant in ["2026-11-05T00:00:00Z", "2026-12-31T00:00:00Z"] {
+        let response = query_at(&state, "2026-11-06", instant);
+        assert_eq!(label(&response), (FreshnessStatus::NotAssessed, 0));
+    }
+}
+
+#[test]
+fn cur_018_freshness_of_an_instant() {
+    let mut state = positions();
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 1200, "2026-11-05T12:00:00Z").records(),
+    );
+    adopt_thresholds(
+        &mut state,
+        None,
+        SourceValue::Known(vec![threshold(S1, 86_400)]),
+    );
+    for (instant, status) in [
+        ("2026-11-06T11:00:00Z", FreshnessStatus::Fresh),
+        ("2026-11-06T13:00:00Z", FreshnessStatus::Stale),
+    ] {
+        let response = query_at(&state, "2026-11-06", instant);
+        assert_eq!(label(&response), (status, 86_400), "{instant}");
+    }
+    // A later revision that sets the threshold `Unknown` labels it so.
+    adopt_thresholds(&mut state, Some(1), SourceValue::Unknown);
+    let response = query_at(&state, "2026-11-06", "2026-11-06T11:00:00Z");
+    assert_eq!(label(&response), (FreshnessStatus::Unknown, 0));
+}
+
+#[test]
+fn cur_018_freshness_of_a_date() {
+    let mut state = positions();
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 1200, "2026-11-05").records(),
+    );
+    adopt_thresholds(
+        &mut state,
+        None,
+        SourceValue::Known(vec![threshold(S1, 172_800)]),
+    );
+    // The date spans 2026-11-04T10:00Z to 2026-11-06T12:00Z.
+    for (instant, status) in [
+        ("2026-11-06T09:00:00Z", FreshnessStatus::Fresh),
+        ("2026-11-07T12:00:00Z", FreshnessStatus::Unknown),
+        ("2026-11-09T00:00:00Z", FreshnessStatus::Stale),
+    ] {
+        let response = query_at(&state, "2026-11-06", instant);
+        assert_eq!(label(&response), (status, 172_800), "{instant}");
+    }
+}
+
+/// A's opening of 3,300 at the end of 2026-11-01 and a -100 leg on
+/// 2026-11-03, so A's anchored balance is 3,200 from then on.
+fn anchored() -> DomainState {
+    let mut state = positions();
+    let opening = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    apply(&mut state, &plan);
+    movement(&mut state, 3000, -100, "2026-11-03");
+    state
+}
+
+#[test]
+fn cur_018_3_stale_assertion_stays_labeled() {
+    let mut state = anchored();
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 3250, "2026-11-03").records(),
+    );
+    adopt_thresholds(
+        &mut state,
+        None,
+        SourceValue::Known(vec![threshold(S1, 86_400)]),
+    );
+    // Evaluated on 2026-11-27, the 2026-11-03 balance is stale.
+    let response = query(&state, "2026-11-06");
+    assert_eq!(label(&response), (FreshnessStatus::Stale, 86_400));
+    assert_eq!(response.selected_basis, vec![id(2000)]);
+    assert_eq!(response.assertions[0].amount, amount(3250));
+    assert_eq!(
+        response.anchored_balance[0].amount,
+        SourceValue::Known(amount(3200))
+    );
+    // The stale assertion is A's amount, not the anchored balance.
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(3250)));
+}
+
+/// Date `request`'s legs, postings and bookkeeping on `day`.
+fn dated(request: &mut ActivityRequestV1, day: &str) {
+    for item in &mut request.legs {
+        item.leg.effective = date(day);
+        item.leg.posting = date(day);
+    }
+    if let Some(terms) = request.financial.as_mut() {
+        terms.bookkeeping_date = date(day);
+        for posting in &mut terms.postings {
+            posting.effective = date(day);
+            posting.posting = date(day);
+        }
+    }
+}
+
+#[test]
+fn cur_018_pending_stays_separate() {
+    let mut state = anchored();
+    publish(
+        &mut state,
+        Report::posted(2000, S1, 3200, "2026-11-05").records(),
+    );
+    let before = query(&state, "2026-11-06");
+    assert!(before.pending.is_empty());
+
+    // A pending -80 on A, effective 2026-11-04.
+    let binding = evidence(&mut state, 3200, -80, None);
+    let mut request = pending(binding, 3300);
+    dated(&mut request, "2026-11-04");
+    let leg = request.legs[0].leg.id;
+    let plan = RecognitionEngine::adopt(&state, &request).unwrap();
+    apply(&mut state, &plan);
+
+    let response = query(&state, "2026-11-06");
+    let [held] = response.pending.as_slice() else {
+        panic!("one pending movement")
+    };
+    assert_eq!(held.account, account(CHECKING));
+    assert_eq!(held.component, id(CHECKING + 1));
+    assert_eq!(held.amount, amount(-80));
+    assert_eq!(held.effective, date("2026-11-04"));
+    assert_eq!(held.evidence, vec![RecordId(leg.0), id(3200)]);
+    // Nothing else changes: the pending amount is not in the anchored
+    // balance, the selected amount or the aggregate.
+    assert_eq!(response.assertions, before.assertions);
+    assert_eq!(response.selected_basis, before.selected_basis);
+    assert_eq!(response.anchored_balance, before.anchored_balance);
+    assert_eq!(response.movements, before.movements);
+    assert_eq!(response.missing_inputs, before.missing_inputs);
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(3200)));
+    // Before its effective date it is not listed.
+    assert!(query(&state, "2026-11-03").pending.is_empty());
+
+    // A posted adoption consumes it.
+    let source = evidence(&mut state, 3210, -80, Some(id(3200)));
+    let mut request = posted(source, 3400, EXPENSE);
+    request.prior_pending = Some(id(3300));
+    dated(&mut request, "2026-11-04");
+    let plan = RecognitionEngine::adopt(&state, &request).unwrap();
+    apply(&mut state, &plan);
+    let response = query(&state, "2026-11-06");
+    assert!(response.pending.is_empty());
+    assert_eq!(
+        response.anchored_balance[0].amount,
+        SourceValue::Known(amount(3120))
+    );
+}
+
+/// A Balance request on A at the end of `day` for observation `n`.
+fn balance_request(state: &DomainState, n: u32, day: &str) -> ReconciliationRequestV1 {
+    ReconciliationRequestV1 {
+        kind: ReconciliationKindV1::Balance,
+        scope: AccountScope {
+            accounts: vec![account(CHECKING)],
+            components: vec![],
+        },
+        cutoffs: scope(None, Some(day)),
+        evidence: vec![id(n)],
+        exclusions: vec![],
+        basis: read_basis(state, day),
+    }
+}
+
+/// The anchored state with observation 2000 from `report`, and A's position
+/// on `requested`.
+fn reported(report: &Report, requested: &str) -> (DomainState, PositionResponseV1) {
+    let mut state = anchored();
+    publish(&mut state, report.records());
+    let response = query(&state, requested);
+    (state, response)
+}
+
+#[test]
+fn cur_018_discrepancy_only_for_comparable_balances() {
+    // A selected posted 3,250 against the anchored 3,200 on 2026-11-05.
+    let (state, response) = reported(&Report::posted(2000, S1, 3250, "2026-11-05"), "2026-11-05");
+    let [claim] = response.discrepancies.as_slice() else {
+        panic!("one discrepancy, not {:?}", response.discrepancies)
+    };
+    assert_eq!(claim.differences, vec![amount(50)]);
+    // It is the claim the reconciliation engine evaluates, unrecorded.
+    let request = balance_request(&state, 2000, "2026-11-05");
+    assert_eq!(
+        claim,
+        &ReconciliationEngine::evaluate(&state, &request).unwrap()
+    );
+    assert!(!state.records.contains_key(&claim.id));
+    // Neither balance moves.
+    assert_eq!(
+        response.anchored_balance[0].amount,
+        SourceValue::Known(amount(3200))
+    );
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(3250)));
+
+    // An equal posted balance yields none.
+    let (_, response) = reported(&Report::posted(2000, S1, 3200, "2026-11-05"), "2026-11-05");
+    assert_eq!(response.selected_basis, vec![id(2000)]);
+    assert!(response.discrepancies.is_empty());
+
+    // An `Available` balance of 3,000 yields none.
+    let mut available = Report::posted(2000, S1, 3000, "2026-11-05");
+    available.kind = BalanceKindV1::Available;
+    let (_, response) = reported(&available, "2026-11-05");
+    assert_eq!(listed(&response), vec![id(2000)]);
+    assert!(response.discrepancies.is_empty());
+
+    // A posted balance as of an instant has no civil date to compare.
+    let instant = Report::posted(2000, S1, 3250, "2026-11-05T12:00:00Z");
+    let (_, response) = reported(&instant, "2026-11-06");
+    assert_eq!(response.selected_basis, vec![id(2000)]);
+    assert!(response.discrepancies.is_empty());
+}
+
+/// Coverage of effective dates from `start` to `end` with `status`.
+fn covered(start: &str, end: &str, status: CoverageStatus) -> CoverageV1 {
+    CoverageV1 {
+        scope: scope(Some(start), Some(end)),
+        status,
+    }
+}
+
+#[test]
+fn cur_018_coverage_of_selected_source() {
+    let mut state = positions();
+    let october = covered("2026-10-01", "2026-10-31", CoverageStatus::Complete);
+    let november = covered("2026-11-01", "2026-11-05", CoverageStatus::Partial);
+    let other = covered("2026-10-01", "2026-11-05", CoverageStatus::Complete);
+    // S1's balance receipt commits first, and its later receipt has the
+    // lower ID, so commit order and ID order differ.
+    let mut selected = Report::posted(2000, S1, 1200, "2026-11-05");
+    selected.coverage = vec![october.clone()];
+    publish(&mut state, selected.records());
+    publish(&mut state, vec![receipt(1990, S2, vec![other])]);
+    publish(&mut state, vec![receipt(1980, S1, vec![november.clone()])]);
+    let response = query(&state, "2026-11-06");
+    assert_eq!(response.selected_basis, vec![id(2000)]);
+    assert_eq!(response.coverage, vec![october, november]);
 }

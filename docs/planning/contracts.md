@@ -909,10 +909,56 @@ forward by later movements.
   effective date. It leaves the movements and makes the anchored amount
   `Unknown`.
 
-`aggregate` follows the household aggregate checkpoint below. `pending`,
-`freshness`, `coverage` and `discrepancies` are empty, and each assertion's
-`coverage` is an unbounded `Unknown` entry; later CUR-018 work fills them.
-There is no route or query dispatch.
+`aggregate` follows the household aggregate checkpoint below. `freshness`,
+`pending`, `coverage` and `discrepancies` follow the position labels
+checkpoint below. Each assertion's `coverage` is an unbounded `Unknown`
+entry. There is no route or query dispatch.
+
+### CUR-018 position labels checkpoint
+
+```text
+FreshnessStatus = Fresh | Stale | Unknown | NotAssessed
+FreshnessV1 { source:RecordId, status, as_of:TemporalValue, threshold_seconds }
+```
+
+The labels describe each component's selection and leave `selected_basis`,
+`anchored_balance` and `aggregate` unchanged. A stale assertion stays
+selected, and the anchored balance never replaces it.
+
+`freshness` has one entry for each selected balance, in component order.
+`source` is the selected observation version's ID and `as_of` is the
+balance's as-of value. The governing `freshness_thresholds` for the
+requested date (`PolicyEngine::governing`) decide the status:
+
+- `NotAssessed`, with a threshold of 0: the setting is `NotSet`, or its
+  known list names no threshold for the balance's connection.
+- `Unknown`, with a threshold of 0: the setting is not a known list.
+- With a known threshold for the connection, the age is measured from the
+  as-of value to `basis.evaluation_instant`. The status is `Fresh` when even
+  the oldest instant the as-of can mean is within the threshold, and `Stale`
+  when even the newest is beyond it. Otherwise the timezone decides, and the
+  status is `Unknown`. An instant as-of has one meaning; a date-only as-of
+  spans from its start at UTC+14 to its end at UTC−12 (ruling G3 on #27).
+
+`pending` lists each leg on a component's account of every `Pending`
+activity adoption that no expiry and no posted adoption has consumed
+(`RecognitionEngine::pending`), when the leg's civil effective date is on or
+before the requested date. Each entry names the leg ID and its allocated
+observations as evidence. A pending leg is never in `movements`, the
+anchored balance or a selected amount.
+
+`coverage` lists the reported coverage entries of every receipt whose source
+identity equals a selected balance's source, in receipt commit order. Each
+receipt appears once, even when several components select from its source.
+
+`discrepancies` holds the Balance claim `ReconciliationEngine::evaluate`
+gives for a selected balance whose as-of is a civil date, when the claim
+reports a difference. The request names the component's account, that date as the
+`cutoffs` end, the selected observation version as its only evidence and the
+query's basis. A balance whose observation version has another facet is not
+evaluated. Without an anchor at or before the date the claim compares
+nothing, so it is not listed. The claim is not recorded, and a discrepancy
+adjusts neither balance.
 
 ### CUR-018 household aggregate checkpoint
 

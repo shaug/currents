@@ -75376,7 +75376,8 @@
                             "enum": [
                               "Fresh",
                               "Stale",
-                              "Unknown"
+                              "Unknown",
+                              "NotAssessed"
                             ],
                             "type": "string"
                           },

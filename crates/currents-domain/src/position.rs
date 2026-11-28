@@ -1,14 +1,18 @@
 //! Per-component position selection (C09). For each component in scope, the
 //! query lists the source balances its aliases bind, selects the latest
 //! compatible one at or before the requested date, and reports the journal's
-//! anchored balance or, without an anchor, the known movements. It reads the
-//! state and writes nothing. It never rolls a source balance forward.
+//! anchored balance or, without an anchor, the known movements. Beside them
+//! it labels each selected balance's freshness and lists pending activity,
+//! the selected sources' reported coverage and any journal discrepancy. It
+//! reads the state and writes nothing. It never rolls a source balance
+//! forward.
 use crate::activity_predicate::civil_date;
 use crate::aggregation::{self, Found};
-use crate::catalog::{CatalogEngine, journal_sign};
+use crate::catalog::{CatalogEngine, incomplete, journal_sign};
 use crate::dependencies::{self, Anchor};
 use crate::policy::PolicyEngine;
-use crate::reconciliation::facets;
+use crate::recognition::RecognitionEngine;
+use crate::reconciliation::{ReconciliationEngine, facets};
 use currents_types::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,6 +21,7 @@ pub struct PositionEngine;
 /// The most components one query reports.
 pub const MAX_POSITION_COMPONENTS: usize = 256;
 
+const NANOS_PER_SECOND: i128 = 1_000_000_000;
 const NANOS_PER_HOUR: i128 = 3_600_000_000_000;
 const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588;
 
@@ -70,7 +75,8 @@ impl Boundary {
 /// A balance that can be selected for a component.
 struct Candidate {
     observation: RecordId,
-    connection: RecordId,
+    source: SourceIdentityV1,
+    as_of: TemporalValue,
     boundary: Boundary,
     amount: Amount,
 }
@@ -91,9 +97,9 @@ fn select<'a>(candidates: &'a [Candidate], priority: &[RecordId]) -> Option<Vec<
     if latest.iter().all(|c| c.boundary == first.boundary)
         && let Some(top) = priority
             .iter()
-            .find(|source| latest.iter().any(|c| c.connection == **source))
+            .find(|source| latest.iter().any(|c| c.source.connection_id == **source))
     {
-        pool.retain(|c| c.connection == *top);
+        pool.retain(|c| c.source.connection_id == *top);
     }
     pool.iter()
         .all(|c| c.amount == pool[0].amount)
@@ -227,7 +233,8 @@ fn balances(
                 if let (true, Some(boundary)) = (fits, boundary) {
                     reading.candidates.push(Candidate {
                         observation: observation.id,
-                        connection: observation.source.connection_id,
+                        source: observation.source.clone(),
+                        as_of: facet.temporal.clone(),
                         boundary,
                         amount: amount.normalized()?,
                     });
@@ -314,6 +321,143 @@ fn journal(
     }))
 }
 
+/// The freshness label of a selected balance at `evaluated`, in nanoseconds
+/// since the Unix epoch, under the governing `thresholds`. A known threshold
+/// for its connection makes it `Fresh` when even the oldest instant its as-of
+/// can mean is within the threshold, and `Stale` when even the newest is
+/// beyond it; otherwise the timezone decides, and it is `Unknown`.
+fn freshness(
+    thresholds: &PolicySettingV1<Vec<FreshnessThresholdV1>>,
+    candidate: &Candidate,
+    evaluated: i128,
+) -> FreshnessV1 {
+    let (status, seconds) = match thresholds {
+        PolicySettingV1::NotSet => (FreshnessStatus::NotAssessed, 0),
+        PolicySettingV1::Set {
+            value: SourceValue::Known(list),
+            ..
+        } => match list
+            .iter()
+            .find(|t| t.source == candidate.source.connection_id)
+        {
+            None => (FreshnessStatus::NotAssessed, 0),
+            Some(threshold) => {
+                let limit = i128::from(threshold.seconds.0).saturating_mul(NANOS_PER_SECOND);
+                let (oldest, newest) = candidate.boundary.span();
+                let status = if evaluated.saturating_sub(oldest) <= limit {
+                    FreshnessStatus::Fresh
+                } else if evaluated.saturating_sub(newest) > limit {
+                    FreshnessStatus::Stale
+                } else {
+                    FreshnessStatus::Unknown
+                };
+                (status, threshold.seconds.0)
+            }
+        },
+        PolicySettingV1::Set { .. } => (FreshnessStatus::Unknown, 0),
+    };
+    FreshnessV1 {
+        source: candidate.observation,
+        status,
+        as_of: candidate.as_of.clone(),
+        threshold_seconds: CommitSeq(seconds),
+    }
+}
+
+/// The unrecorded Balance claim on `account` for a selected balance as of a
+/// civil date, when it reports a difference. A balance whose observation
+/// holds another facet is not one a Balance claim compares. Without an
+/// anchor at or before the date the claim compares nothing, so it reports
+/// none.
+fn discrepancy(
+    state: &DomainState,
+    basis: &ReadBasis,
+    account: AccountId,
+    candidate: &Candidate,
+) -> Result<Option<ReconciliationClaimV1>, EngineError> {
+    let Boundary::Date(day) = candidate.boundary else {
+        return Ok(None);
+    };
+    if facets(state, candidate.observation)?.len() != 1 {
+        return Ok(None);
+    }
+    let claim = ReconciliationEngine::evaluate(
+        state,
+        &ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Balance,
+            scope: AccountScope {
+                accounts: vec![account],
+                components: vec![],
+            },
+            cutoffs: DateScope {
+                start: None,
+                end: Some(day),
+                basis: DateBasis::Effective,
+            },
+            evidence: vec![candidate.observation],
+            exclusions: vec![],
+            basis: basis.clone(),
+        },
+    )?;
+    Ok((!claim.differences.is_empty()).then_some(claim))
+}
+
+/// Each leg on `component`'s account of the `pending` adoptions, dated on or
+/// before `day` by its effective date, with the leg ID and its allocated
+/// observations as evidence.
+fn pending(
+    state: &DomainState,
+    adoptions: &[ActivityAdoptionV1],
+    component: RecordId,
+    account: AccountId,
+    day: Date,
+) -> Result<Vec<AccountMovementV1>, EngineError> {
+    let mut found = Vec::new();
+    for leg_id in adoptions.iter().flat_map(|a| &a.legs) {
+        let Some(AuthoritativeRecordV1::FinancialLeg(leg)) = state.records.get(&RecordId(leg_id.0))
+        else {
+            return Err(incomplete());
+        };
+        if leg.account_id != account
+            || civil_date(DateBasis::Effective, &leg.effective, &leg.posting)
+                .is_none_or(|leg_day| leg_day > day)
+        {
+            continue;
+        }
+        found.push(AccountMovementV1 {
+            account,
+            component,
+            amount: leg.movement,
+            effective: leg.effective.clone(),
+            posting: leg.posting.clone(),
+            evidence: std::iter::once(RecordId(leg.id.0))
+                .chain(leg.allocations.iter().map(|a| a.observation))
+                .collect(),
+        });
+    }
+    Ok(found)
+}
+
+/// The reported coverage of every receipt from one of `sources`, in the
+/// order the receipts were committed.
+fn coverage(state: &DomainState, sources: &[SourceIdentityV1]) -> Vec<CoverageV1> {
+    let mut receipts: Vec<(CommitSeq, RecordId)> = state
+        .receipt_commits
+        .iter()
+        .map(|(id, commit)| (*commit, *id))
+        .collect();
+    receipts.sort();
+    let mut found = Vec::new();
+    for (_, id) in receipts {
+        if let Some(AuthoritativeRecordV1::ImportReceipt(receipt)) = state.records.get(&id)
+            && sources.contains(&receipt.source)
+        {
+            found.extend(receipt.reported_coverage.iter().cloned());
+        }
+    }
+    found
+}
+
 impl PositionEngine {
     /// The position of each component in `scope` on the requested date,
     /// `basis.effective_scope.end`, at the state's commit.
@@ -332,13 +476,16 @@ impl PositionEngine {
             return Err(EngineError::invalid());
         };
         let components = components(state, scope)?;
-        let priority = match PolicyEngine::governing(state, day)?.source_priority {
+        let policy = PolicyEngine::governing(state, day)?;
+        let priority = match policy.source_priority {
             PolicySettingV1::Set {
                 value: SourceValue::Known(order),
                 ..
             } => order,
             _ => Vec::new(),
         };
+        let evaluated = basis.evaluation_instant.unix_timestamp_nanos();
+        let held = RecognitionEngine::pending(state)?;
         let mut codes = BTreeSet::new();
         let mut readings = balances(state, &components, Boundary::Date(day), &mut codes)?;
 
@@ -346,6 +493,10 @@ impl PositionEngine {
         let mut movements = Vec::new();
         let mut anchored_balance = Vec::new();
         let mut selected = BTreeSet::new();
+        let mut labels = Vec::new();
+        let mut sources = Vec::new();
+        let mut discrepancies = Vec::new();
+        let mut pending_movements = Vec::new();
         let mut found = Vec::new();
         for (component, catalog) in &components {
             let reading = readings.remove(component).unwrap_or_default();
@@ -353,6 +504,20 @@ impl PositionEngine {
             if chosen.is_none() {
                 codes.insert("conflict");
             }
+            // Labels, coverage and discrepancies describe the selection and
+            // never change it.
+            for candidate in chosen.iter().flatten() {
+                labels.push(freshness(
+                    &policy.freshness_thresholds,
+                    candidate,
+                    evaluated,
+                ));
+                if !sources.contains(&candidate.source) {
+                    sources.push(candidate.source.clone());
+                }
+                discrepancies.extend(discrepancy(state, basis, catalog.account_id, candidate)?);
+            }
+            pending_movements.extend(pending(state, &held, *component, catalog.account_id, day)?);
             let anchored = journal(
                 state,
                 &legs,
@@ -391,10 +556,10 @@ impl PositionEngine {
             movements,
             anchored_balance,
             selected_basis: selected.into_iter().collect(),
-            pending: Vec::new(),
-            freshness: Vec::new(),
-            coverage: Vec::new(),
-            discrepancies: Vec::new(),
+            pending: pending_movements,
+            freshness: labels,
+            coverage: coverage(state, &sources),
+            discrepancies,
             missing_inputs: codes.into_iter().map(String::from).collect(),
             aggregate: aggregation::aggregate(state, day, found)?,
         })
