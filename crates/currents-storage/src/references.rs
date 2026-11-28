@@ -65,6 +65,7 @@ const RECORDS: &[&str] = &[
     "Position",
     "Trade",
     "HoldingsSnapshot",
+    "Reinvestment",
 ];
 const EVIDENCE: &[&str] = &[
     "ObservationVersion",
@@ -763,6 +764,15 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 m.reference(&["Security"], &absence["security"], None);
                 m.reference(&["HoldingsSnapshot"], &absence["prior"], None);
             }
+        }
+        AuthoritativeRecordV1::Reinvestment(link) => {
+            if link.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["ActivityAdoption"], &v["adoption"], None);
+            m.reference(&["Trade"], &v["trade"], None);
+            m.define("ReinvestedAdoption", &v["adoption"], 0, false);
+            m.define("ReinvestedTrade", &v["trade"], 0, false);
         }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);

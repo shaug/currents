@@ -1410,6 +1410,28 @@ highest version. In the example above, a read through 2026-12-31 reports the
 record again from the prior prefix and the commit's own observations, so a
 forged holding or absence is refused. Holdings claims stay with CUR-017.
 
+### CUR-021 reinvested dividends
+
+```text
+ReinvestmentRequestV1 { schema_version, id, dividend:ActivityRequestV1, purchase:TradeRequestV1 }
+ReinvestmentV1 { id, schema_version, adoption, trade }
+```
+
+`AuthoritativeRecordV1` adds `Reinvestment(ReinvestmentV1)`, schema version 1.
+
+`InvestmentEngine::reinvest(state,&ReinvestmentRequestV1)` plans a reinvested
+dividend as one plan with two recognitions. The dividend is an ordinary C08
+posted adoption of one positive cash row against an `IncomeFlow` account. The
+purchase is a trade buy whose cash leg pays exactly that amount out of the same
+account on the same day, and whose quantity leg is known. The three rows are
+distinct facts that nothing else binds. The plan holds both plans' records, the
+`ReinvestmentV1` that links the adoption and the trade, and
+`Recognitions([dividend, buy])`, so the cash account's balance does not change
+and the dividend's cash is never an extra deposit. The pair owns the dividend
+row, so a later adoption of it is refused. Replay derives the link again from
+the restored adoption and trade, which must be new in the same commit; each of
+them readmits its own records.
+
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 
 <a id="c12"></a>

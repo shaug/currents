@@ -19995,6 +19995,48 @@
             "value"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "Reinvestment"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "adoption": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "trade": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "adoption",
+                "trade"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -57298,6 +57340,48 @@
                   "value"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Reinvestment"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "adoption": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "trade": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "adoption",
+                      "trade"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -73714,6 +73798,48 @@
                       "value",
                       "override_action",
                       "source"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "Reinvestment"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "adoption": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "trade": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "adoption",
+                      "trade"
                     ],
                     "type": "object"
                   }

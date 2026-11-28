@@ -171,6 +171,9 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::HoldingsSnapshot(snapshot) => Some(
                 crate::investments::holdings::readmit(prior, next, snapshot)?,
             ),
+            AuthoritativeRecordV1::Reinvestment(link) => Some(
+                crate::investments::actions::readmit_reinvestment(prior, next, link)?,
+            ),
             // A revision is the plan the engine derives again from the prior
             // prefix. Two revisions of one family version share an ID, so the
             // projection must keep exactly this one.
@@ -287,6 +290,7 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::Position(_)
             | AuthoritativeRecordV1::Trade(_)
             | AuthoritativeRecordV1::HoldingsSnapshot(_)
+            | AuthoritativeRecordV1::Reinvestment(_)
             | AuthoritativeRecordV1::DatasetPolicyRevision(_) => true,
             // Only a security declaration declares a security unit.
             AuthoritativeRecordV1::UnitCatalog(catalog) => catalog
