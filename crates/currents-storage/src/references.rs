@@ -61,6 +61,7 @@ const RECORDS: &[&str] = &[
     "ForecastRun",
     "Security",
     "Position",
+    "Trade",
 ];
 const EVIDENCE: &[&str] = &[
     "ObservationVersion",
@@ -721,6 +722,24 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.reference(&["Security"], &v["security"], None);
             m.reference(&["Account"], &v["quantity_account"], None);
             m.reference(&["Account"], &v["carrying_account"], None);
+        }
+        AuthoritativeRecordV1::Trade(trade) => {
+            if trade.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["Position"], &v["position"], None);
+            m.reference(&["FinancialEvent"], &v["event_id"], None);
+            m.reference(&["Recognition"], &v["recognition"], None);
+            for side in [&v["cash"], &v["quantity"]] {
+                if side["state"] == "Known" {
+                    let facet = &side["value"];
+                    m.reference(&["FinancialLeg"], &facet["leg_id"], None);
+                    m.define("AdoptedFinancialLeg", &facet["leg_id"], 0, false);
+                    m.adopted_source(&facet["source"]);
+                }
+            }
+            m.policy(&v["governing_policy"]);
+            m.interpretation(&v["interpretation"]);
         }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);

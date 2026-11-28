@@ -544,6 +544,12 @@ const CUR_021_SUITES: &Suites = &[(
         "cur_021_position_links_security_accounts",
         "cur_021_ordinary_adoption_refuses_security_postings",
         "cur_021_replay_readmits_declarations",
+        "cur_021_1_buy_commits_cash_and_quantity",
+        "cur_021_1_sale_holds_proceeds_in_disposal_clearing",
+        "cur_021_1_buy_fee_capitalized_once",
+        "cur_021_1_missing_side_stays_explicit",
+        "cur_021_1_no_sum_of_dollars_and_shares",
+        "cur_021_corrections_refuse_trades",
     ],
 )];
 /// A suite qualifies only when its listed tests are exactly the required ones
@@ -613,7 +619,7 @@ fn ticket_cur_021() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-021",
         "suites":ticket_suites("CUR021", CUR_021_SUITES)?,
-        "scope":"synthetic security, security unit, control role and position declarations with replay, and the ordinary adoption and association refusal of security units; no trades, openings, valuation or command route"
+        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, and the correction and segment refusal of quantity postings; no openings, valuation, basis or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {

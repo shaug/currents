@@ -455,6 +455,16 @@ impl SegmentEngine {
         {
             return Err(invalid());
         }
+        // CUR-022 (#31) defines how a trade's quantity is replaced, so a
+        // closure that holds a security quantity is refused until then.
+        for again in &request.reemissions {
+            if let Some(AuthoritativeRecordV1::Recognition(original)) =
+                state.records.get(&RecordId(again.original.0))
+                && crate::investments::quantity::holds_quantity(state, original)?
+            {
+                return Err(EngineError::version());
+            }
+        }
         let Some(AuthoritativeRecordV1::AccountingSegment(prior)) =
             state.records.get(&request.prior_segment)
         else {

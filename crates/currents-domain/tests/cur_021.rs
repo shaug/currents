@@ -1,10 +1,17 @@
-//! CUR-021 security and position declarations, using synthetic identities and
-//! exact public interfaces.
+//! CUR-021 security and position declarations and trades, using synthetic
+//! identities and exact public interfaces.
+use currents_accounting::AccountingAdapter;
 use currents_domain::{
-    ReplayEngine, associations::IdentityEngine, catalog::CatalogEngine,
-    investments::InvestmentEngine, recognition::RecognitionEngine,
+    ReplayEngine,
+    associations::IdentityEngine,
+    catalog::CatalogEngine,
+    correction::CorrectionEngine,
+    investments::InvestmentEngine,
+    recognition::RecognitionEngine,
+    segments::{ReemissionV1, SegmentEngine, SegmentReplacementV1},
 };
 use currents_types::*;
+use std::collections::BTreeMap;
 #[path = "support/recognition.rs"]
 #[allow(dead_code)]
 mod fixture;
@@ -415,4 +422,346 @@ fn cur_021_replay_readmits_declarations() {
     );
     // The declaration itself still replays at this head.
     ReplayEngine::apply(&mut state.clone(), &commit(&state, plan.records)).unwrap();
+}
+
+fn civil(day: &str) -> Date {
+    let TemporalValue::Date { civil, .. } = date(day) else {
+        panic!("civil date")
+    };
+    civil
+}
+
+/// `request` planned, frozen and admitted after `state`.
+fn traded(state: &DomainState, request: &TradeRequestV1) -> DomainState {
+    let plan = InvestmentEngine::recognize(state, request).unwrap();
+    admit(state, &planned(state, &plan)).unwrap()
+}
+
+/// The buy of 10 SECA for 1,000 USD on 2026-11-03, as trade 8200.
+fn buy_of(state: &DomainState, rows: &Rows) -> TradeRequestV1 {
+    trade(
+        state,
+        8200,
+        TradeSideV1::Buy,
+        Some(&rows.cash["buy"]),
+        Some(&rows.quantity["buy"]),
+        0,
+    )
+}
+
+/// Each account whose balance differs between `before` and `after`, with
+/// its change.
+fn changes(before: &DomainState, after: &DomainState) -> BTreeMap<AccountId, Amount> {
+    let (before, after) = (balances(before), balances(after));
+    let mut changed = BTreeMap::new();
+    for account in before.keys().chain(after.keys()) {
+        let unit = before.get(account).or(after.get(account)).unwrap().unit_id;
+        let zero = Amount::new(0, 0, unit).unwrap();
+        let old = before.get(account).copied().unwrap_or(zero);
+        let new = after.get(account).copied().unwrap_or(zero);
+        let delta = new
+            .checked_add(&old.checked_neg().unwrap())
+            .unwrap()
+            .normalized()
+            .unwrap();
+        if delta.coefficient != 0 {
+            changed.insert(*account, delta);
+        }
+    }
+    changed
+}
+
+/// Each `(account, whole units, unit)` as an expected change.
+fn expect(entries: &[(u32, i128, u32)]) -> BTreeMap<AccountId, Amount> {
+    entries
+        .iter()
+        .map(|(account, value, unit)| (account_id(*account), balance(*value, *unit)))
+        .collect()
+}
+
+/// A correction that issues `original` again as recognition `n`, with
+/// postings from `n + 1`.
+fn reissued(state: &DomainState, original: RecognitionId, n: u32) -> CorrectionV1 {
+    let Some(AuthoritativeRecordV1::Recognition(recognition)) =
+        state.records.get(&RecordId(original.0))
+    else {
+        panic!("a recognition")
+    };
+    let mut again = recognition.clone();
+    again.id = RecognitionId(id(n).0);
+    for (k, posting) in again.postings.iter_mut().enumerate() {
+        posting.id = id(n + 1 + u32::try_from(k).unwrap());
+    }
+    CorrectionV1 {
+        active_recognition: original,
+        replacement: vec![again],
+        remapping: vec![],
+        reason: "Synthetic identity correction".into(),
+    }
+}
+
+#[test]
+fn cur_021_1_buy_commits_cash_and_quantity() {
+    let (state, rows) = trading();
+    let buy = buy_of(&state, &rows);
+    let plan = InvestmentEngine::recognize(&state, &buy).unwrap();
+    let trades: Vec<_> = plan
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            AuthoritativeRecordV1::Trade(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    let [record] = trades.as_slice() else {
+        panic!("one trade record")
+    };
+    assert_eq!(record.position, id(P));
+    assert_eq!(record.recognition, buy.terms.recognition_id);
+    assert!(matches!(record.cash, SourceValue::Known(_)));
+    assert!(matches!(record.quantity, SourceValue::Known(_)));
+
+    // One native batch whose one entry balances each unit on its own.
+    let batch = AccountingAdapter::freeze(&plan.accounting, &state).unwrap();
+    let [FrozenNativeOperationV1::Entry(entry)] = batch.operations.as_slice() else {
+        panic!("one entry")
+    };
+    let posted: BTreeMap<_, _> = entry
+        .postings
+        .iter()
+        .map(|p| {
+            (
+                p.original.account_id,
+                p.original.amount.normalized().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        posted,
+        expect(&[
+            (B, -1000, 1),
+            (K, 1000, 1),
+            (Q, 10, SECA_UNIT),
+            (QUANTITY_CONTROL, -10, SECA_UNIT),
+        ])
+    );
+    for unit in [unit_id(1), unit_id(SECA_UNIT)] {
+        let total = entry
+            .postings
+            .iter()
+            .filter(|p| p.unit.id == unit)
+            .try_fold(Amount::new(0, 0, unit).unwrap(), |sum, p| {
+                sum.checked_add(&p.original.amount)
+            })
+            .unwrap();
+        assert_eq!(total.coefficient, 0);
+    }
+
+    // Replay accepts the commit.
+    let next = admit(&state, &planned(&state, &plan)).unwrap();
+    assert_eq!(changes(&state, &next), posted);
+    let holdings = InvestmentEngine::holdings(&next, id(P), civil("2026-11-30")).unwrap();
+    assert_eq!(holdings.quantity, balance(10, SECA_UNIT));
+    assert_eq!(holdings.carrying, balance(1000, 1));
+    assert!(holdings.missing_quantity.is_empty() && holdings.missing_cash.is_empty());
+
+    // Replay refuses frozen operations that hold only one side's postings.
+    for unit in [unit_id(1), unit_id(SECA_UNIT)] {
+        let mut one_side = batch.clone();
+        let FrozenNativeOperationV1::Entry(entry) = &mut one_side.operations[0] else {
+            panic!("an entry")
+        };
+        entry.postings.retain(|p| p.unit.id == unit);
+        let c = candidate(&state, plan.records.clone(), rebound(one_side));
+        rejected(&state, &c);
+    }
+}
+
+#[test]
+fn cur_021_1_sale_holds_proceeds_in_disposal_clearing() {
+    let (state, rows) = trading();
+    let bought = traded(&state, &buy_of(&state, &rows));
+    let sale = trade(
+        &bought,
+        8300,
+        TradeSideV1::Sell,
+        Some(&rows.cash["sale"]),
+        Some(&rows.quantity["sale"]),
+        3,
+    );
+    let sold = traded(&bought, &sale);
+    // Gross proceeds go to disposal clearing and the fee to expense once.
+    // No income or gain account changes, and K keeps the buy's 1,000.
+    assert_eq!(
+        changes(&bought, &sold),
+        expect(&[
+            (B, 517, 1),
+            (FEE_EXPENSE, 3, 1),
+            (DISPOSAL_CLEARING, -520, 1),
+            (Q, -4, SECA_UNIT),
+            (QUANTITY_CONTROL, 4, SECA_UNIT),
+        ])
+    );
+    assert_eq!(balances(&sold)[&account_id(K)], balance(1000, 1));
+    let holdings = InvestmentEngine::holdings(&sold, id(P), civil("2026-11-30")).unwrap();
+    assert_eq!(holdings.quantity, balance(6, SECA_UNIT));
+    assert_eq!(holdings.carrying, balance(1000, 1));
+    // Through the day before the sale, only the buy counts.
+    let holdings = InvestmentEngine::holdings(&sold, id(P), civil("2026-11-09")).unwrap();
+    assert_eq!(holdings.quantity, balance(10, SECA_UNIT));
+}
+
+#[test]
+fn cur_021_1_buy_fee_capitalized_once() {
+    let (state, rows) = trading();
+    let buy = trade(
+        &state,
+        8200,
+        TradeSideV1::Buy,
+        Some(&rows.cash["buy-with-fee"]),
+        Some(&rows.quantity["buy-with-fee"]),
+        5,
+    );
+    let next = traded(&state, &buy);
+    assert_eq!(
+        changes(&state, &next),
+        expect(&[
+            (B, -1005, 1),
+            (K, 1005, 1),
+            (Q, 10, SECA_UNIT),
+            (QUANTITY_CONTROL, -10, SECA_UNIT),
+        ])
+    );
+    // A buy's fee is not also an expense.
+    let mut expensed = buy.clone();
+    expensed.terms.postings[1].amount = amount(1000);
+    expensed.terms.postings.push(PostingV1 {
+        id: id(8290),
+        account_id: account_id(FEE_EXPENSE),
+        amount: amount(5),
+        effective: date("2026-11-03"),
+        posting: date("2026-11-03"),
+    });
+    assert!(InvestmentEngine::recognize(&state, &expensed).is_err());
+}
+
+#[test]
+fn cur_021_1_missing_side_stays_explicit() {
+    let (state, rows) = trading();
+    let through = civil("2026-11-30");
+
+    let cash = &rows.cash["buy"];
+    let cash_only = trade(&state, 8200, TradeSideV1::Buy, Some(cash), None, 0);
+    assert_eq!(cash_only.quantity, SourceValue::Missing);
+    let next = traded(&state, &cash_only);
+    assert_eq!(
+        changes(&state, &next),
+        expect(&[(B, -1000, 1), (K, 1000, 1)])
+    );
+    let holdings = InvestmentEngine::holdings(&next, id(P), through).unwrap();
+    assert_eq!(holdings.missing_quantity, vec![id(8200)]);
+    assert!(holdings.missing_cash.is_empty());
+    assert_eq!(holdings.quantity, balance(0, SECA_UNIT));
+    assert_eq!(holdings.carrying, balance(1000, 1));
+
+    let quantity = &rows.quantity["buy"];
+    let quantity_only = trade(&state, 8200, TradeSideV1::Buy, None, Some(quantity), 0);
+    assert_eq!(quantity_only.cash, SourceValue::Missing);
+    let next = traded(&state, &quantity_only);
+    assert_eq!(
+        changes(&state, &next),
+        expect(&[(Q, 10, SECA_UNIT), (QUANTITY_CONTROL, -10, SECA_UNIT)])
+    );
+    let holdings = InvestmentEngine::holdings(&next, id(P), through).unwrap();
+    assert_eq!(holdings.missing_cash, vec![id(8200)]);
+    assert!(holdings.missing_quantity.is_empty());
+    assert_eq!(holdings.quantity, balance(10, SECA_UNIT));
+    assert_eq!(holdings.carrying, balance(0, 1));
+
+    let neither = trade(&state, 8200, TradeSideV1::Buy, None, None, 0);
+    assert!(InvestmentEngine::recognize(&state, &neither).is_err());
+}
+
+#[test]
+fn cur_021_1_no_sum_of_dollars_and_shares() {
+    let (state, rows) = trading();
+    let buy = buy_of(&state, &rows);
+    assert!(InvestmentEngine::recognize(&state, &buy).is_ok());
+    let refused = |request: TradeRequestV1| {
+        assert!(InvestmentEngine::recognize(&state, &request).is_err());
+    };
+    // The postings are B, K, Q and quantity control. Here USD sums to
+    // -1,000 and SECA to +1,000, and neither unit balances on its own.
+    let mut mixed = buy.clone();
+    let postings = &mut mixed.terms.postings;
+    postings[2].amount = units(1000, SECA_UNIT);
+    postings.remove(3);
+    postings.remove(1);
+    refused(mixed);
+    // A SECA posting on K.
+    let mut on_carrying = buy.clone();
+    on_carrying.terms.postings[1].amount = units(10, SECA_UNIT);
+    refused(on_carrying);
+    // A USD posting on Q.
+    let mut on_quantity = buy.clone();
+    on_quantity.terms.postings[2].amount = amount(10);
+    refused(on_quantity);
+    // 0.00001 SECA exceeds exponent 4, and the engine never rounds it.
+    let mut fine = buy.clone();
+    let tiny = Amount::new(1, 5, unit_id(SECA_UNIT)).unwrap();
+    let SourceValue::Known(leg) = &mut fine.quantity else {
+        panic!("a quantity leg")
+    };
+    leg.leg.movement = tiny;
+    leg.leg.allocations[0].amount = tiny;
+    leg.sources[0].amount = tiny;
+    fine.terms.postings[2].amount = tiny;
+    fine.terms.postings[3].amount = tiny.checked_neg().unwrap();
+    refused(fine);
+}
+
+#[test]
+fn cur_021_corrections_refuse_trades() {
+    let (state, rows) = trading();
+    let buy = buy_of(&state, &rows);
+    let mut state = traded(&state, &buy);
+    let original = buy.terms.recognition_id;
+    let request = reissued(&state, original, 8800);
+    let policy = PolicyReferenceV1 {
+        id: id(104),
+        version: 1,
+    };
+    assert!(CorrectionEngine::correct(&state, &request).is_err());
+    assert!(CorrectionEngine::correct_durable(&state, id(8850), &request).is_err());
+    assert!(CorrectionEngine::reinterpret(&state, id(8850), &request, &policy, None).is_err());
+    let adoption = posted(rows.cash["sale"].clone(), 8700, 30);
+    assert!(CorrectionEngine::replace_legs(&state, id(8850), &request, &adoption).is_err());
+
+    // A correction of an ordinary 96 USD purchase on B still has a plan.
+    let purchase = evidence(&mut state, 400, -96, None);
+    let plan = RecognitionEngine::adopt(&state, &posted(purchase, 500, 30)).unwrap();
+    let state = admit(&state, &planned(&state, &plan)).unwrap();
+    let ordinary = reissued(&state, RecognitionId(id(503).0), 8900);
+    assert!(CorrectionEngine::correct(&state, &ordinary).is_ok());
+
+    // A segment replacement of B whose closure includes the buy.
+    let (mut state, rows) = trading();
+    let opening = supported_opening(&mut state);
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    let state = admit(&state, &planned(&state, &plan)).unwrap();
+    let state = traded(&state, &buy_of(&state, &rows));
+    let again = reissued(&state, original, 8800);
+    let replacement = SegmentReplacementV1 {
+        prior_segment: id(707),
+        opening,
+        backfill: vec![],
+        approved_accounts: vec![account_id(B)],
+        transfers: vec![],
+        reemissions: vec![ReemissionV1 {
+            id: id(8960),
+            original,
+            replacement: again.replacement[0].clone(),
+        }],
+    };
+    assert!(SegmentEngine::replace(&state, &replacement).is_err());
 }
