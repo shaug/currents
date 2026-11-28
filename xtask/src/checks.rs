@@ -585,7 +585,14 @@ const CUR_018_SUITES: &Suites = &[
     (
         "currents-service",
         "cur_018",
-        &["cur_018_4_service_query_uses_one_basis"],
+        &[
+            "cur_018_4_service_query_uses_one_basis",
+            "cur_018_policy_commands_authorized_and_versioned",
+            "cur_018_policy_freshness_edit_affects_only_its_source",
+            "cur_018_policy_priority_edit_affects_only_ties",
+            "cur_018_policy_ownership_edit_affects_only_named_account",
+            "cur_018_policy_unknown_not_defaulted",
+        ],
     ),
 ];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
