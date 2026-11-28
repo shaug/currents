@@ -610,6 +610,17 @@ const CUR_021_SUITES: &Suites = &[
         &["cur_021_snapshot_rejects_bad_input"],
     ),
 ];
+/// Every CUR-019 test by package and target. Later CUR-019 leaves add theirs.
+const CUR_019_SUITES: &Suites = &[(
+    "currents-domain",
+    "cur_019",
+    &[
+        "cur_019_owner_meaning_replays_identically",
+        "cur_019_revisions_keep_prior_meaning",
+        "cur_019_revision_guards",
+        "cur_019_override_actions",
+    ],
+)];
 /// A suite qualifies only when its listed tests are exactly the required ones
 /// and every one of them ran and passed. An ignored test fails the suite.
 fn ticket_suite(
@@ -681,6 +692,13 @@ fn ticket_cur_018() -> Result<Value> {
         "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, and version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both; no command route, preview or transfer adjustment"
     }))
 }
+fn ticket_cur_019() -> Result<Value> {
+    Ok(json!({
+        "ticket":"CUR-019",
+        "suites":ticket_suites("CUR019", CUR_019_SUITES)?,
+        "scope":"synthetic owner parties, aliases, categories, tags and notes as versioned organization records, and owner party, category and tag values on legs as versioned assignments, with preserve, replace and clear, replay validation and the current owner value query; no precedence beyond the owner tier, rules, grants, proposals, splits or command route"
+    }))
+}
 fn ticket_cur_021() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-021",
@@ -697,6 +715,9 @@ fn ticket(name: &str) -> Result<Value> {
     }
     if name == "CUR-018" {
         return ticket_cur_018();
+    }
+    if name == "CUR-019" {
+        return ticket_cur_019();
     }
     if name == "CUR-021" {
         return ticket_cur_021();
@@ -1416,7 +1437,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
 #[cfg(test)]
 mod ticket_gate_tests {
     use super::{
-        CUR_016_SUITES, CUR_017_SUITES, CUR_018_SUITES, CUR_021_SUITES, Suites, ticket_suite,
+        CUR_016_SUITES, CUR_017_SUITES, CUR_018_SUITES, CUR_019_SUITES, CUR_021_SUITES, Suites,
+        ticket_suite,
     };
     fn list(names: &[&str]) -> String {
         let mut text: String = names.iter().map(|name| format!("{name}: test\n")).collect();
@@ -1477,6 +1499,10 @@ mod ticket_gate_tests {
     #[test]
     fn cur_017_gate_requires_full_inventory() {
         requires_full_inventory("CUR017", CUR_017_SUITES);
+    }
+    #[test]
+    fn cur_019_gate_requires_full_inventory() {
+        requires_full_inventory("CUR019", CUR_019_SUITES);
     }
     #[test]
     fn cur_021_gate_requires_full_inventory() {

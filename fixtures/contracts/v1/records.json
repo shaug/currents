@@ -513,5 +513,21 @@
         "start": "2026-11-09"
       }
     }
+  },
+  {
+    "kind": "OrganizationAssignment",
+    "value": {
+      "field": "Party",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "legs": [],
+      "override_action": "Preserve",
+      "schema_version": 1,
+      "source": {
+        "kind": "Owner"
+      },
+      "supersedes": null,
+      "value": null,
+      "version": 1
+    }
   }
 ]

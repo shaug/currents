@@ -151,10 +151,10 @@ pub(crate) struct Dependents {
 }
 
 /// Assess every dependent record against one change. Review records,
-/// forecast runs, occurrence matches, allocations and associations that name
-/// an affected account or a retired identity refuse the change, until their
-/// owners define correction rules. So does organization on a retired identity
-/// other than a leg.
+/// forecast runs, occurrence matches, allocations, associations and
+/// organization assignments that name an affected account or a retired
+/// identity refuse the change, until their owners define correction rules. So
+/// does an organization record on a retired identity other than a leg.
 pub(crate) fn assess(state: &DomainState, change: &Change) -> Result<Dependents, EngineError> {
     let names: BTreeSet<String> = change
         .accounts
@@ -171,7 +171,8 @@ pub(crate) fn assess(state: &DomainState, change: &Change) -> Result<Dependents,
             | AuthoritativeRecordV1::ForecastRun(_)
             | AuthoritativeRecordV1::OccurrenceMatch(_)
             | AuthoritativeRecordV1::Allocation(_)
-            | AuthoritativeRecordV1::Association(_) => {
+            | AuthoritativeRecordV1::Association(_)
+            | AuthoritativeRecordV1::OrganizationAssignment(_) => {
                 if names_any(&serialized(record)?, &names) {
                     return Err(EngineError::version());
                 }
