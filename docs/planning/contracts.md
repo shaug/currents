@@ -466,7 +466,7 @@ roles, records and command tags keep their bytes.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|Range{low,high}|Indeterminate{components,obstructions}`. Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|KnownSubtotal{known,omitted,obstructions}|Range{low,high}|Indeterminate{components,obstructions}` (see the CUR-018 household aggregate checkpoint). Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
@@ -875,12 +875,83 @@ forward by later movements.
   effective date. It leaves the movements and makes the anchored amount
   `Unknown`.
 
-Until household aggregation exists, `aggregate` is `Indeterminate`, listing
-each component with an `Unknown` amount and no evidence, with the one
-obstruction `aggregation_unavailable`. `pending`, `freshness`, `coverage` and
-`discrepancies` are empty, and each assertion's `coverage` is an unbounded
-`Unknown` entry; later CUR-018 work fills them. There is no route or query
-dispatch.
+`aggregate` follows the household aggregate checkpoint below. `pending`,
+`freshness`, `coverage` and `discrepancies` are empty, and each assertion's
+`coverage` is an unbounded `Unknown` entry; later CUR-018 work fills them.
+There is no route or query dispatch.
+
+### CUR-018 household aggregate checkpoint
+
+```text
+AggregateV1 = Exact(Amount)
+  | KnownSubtotal { known:Amount, omitted:Vec<AggregateOmissionV1>, obstructions:Vec<String> }
+  | Range { low, high }
+  | Indeterminate { components:Vec<AggregateComponentV1>, obstructions:Vec<String> }
+AggregateComponentV1 { component, amount:SourceValue<Amount>, evidence:Vec<RecordId> }
+AggregateOmissionV1 { component, amount:SourceValue<Amount>, evidence:Vec<RecordId>, reason:String }
+```
+
+The aggregate counts each in-perimeter component in scope once, at its exact
+governing ownership share, in the reporting currency. A missing opening,
+rate, ownership or value never counts as zero.
+
+A component's amount is its selected assertion's amount, with the selected
+observation version IDs as evidence. Without a selection it is the anchored
+balance, with the segment and legs as evidence. Without either it is
+`Unknown`. A liability's amount is the positive amount owed: a source
+balance reports it that way (ruling G5 on #27), and the anchored balance,
+which is debit-positive like the journal, is negated. C08 openings and the
+CUR-017 balance agreement still read a liability's source balance in journal
+sign; until #174 converts them, a liability anchored from a positive amount
+owed has a debit opening, and the aggregate counts its anchored balance with
+the wrong sign.
+
+The governing ownership perimeter for the requested date
+(`PolicyEngine::governing`) decides each share. When it is `NotSet`, each
+component's catalog ownership applies. When it is `Unknown`, every component
+is omitted with `unknown_ownership`. When it is known, a component whose
+account it does not list is outside the household: it is not listed anywhere
+in the aggregate and contributes nothing. The query never reads the dataset
+definition's bootstrap perimeter or `OwnershipPerimeter` records.
+
+The reporting currency is the governing `reporting_currency`, or the dataset
+definition's when that is `NotSet`. An `Unknown` value omits every component
+with `unknown_reporting_currency`.
+
+Each in-perimeter component is omitted with the first reason that applies:
+
+- `unknown_ownership`: the governing perimeter is `Unknown`.
+- `unknown_reporting_currency`: the governing reporting currency is
+  `Unknown`.
+- `unsupported_class`: the component is not an asset or a liability.
+- `conflict`: its candidates conflict, even when it has an anchored balance.
+- `unknown_opening`: it has no selection and no anchor at or before the
+  requested date.
+- `missing_date_mapping`: it has no selection, and its anchored amount is
+  `Unknown`.
+- `missing_rate`: its amount is in a currency other than the reporting
+  currency. There is no FX conversion.
+- `missing_value`: its amount is in a security or analytical unit. There is
+  no valuation.
+- `inexact_share`: its amount times its share has no exact decimal at a scale
+  of 18 or less.
+
+Every other component adds its amount times its share, and a liability
+subtracts it. The total is normalized and in the reporting currency.
+
+- `Exact(total)`: no in-perimeter component is omitted. A scope the known
+  perimeter leaves wholly outside the household gives `Exact` zero.
+- `KnownSubtotal`: some components are omitted and at least one counts.
+  `known` is the total of those that count, and `omitted` lists each omitted
+  component in component order with its amount in its own unit, its evidence
+  and its reason. A known subtotal is not complete net worth.
+- `Indeterminate`: every in-perimeter component is omitted, or the reporting
+  currency is `Unknown`. `components` lists each in-perimeter component in
+  component order with its amount in its own unit and its evidence.
+
+`obstructions` lists each omission reason once, sorted. The query never
+returns `Range`; transfer adjustments and brokerage overlap belong to later
+CUR-018 work.
 
 <a id="c10"></a>
 

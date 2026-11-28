@@ -30,6 +30,7 @@ pub mod relationship_parse;
 
 mod activity_predicate;
 
+mod aggregation;
 pub mod correction;
 mod dependencies;
 pub mod dependents;

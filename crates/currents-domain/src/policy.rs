@@ -21,9 +21,9 @@ fn revisions(state: &DomainState) -> impl Iterator<Item = &DatasetPolicyRevision
 }
 
 /// The one dataset the state holds.
-fn dataset(state: &DomainState) -> Result<DatasetId, EngineError> {
+pub(crate) fn dataset(state: &DomainState) -> Result<&DatasetDefinitionV1, EngineError> {
     let mut found = state.records.values().filter_map(|record| match record {
-        AuthoritativeRecordV1::Dataset(dataset) => Some(dataset.id),
+        AuthoritativeRecordV1::Dataset(dataset) => Some(dataset),
         _ => None,
     });
     let dataset = found.next().ok_or_else(incomplete)?;
@@ -182,7 +182,7 @@ impl PolicyEngine {
         {
             return Err(invalid());
         }
-        let dataset = dataset(state)?;
+        let dataset = dataset(state)?.id;
         if let Some(entries) = adopted(state, dataset, &request.ownership_perimeter)? {
             let accounts = declared_accounts(state);
             if !distinct(entries.iter().map(|e| e.account_id))
