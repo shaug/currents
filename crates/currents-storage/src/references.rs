@@ -65,6 +65,8 @@ const RECORDS: &[&str] = &[
     "Position",
     "Trade",
     "HoldingsSnapshot",
+    "Reinvestment",
+    "CorporateAction",
 ];
 const EVIDENCE: &[&str] = &[
     "ObservationVersion",
@@ -763,6 +765,41 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
                 m.reference(&["Security"], &absence["security"], None);
                 m.reference(&["HoldingsSnapshot"], &absence["prior"], None);
             }
+        }
+        AuthoritativeRecordV1::Reinvestment(link) => {
+            if link.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["ActivityAdoption"], &v["adoption"], None);
+            m.reference(&["Trade"], &v["trade"], None);
+            m.define("ReinvestedAdoption", &v["adoption"], 0, false);
+            m.define("ReinvestedTrade", &v["trade"], 0, false);
+        }
+        AuthoritativeRecordV1::CorporateAction(action) => {
+            if action.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["Security"], &v["security"], None);
+            for adjustment in v["adjustments"]
+                .as_array()
+                .ok_or_else(EngineError::invalid)?
+            {
+                m.reference(&["Position"], &adjustment["position"], None);
+                m.reference(&["Recognition"], &adjustment["recognition"], None);
+            }
+            for paid in v["cash_in_lieu"]
+                .as_array()
+                .ok_or_else(EngineError::invalid)?
+            {
+                m.reference(&["Position"], &paid["position"], None);
+                m.reference(&["FinancialEvent"], &paid["event_id"], None);
+                m.reference(&["Recognition"], &paid["recognition"], None);
+                let facet = &paid["cash"];
+                m.reference(&["FinancialLeg"], &facet["leg_id"], None);
+                m.define("AdoptedFinancialLeg", &facet["leg_id"], 0, false);
+                m.adopted_source(&facet["source"]);
+            }
+            m.interpretation(&v["interpretation"]);
         }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);

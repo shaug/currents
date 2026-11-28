@@ -53,3 +53,64 @@ dto!(HoldingAbsenceV1 { position:RecordId, security:RecordId, version:u32, prior
 // A source's holdings for an account scope as of one day. It records no
 // quantity change.
 dto!(HoldingsSnapshotV1 { id:RecordId, schema_version:u32, receipt:RecordId, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings:Vec<SnapshotHoldingV1>, market_value:Option<Amount>, absences:Vec<HoldingAbsenceV1> });
+// A reinvested dividend: the ordinary posted adoption of the dividend row
+// against an income account, and the buy of the position's security that
+// the dividend pays for. They plan and commit together.
+dto!(ReinvestmentRequestV1 {
+    schema_version: u32,
+    id: RecordId,
+    dividend: ActivityRequestV1,
+    purchase: TradeRequestV1
+});
+// Links a dividend's income adoption to the trade it reinvests in.
+dto!(ReinvestmentV1 {
+    id: RecordId,
+    schema_version: u32,
+    adoption: RecordId,
+    trade: RecordId
+});
+// The ratio a split applies to every quantity of its security, and the
+// quantity basis it ends and the one it starts. A security's first basis is 1.
+dto!(SplitV1 {
+    numerator: i64,
+    denominator: i64,
+    prior_basis: u32,
+    resulting_basis: u32
+});
+// What a corporate action states: complete split terms, or another kind of
+// action the engine cannot apply, kept as evidence and unresolved.
+tagged!(CorporateActionTermsV1 { Split(SplitV1), Unsupported(String) });
+// The recognition that posts one position's split quantity change.
+dto!(SplitAdjustmentV1 {
+    position: RecordId,
+    recognition: RecognitionId
+});
+// Cash a source pays for the fraction of a share a split leaves one
+// position: its leg and source, that fraction in the security's unit and the
+// recognition that posts the cash.
+dto!(CashInLieuV1 {
+    position: RecordId,
+    event_id: RecordId,
+    cash: AdoptedFacetV1,
+    fraction: Amount,
+    recognition: RecognitionId
+});
+// One corporate action on a security, effective on one day.
+dto!(CorporateActionV1 { id:RecordId, schema_version:u32, security:RecordId, effective:TemporalValue, terms:CorporateActionTermsV1, adjustments:Vec<SplitAdjustmentV1>, cash_in_lieu:Vec<CashInLieuV1>, interpretation:InterpretationV1 });
+// The postings of one position's split quantity change.
+dto!(SplitAdjustmentRequestV1 {
+    position: RecordId,
+    terms: RecognitionTermsV1
+});
+// One position's cash in lieu: its own event and cash leg, the fraction it
+// pays for and the postings of the cash.
+dto!(CashInLieuRequestV1 {
+    position: RecordId,
+    event: FinancialEventV1,
+    cash: AdoptedLegV1,
+    fraction: Amount,
+    terms: RecognitionTermsV1
+});
+// A corporate action to record. A split names each position's quantity
+// change and cash in lieu; an unsupported action names neither.
+dto!(CorporateActionRequestV1 { schema_version:u32, id:RecordId, security:RecordId, effective:TemporalValue, terms:CorporateActionTermsV1, adjustments:Vec<SplitAdjustmentRequestV1>, cash_in_lieu:Vec<CashInLieuRequestV1>, interpretation:InterpretationV1 });

@@ -109,7 +109,7 @@ fn validate(state: &DomainState, security: &SecurityV1) -> Result<(), EngineErro
 }
 
 /// The one component of `account` and its current catalog revision.
-fn account(
+pub(crate) fn account(
     state: &DomainState,
     account: AccountId,
 ) -> Result<(AccountComponentV1, AccountCatalogRevisionV1), EngineError> {
@@ -317,9 +317,11 @@ impl InvestmentEngine {
 
 /// What one position holds through a date: its recognized quantity and
 /// carrying amount, the trades by then whose quantity or cash side is
-/// missing, the latest snapshot quantity, any current absence assertion and
-/// the unmapped positions of the latest snapshot that covers it. A snapshot
-/// never changes the recognized quantity. A read result, not a record.
+/// missing, the latest snapshot quantity, any current absence assertion,
+/// the unmapped positions of the latest snapshot that covers it, the
+/// security's quantity basis and its unresolved corporate actions. A
+/// snapshot never changes the recognized quantity. A read result, not a
+/// record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PositionHoldingsV1 {
     pub position: RecordId,
@@ -331,6 +333,10 @@ pub struct PositionHoldingsV1 {
     pub snapshot: Option<super::holdings::SnapshotQuantityV1>,
     pub absence: Option<super::holdings::SnapshotAbsenceV1>,
     pub unmapped: Option<super::holdings::SnapshotUnmappedV1>,
+    /// The security's quantity basis on `through`.
+    pub basis: u32,
+    /// Each unsupported corporate action on the security effective by then.
+    pub unresolved: Vec<RecordId>,
 }
 
 /// Whether `recognition` posts a security quantity. Until CUR-022 (#31)
@@ -348,9 +354,9 @@ pub(crate) fn holds_quantity(
     Ok(false)
 }
 
-/// Where a trade posting goes.
+/// Where an investment posting goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Slot {
+pub(crate) enum Slot {
     /// The cash leg's external account.
     Cash,
     /// The position's carrying-amount account.
@@ -366,7 +372,7 @@ enum Slot {
 }
 
 /// The amount and dates each slot must post.
-type Expected<'a> = BTreeMap<Slot, (Amount, &'a TemporalValue, &'a TemporalValue)>;
+pub(crate) type Expected<'a> = BTreeMap<Slot, (Amount, &'a TemporalValue, &'a TemporalValue)>;
 
 /// A side's leg when it is known; refused unless known or missing.
 fn side(value: &SourceValue<AdoptedLegV1>) -> Result<Option<&AdoptedLegV1>, EngineError> {
@@ -414,12 +420,13 @@ fn owned(lookup: &Lookup, fact: (RecordId, RecordId)) -> Result<bool, EngineErro
     Ok(false)
 }
 
-/// Check one known side's leg: it belongs to the request's event, moves an
-/// open external account in a unit of `kind` by exactly its one movement
-/// source, and binds a fact nothing else binds. Returns that fact.
-fn known_leg(
+/// Check one known leg: it belongs to `event`, carries `interpretation`,
+/// moves an open external account in a unit of `kind` by exactly its one
+/// movement source, and binds a fact nothing else binds. Returns that fact.
+pub(crate) fn known_leg(
     lookup: &Lookup,
-    request: &TradeRequestV1,
+    event: RecordId,
+    interpretation: &InterpretationV1,
     item: &AdoptedLegV1,
     kind: UnitKind,
 ) -> Result<(RecordId, RecordId), EngineError> {
@@ -433,10 +440,10 @@ fn known_leg(
         amount: source.amount,
     };
     if leg.id.0.is_nil()
-        || leg.event_id != request.event.id
+        || leg.event_id != event
         || !leg.relationships.is_empty()
         || leg.unresolved_residual != SourceValue::Absent
-        || leg.interpretation != SourceValue::Known(request.interpretation.clone())
+        || leg.interpretation != SourceValue::Known(interpretation.clone())
         || leg.allocations != [allocation]
         || leg.movement.coefficient == 0
         || leg.movement.normalized()? != source.amount.normalized()?
@@ -547,11 +554,182 @@ fn expected<'a>(
 }
 
 /// The civil day of `value`; an instant or unknown time has none here.
-fn day(value: &TemporalValue) -> Result<Date, EngineError> {
+pub(crate) fn day(value: &TemporalValue) -> Result<Date, EngineError> {
     match value {
         TemporalValue::Date { civil, .. } => Ok(*civil),
         _ => Err(incomplete()),
     }
+}
+
+/// The recognition `terms` posts for `position`, whose postings must fill
+/// exactly the `required` slots. `legs` are the known legs it recognizes,
+/// and `cash`, among them, is the leg whose account is the cash slot.
+/// `ids` holds the identities the caller's plan already uses; the
+/// recognition, its lineage and each posting must be new to it and to the
+/// state. Each unit balances on its own; a posting in another unit than its
+/// account's, beyond its unit's exponent, to a closed account or at or before
+/// a supported opening's cutoff is refused.
+pub(crate) fn entry(
+    lookup: &Lookup,
+    position: &PositionV1,
+    cash: Option<&AdoptedLegV1>,
+    legs: &[&AdoptedLegV1],
+    terms: &RecognitionTermsV1,
+    required: &Expected,
+    ids: &mut BTreeSet<RecordId>,
+) -> Result<RecognitionV1, EngineError> {
+    let state = lookup.state;
+    let index = state.accounting.as_ref().ok_or_else(incomplete)?;
+    if index.prefix.through != state.through || !index.calendar_declared {
+        return Err(incomplete());
+    }
+    let dates = index
+        .date_policies
+        .get(&(terms.date_policy.id, terms.date_policy.version))
+        .ok_or_else(incomplete)?;
+    if dates.id != terms.date_policy.id
+        || dates.version != terms.date_policy.version
+        || !known_time(&terms.bookkeeping_date)
+    {
+        return Err(incomplete());
+    }
+    if terms.unresolved_account.is_some() || terms.opening.is_some() {
+        return Err(invalid());
+    }
+    // Every identity is new, and no other recognition holds the lineage or
+    // a posting ID.
+    let fresh = [terms.lineage, RecordId(terms.recognition_id.0)]
+        .into_iter()
+        .chain(terms.postings.iter().map(|p| p.id));
+    for id in fresh {
+        if id.0.is_nil() || !ids.insert(id) || state.records.contains_key(&id) {
+            return Err(invalid());
+        }
+    }
+    let taken = lookup
+        .recognitions()
+        .iter()
+        .any(|r| r.lineage == terms.lineage || r.postings.iter().any(|p| ids.contains(&p.id)))
+        || index.recognitions.contains_key(&terms.recognition_id)
+        || index
+            .recognitions
+            .values()
+            .flatten()
+            .any(|entry| entry.postings.iter().any(|p| ids.contains(&p.original.id)));
+    if taken {
+        return Err(invalid());
+    }
+
+    // Each posting is in its account's unit and fills one slot once; the
+    // slots are exactly those required.
+    let mut sums = BTreeMap::<UnitId, Amount>::new();
+    let mut actual = Expected::new();
+    for posting in &terms.postings {
+        let (component, catalog) = account(state, posting.account_id)?;
+        let mapping = index
+            .accounts
+            .get(&posting.account_id)
+            .ok_or_else(incomplete)?;
+        if posting.amount.coefficient == 0
+            || posting.amount.unit_id != component.unit_id
+            || mapping.unit_id != component.unit_id
+            || catalog.catalog.lifecycle != Lifecycle::Open
+            || !known_time(&posting.effective)
+            || !known_time(&posting.posting)
+        {
+            return Err(invalid());
+        }
+        exact(lookup, &posting.amount)?;
+        let sum = sums.entry(posting.amount.unit_id).or_insert(Amount::new(
+            0,
+            0,
+            posting.amount.unit_id,
+        )?);
+        *sum = sum.checked_add(&posting.amount)?;
+        let slot = slot(state, position, cash, posting.account_id)?;
+        let filled = (
+            posting.amount.normalized()?,
+            &posting.effective,
+            &posting.posting,
+        );
+        if actual.insert(slot, filled).is_some() {
+            return Err(invalid());
+        }
+    }
+    if sums.values().any(|sum| sum.coefficient != 0) {
+        return Err(EngineError {
+            class: ErrorClass::Unbalanced,
+            ..invalid()
+        });
+    }
+    let mut normal = Expected::new();
+    for (slot, (amount, effective, posting)) in required {
+        normal.insert(*slot, (amount.normalized()?, *effective, *posting));
+    }
+    if actual != normal {
+        return Err(invalid());
+    }
+    // Activity at or before a supported opening is already in it.
+    crate::segments::movement_boundary(
+        state,
+        terms
+            .postings
+            .iter()
+            .map(|p| (p.account_id, &p.effective))
+            .chain(legs.iter().map(|l| (l.leg.account_id, &l.leg.effective))),
+    )?;
+
+    let days: Vec<Date> = terms
+        .postings
+        .iter()
+        .filter_map(|p| day(&p.effective).ok())
+        .collect();
+    Ok(RecognitionV1 {
+        id: terms.recognition_id,
+        lineage: terms.lineage,
+        postings: terms.postings.clone(),
+        kind: RecognitionKind::Activity,
+        evidence_allocations: legs
+            .iter()
+            .flat_map(|l| l.leg.allocations.clone())
+            .collect(),
+        leg_ids: legs.iter().map(|l| l.leg.id).collect(),
+        scope: DateScope {
+            start: days.iter().min().copied(),
+            end: days.iter().max().copied(),
+            basis: DateBasis::Effective,
+        },
+        bookkeeping_date: terms.bookkeeping_date.clone(),
+        date_policy: terms.date_policy.clone(),
+    })
+}
+
+/// Check an owner's interpretation: an owner decision with a reason, whose
+/// evidence is retained source evidence.
+pub(crate) fn owner_interpretation(
+    state: &DomainState,
+    interpretation: &InterpretationV1,
+) -> Result<(), EngineError> {
+    if interpretation.authority != AuthorityKind::Owner
+        || interpretation.kind != DecisionKind::Interpretation
+        || interpretation.reason.trim().is_empty()
+        || interpretation.reason.len() > 4096
+    {
+        return Err(invalid());
+    }
+    for id in &interpretation.evidence {
+        if !matches!(
+            state.records.get(id),
+            Some(
+                AuthoritativeRecordV1::ObservationVersion(_)
+                    | AuthoritativeRecordV1::ImportReceipt(_)
+                    | AuthoritativeRecordV1::AddressedParseProduct(_)
+            )
+        ) {
+            return Err(incomplete());
+        }
+    }
+    Ok(())
 }
 
 impl InvestmentEngine {
@@ -560,7 +738,8 @@ impl InvestmentEngine {
     /// together. A missing side posts nothing and stays explicit in the
     /// trade record. Each unit balances on its own; the engine refuses a
     /// posting in another unit than its account's, an amount beyond its
-    /// unit's exponent and a request with neither side known.
+    /// unit's exponent, a request with neither side known and a quantity
+    /// dated before the security's latest split.
     pub fn recognize(
         state: &DomainState,
         request: &TradeRequestV1,
@@ -573,11 +752,6 @@ impl InvestmentEngine {
         };
         let security = Self::current(state, position.security)?;
         let (carrying, _) = account(state, position.carrying_account)?;
-        let index = state.accounting.as_ref().ok_or_else(incomplete)?;
-        if index.prefix.through != state.through || !index.calendar_declared {
-            return Err(incomplete());
-        }
-        let terms = &request.terms;
         let policy = state
             .dataset_policies
             .get(&(
@@ -585,41 +759,17 @@ impl InvestmentEngine {
                 request.governing_policy.version,
             ))
             .ok_or_else(incomplete)?;
-        let dates = index
-            .date_policies
-            .get(&(terms.date_policy.id, terms.date_policy.version))
-            .ok_or_else(incomplete)?;
         if policy.id != request.governing_policy.id
             || policy.version != request.governing_policy.version
-            || dates.id != terms.date_policy.id
-            || dates.version != terms.date_policy.version
-            || !known_time(&terms.bookkeeping_date)
         {
             return Err(incomplete());
         }
         let interpretation = &request.interpretation;
-        if interpretation.authority != AuthorityKind::Owner
-            || interpretation.kind != DecisionKind::Interpretation
-            || interpretation.reason.trim().is_empty()
-            || interpretation.reason.len() > 4096
-            || request.event.interpretation != SourceValue::Known(interpretation.clone())
+        owner_interpretation(state, interpretation)?;
+        if request.event.interpretation != SourceValue::Known(interpretation.clone())
             || !request.event.relationships.is_empty()
-            || terms.unresolved_account.is_some()
-            || terms.opening.is_some()
         {
             return Err(invalid());
-        }
-        for id in &interpretation.evidence {
-            if !matches!(
-                state.records.get(id),
-                Some(
-                    AuthoritativeRecordV1::ObservationVersion(_)
-                        | AuthoritativeRecordV1::ImportReceipt(_)
-                        | AuthoritativeRecordV1::AddressedParseProduct(_)
-                )
-            ) {
-                return Err(incomplete());
-            }
         }
 
         let cash = side(&request.cash)?;
@@ -630,135 +780,50 @@ impl InvestmentEngine {
         {
             return Err(invalid());
         }
+        let event = request.event.id;
         let mut facts = BTreeSet::new();
         if let Some(cash) = cash {
-            let fact = known_leg(&lookup, request, cash, UnitKind::Currency)?;
+            let fact = known_leg(&lookup, event, interpretation, cash, UnitKind::Currency)?;
             if cash.leg.movement.unit_id != carrying.unit_id || !facts.insert(fact) {
                 return Err(invalid());
             }
         }
         if let Some(quantity) = quantity {
-            let fact = known_leg(&lookup, request, quantity, UnitKind::Security)?;
+            let fact = known_leg(&lookup, event, interpretation, quantity, UnitKind::Security)?;
             if quantity.leg.account_id != position.quantity_account
                 || quantity.leg.movement.unit_id != security.unit_id
                 || !facts.insert(fact)
             {
                 return Err(invalid());
             }
+            // A quantity on an earlier basis than the security's latest
+            // split would change what that split posted.
+            super::actions::after_splits(state, position.security, &quantity.leg.effective)?;
         }
         if request.fee.unit_id != carrying.unit_id {
             return Err(invalid());
         }
         exact(&lookup, &request.fee)?;
 
-        // Every identity is new, and no other recognition holds the lineage
-        // or a posting ID.
         let mut ids = BTreeSet::new();
-        let fresh = [request.id, request.event.id, terms.lineage]
+        let fresh = [request.id, event]
             .into_iter()
-            .chain([RecordId(terms.recognition_id.0)])
-            .chain(known.iter().map(|l| RecordId(l.leg.id.0)))
-            .chain(terms.postings.iter().map(|p| p.id));
+            .chain(known.iter().map(|l| RecordId(l.leg.id.0)));
         for id in fresh {
             if id.0.is_nil() || !ids.insert(id) || state.records.contains_key(&id) {
                 return Err(invalid());
             }
         }
-        let taken =
-            lookup.recognitions().iter().any(|r| {
-                r.lineage == terms.lineage || r.postings.iter().any(|p| ids.contains(&p.id))
-            }) || index.recognitions.contains_key(&terms.recognition_id)
-                || index
-                    .recognitions
-                    .values()
-                    .flatten()
-                    .any(|entry| entry.postings.iter().any(|p| ids.contains(&p.original.id)));
-        if taken {
-            return Err(invalid());
-        }
-
-        // Each posting is in its account's unit and fills one slot once; the
-        // slots are exactly those the known sides require.
-        let mut sums = BTreeMap::<UnitId, Amount>::new();
-        let mut actual = Expected::new();
-        for posting in &terms.postings {
-            let (component, catalog) = account(state, posting.account_id)?;
-            let mapping = index
-                .accounts
-                .get(&posting.account_id)
-                .ok_or_else(incomplete)?;
-            if posting.amount.coefficient == 0
-                || posting.amount.unit_id != component.unit_id
-                || mapping.unit_id != component.unit_id
-                || catalog.catalog.lifecycle != Lifecycle::Open
-                || !known_time(&posting.effective)
-                || !known_time(&posting.posting)
-            {
-                return Err(invalid());
-            }
-            exact(&lookup, &posting.amount)?;
-            let sum = sums.entry(posting.amount.unit_id).or_insert(Amount::new(
-                0,
-                0,
-                posting.amount.unit_id,
-            )?);
-            *sum = sum.checked_add(&posting.amount)?;
-            let slot = slot(state, position, cash, posting.account_id)?;
-            let filled = (
-                posting.amount.normalized()?,
-                &posting.effective,
-                &posting.posting,
-            );
-            if actual.insert(slot, filled).is_some() {
-                return Err(invalid());
-            }
-        }
-        if sums.values().any(|sum| sum.coefficient != 0) {
-            return Err(EngineError {
-                class: ErrorClass::Unbalanced,
-                ..invalid()
-            });
-        }
-        let mut required = expected(request, cash, quantity)?;
-        for value in required.values_mut() {
-            value.0 = value.0.normalized()?;
-        }
-        if actual != required {
-            return Err(invalid());
-        }
-        // Activity at or before a supported opening is already in it.
-        crate::segments::movement_boundary(
-            state,
-            terms
-                .postings
-                .iter()
-                .map(|p| (p.account_id, &p.effective))
-                .chain(known.iter().map(|l| (l.leg.account_id, &l.leg.effective))),
+        let required = expected(request, cash, quantity)?;
+        let recognition = entry(
+            &lookup,
+            position,
+            cash,
+            &known,
+            &request.terms,
+            &required,
+            &mut ids,
         )?;
-
-        let days: Vec<Date> = terms
-            .postings
-            .iter()
-            .filter_map(|p| day(&p.effective).ok())
-            .collect();
-        let recognition = RecognitionV1 {
-            id: terms.recognition_id,
-            lineage: terms.lineage,
-            postings: terms.postings.clone(),
-            kind: RecognitionKind::Activity,
-            evidence_allocations: known
-                .iter()
-                .flat_map(|l| l.leg.allocations.clone())
-                .collect(),
-            leg_ids: request.event.legs.clone(),
-            scope: DateScope {
-                start: days.iter().min().copied(),
-                end: days.iter().max().copied(),
-                basis: DateBasis::Effective,
-            },
-            bookkeeping_date: terms.bookkeeping_date.clone(),
-            date_policy: terms.date_policy.clone(),
-        };
         let bound = |leg: Option<&AdoptedLegV1>| match leg {
             Some(item) => SourceValue::Known(AdoptedFacetV1 {
                 leg_id: item.leg.id,
@@ -771,11 +836,11 @@ impl InvestmentEngine {
             schema_version: 1,
             position: request.position,
             side: request.side,
-            event_id: request.event.id,
+            event_id: event,
             cash: bound(cash),
             quantity: bound(quantity),
             fee: request.fee,
-            recognition: terms.recognition_id,
+            recognition: request.terms.recognition_id,
             interpretation: interpretation.clone(),
             governing_policy: request.governing_policy.clone(),
         };
@@ -871,6 +936,8 @@ impl InvestmentEngine {
             snapshot,
             absence,
             unmapped,
+            basis: super::actions::basis(state, p.security, through)?,
+            unresolved: super::actions::unresolved(state, p.security, through)?,
         })
     }
 }

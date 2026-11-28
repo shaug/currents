@@ -1,0 +1,5 @@
+original_id,amount,unit,effective,description
+buy-p,-600.00,USD,2026-11-02,synthetic buy of 6 SECA
+dividend,50.00,USD,2026-11-15,synthetic SECA dividend
+reinvest,-50.00,USD,2026-11-15,synthetic reinvestment of the SECA dividend in 0.4 SECA
+cash-in-lieu,30.00,USD,2026-11-20,synthetic cash in lieu of 0.5 SECW

@@ -171,6 +171,13 @@ pub(crate) fn validate_transition(
             AuthoritativeRecordV1::HoldingsSnapshot(snapshot) => Some(
                 crate::investments::holdings::readmit(prior, next, snapshot)?,
             ),
+            AuthoritativeRecordV1::Reinvestment(link) => Some(
+                crate::investments::actions::readmit_reinvestment(prior, next, link)?,
+            ),
+            AuthoritativeRecordV1::CorporateAction(action) => Some(InvestmentEngine::act(
+                prior,
+                &crate::investments::actions::action_request(next, action)?,
+            )?),
             // A revision is the plan the engine derives again from the prior
             // prefix. Two revisions of one family version share an ID, so the
             // projection must keep exactly this one.
@@ -287,6 +294,8 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::Position(_)
             | AuthoritativeRecordV1::Trade(_)
             | AuthoritativeRecordV1::HoldingsSnapshot(_)
+            | AuthoritativeRecordV1::Reinvestment(_)
+            | AuthoritativeRecordV1::CorporateAction(_)
             | AuthoritativeRecordV1::DatasetPolicyRevision(_) => true,
             // Only a security declaration declares a security unit.
             AuthoritativeRecordV1::UnitCatalog(catalog) => catalog
@@ -294,8 +303,12 @@ pub(crate) fn validate_transition(
                 .iter()
                 .any(|unit| unit.kind == UnitKind::Security),
             AuthoritativeRecordV1::FinancialLeg(l) => !l.allocations.is_empty(),
+            // A recognition that moves a security quantity needs an owner
+            // even when it binds no evidence, as a split adjustment does.
             AuthoritativeRecordV1::Recognition(r) => {
-                !r.evidence_allocations.is_empty() || !r.leg_ids.is_empty()
+                !r.evidence_allocations.is_empty()
+                    || !r.leg_ids.is_empty()
+                    || crate::investments::quantity::holds_quantity(next, r)?
             }
             _ => false,
         };
