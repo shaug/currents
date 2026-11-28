@@ -1285,6 +1285,139 @@ fn reinvestment(state: &DomainState, rows: &ActionRows) -> ReinvestmentRequestV1
     }
 }
 
+/// An owner's interpretation of the corporate action `evidence` reports.
+fn owner(evidence: Vec<RecordId>) -> InterpretationV1 {
+    InterpretationV1 {
+        evidence,
+        reason: "Owner confirmed the corporate action terms".into(),
+        ..interpretation()
+    }
+}
+
+/// Terms `n` that post `change` to `account` against `counter` on
+/// 2026-11-20: recognition `n`, lineage `n + 1` and postings `n + 2` and
+/// `n + 3`.
+fn action_terms(n: u32, (account, counter): (u32, u32), change: Amount) -> RecognitionTermsV1 {
+    let on = date("2026-11-20");
+    let posting = |k: u32, account: u32, amount: Amount| PostingV1 {
+        id: id(n + k),
+        account_id: account_id(account),
+        amount,
+        effective: on.clone(),
+        posting: on.clone(),
+    };
+    RecognitionTermsV1 {
+        recognition_id: RecognitionId(id(n).0),
+        lineage: id(n + 1),
+        postings: vec![
+            posting(2, account, change),
+            posting(3, counter, change.checked_neg().unwrap()),
+        ],
+        bookkeeping_date: on.clone(),
+        date_policy: PolicyReferenceV1 {
+            id: id(103),
+            version: 1,
+        },
+        unresolved_account: None,
+        opening: None,
+    }
+}
+
+/// Corporate action `n` on `security` effective 2026-11-20, with no
+/// adjustment or cash in lieu.
+fn action(n: u32, security: u32, terms: CorporateActionTermsV1) -> CorporateActionRequestV1 {
+    CorporateActionRequestV1 {
+        schema_version: 1,
+        id: id(n),
+        security: id(security),
+        effective: date("2026-11-20"),
+        terms,
+        adjustments: vec![],
+        cash_in_lieu: vec![],
+        interpretation: owner(vec![]),
+    }
+}
+
+/// A split of `numerator` for `denominator` from basis 1 to basis 2.
+fn split(numerator: i64, denominator: i64) -> CorporateActionTermsV1 {
+    CorporateActionTermsV1::Split(SplitV1 {
+        numerator,
+        denominator,
+        prior_basis: 1,
+        resulting_basis: 2,
+    })
+}
+
+/// The 2-for-1 split of SECA as action 8500, raising P by `change`.
+fn seca_split(change: Amount) -> CorporateActionRequestV1 {
+    let mut request = action(8500, SECA, split(2, 1));
+    request.adjustments.push(SplitAdjustmentRequestV1 {
+        position: id(P),
+        terms: action_terms(8501, (Q, QUANTITY_CONTROL), change),
+    });
+    request
+}
+
+/// The 3-for-2 split of SECW as action 8600: PW rises by 2 and its 0.5
+/// share is paid as 30 USD of cash in lieu, from event 8610.
+fn secw_split(state: &DomainState, rows: &ActionRows) -> CorporateActionRequestV1 {
+    let binding = &rows.cash["cash-in-lieu"];
+    let interpretation = owner(vec![binding.observation]);
+    let mut request = action(8600, SECW, split(3, 2));
+    request.interpretation = interpretation.clone();
+    request.adjustments.push(SplitAdjustmentRequestV1 {
+        position: id(PW),
+        terms: action_terms(8601, (QW, QW_CONTROL), units(2, SECW_UNIT)),
+    });
+    let day = row_date(state, binding);
+    let leg = FinancialLegV1 {
+        id: LegId(id(8611).0),
+        event_id: id(8610),
+        account_id: account_id(B),
+        movement: binding.amount,
+        allocations: vec![EvidenceAllocationV1 {
+            observation: binding.observation,
+            facet: binding.facet,
+            amount: binding.amount,
+        }],
+        effective: day.clone(),
+        posting: day.clone(),
+        relationships: vec![],
+        unresolved_residual: SourceValue::Absent,
+        interpretation: SourceValue::Known(interpretation.clone()),
+    };
+    let mut terms = action_terms(8612, (B, DISPOSAL_CLEARING), binding.amount);
+    for posting in &mut terms.postings {
+        posting.effective = day.clone();
+        posting.posting = day.clone();
+    }
+    request.cash_in_lieu.push(CashInLieuRequestV1 {
+        position: id(PW),
+        event: FinancialEventV1 {
+            id: id(8610),
+            legs: vec![leg.id],
+            relationships: vec![],
+            interpretation: SourceValue::Known(interpretation),
+        },
+        cash: AdoptedLegV1 {
+            leg,
+            sources: vec![binding.clone()],
+        },
+        fraction: Amount::new(5, 1, unit_id(SECW_UNIT)).unwrap(),
+        terms,
+    });
+    request
+}
+
+/// The merger of SECA its source reports, as unsupported action 8700.
+fn merger(rows: &ActionRows) -> CorporateActionRequestV1 {
+    let terms = CorporateActionTermsV1::Unsupported("merger".into());
+    let mut request = action(8700, SECA, terms);
+    request.effective = date("2026-11-25");
+    request.interpretation = owner(vec![rows.quantity["merger"].observation]);
+    request
+}
+
 /// The postings of each recognition `plan` holds, by account.
 fn entries(plan: &DecisionPlan) -> Vec<BTreeMap<AccountId, Amount>> {
     let AccountingIntent::Recognitions(recognitions) = &plan.accounting else {
@@ -1345,4 +1478,214 @@ fn cur_021_2_reinvested_dividend_is_one_pair() {
         0,
     );
     assert!(InvestmentEngine::reinvest(&state, &other).is_err());
+}
+
+#[test]
+fn cur_021_2_split_keeps_carrying_amount() {
+    let (state, rows) = acting();
+    let request = seca_split(units(6, SECA_UNIT));
+    let plan = InvestmentEngine::act(&state, &request).unwrap();
+    let Some(AuthoritativeRecordV1::CorporateAction(record)) = plan.records.last() else {
+        panic!("a corporate action record")
+    };
+    assert_eq!(record.terms, split(2, 1));
+    assert_eq!(record.adjustments.len(), 1);
+    // The split posts Q +6 against quantity control and nothing in USD.
+    let next = committed(&state, &plan);
+    assert_eq!(
+        changes(&state, &next),
+        expect(&[(Q, 6, SECA_UNIT), (QUANTITY_CONTROL, -6, SECA_UNIT)])
+    );
+    assert_eq!(balances(&next)[&account_id(K)], balance(600, 1));
+    let before = holdings_of(&next, P, "2026-11-19");
+    assert_eq!((before.quantity, before.basis), (balance(6, SECA_UNIT), 1));
+    let after = holdings_of(&next, P, "2026-11-20");
+    assert_eq!((after.quantity, after.basis), (balance(12, SECA_UNIT), 2));
+    assert_eq!(after.carrying, balance(600, 1));
+
+    // The split posts the exact ratio and names the security's bases.
+    let wrong = seca_split(units(5, SECA_UNIT));
+    assert!(InvestmentEngine::act(&state, &wrong).is_err());
+    let mut skipped = request.clone();
+    skipped.terms = CorporateActionTermsV1::Split(SplitV1 {
+        numerator: 2,
+        denominator: 1,
+        prior_basis: 2,
+        resulting_basis: 3,
+    });
+    assert!(InvestmentEngine::act(&state, &skipped).is_err());
+    // A quantity dated before the split is refused once the split commits.
+    let late = quantity_buy(
+        &state,
+        8900,
+        P,
+        (Q, QUANTITY_CONTROL),
+        &rows.quantity["late"],
+    );
+    assert!(InvestmentEngine::recognize(&state, &late).is_ok());
+    assert!(InvestmentEngine::recognize(&next, &late).is_err());
+    // A split dated before a quantity already recognized is refused.
+    let mut early = request.clone();
+    early.effective = date("2026-11-09");
+    for posting in &mut early.adjustments[0].terms.postings {
+        posting.effective = date("2026-11-09");
+        posting.posting = date("2026-11-09");
+    }
+    early.adjustments[0].terms.bookkeeping_date = date("2026-11-09");
+    assert!(InvestmentEngine::act(&state, &early).is_ok());
+    let later = traded(&state, &late);
+    assert!(InvestmentEngine::act(&later, &early).is_err());
+}
+
+#[test]
+fn cur_021_2_fractional_cash_in_lieu_is_distinct() {
+    let (state, rows) = acting();
+    let request = secw_split(&state, &rows);
+    let plan = InvestmentEngine::act(&state, &request).unwrap();
+    // The cash in lieu is its own recognition, after the quantity change.
+    assert_eq!(
+        entries(&plan),
+        vec![
+            expect(&[(QW, 2, SECW_UNIT), (QW_CONTROL, -2, SECW_UNIT)]),
+            expect(&[(B, 30, 1), (DISPOSAL_CLEARING, -30, 1)]),
+        ]
+    );
+    let Some(AuthoritativeRecordV1::CorporateAction(record)) = plan.records.last() else {
+        panic!("a corporate action record")
+    };
+    let [paid] = record.cash_in_lieu.as_slice() else {
+        panic!("one cash in lieu")
+    };
+    assert_eq!(
+        paid.fraction,
+        Amount::new(5, 1, unit_id(SECW_UNIT)).unwrap()
+    );
+    let next = committed(&state, &plan);
+    let holdings = holdings_of(&next, PW, "2026-11-20");
+    assert_eq!(
+        (holdings.quantity, holdings.basis),
+        (balance(7, SECW_UNIT), 2)
+    );
+    assert_eq!(
+        changes(&state, &next),
+        expect(&[
+            (QW, 2, SECW_UNIT),
+            (QW_CONTROL, -2, SECW_UNIT),
+            (B, 30, 1),
+            (DISPOSAL_CLEARING, -30, 1),
+        ])
+    );
+
+    // The same split without its cash in lieu has no plan.
+    let mut bare = request.clone();
+    bare.cash_in_lieu.clear();
+    assert!(InvestmentEngine::act(&state, &bare).is_err());
+    // Nor does a split entry that holds the 30 USD itself, with or without
+    // the separate event.
+    let mut holding = bare.clone();
+    let cash = request.cash_in_lieu[0].terms.postings.clone();
+    holding.adjustments[0].terms.postings.extend(cash.clone());
+    assert!(InvestmentEngine::act(&state, &holding).is_err());
+    let mut twice = request.clone();
+    for (k, mut posting) in (8690..).zip(cash) {
+        posting.id = id(k);
+        twice.adjustments[0].terms.postings.push(posting);
+    }
+    assert!(InvestmentEngine::act(&state, &twice).is_err());
+    // Nor cash in lieu of another fraction.
+    let mut fraction = request.clone();
+    fraction.cash_in_lieu[0].fraction = Amount::new(25, 2, unit_id(SECW_UNIT)).unwrap();
+    assert!(InvestmentEngine::act(&state, &fraction).is_err());
+}
+
+#[test]
+fn cur_021_unsupported_corporate_action_stays_unresolved() {
+    let (state, rows) = acting();
+    let request = merger(&rows);
+    let plan = InvestmentEngine::act(&state, &request).unwrap();
+    assert!(matches!(plan.accounting, AccountingIntent::NoEffect(_)));
+    let next = committed(&state, &plan);
+    assert!(changes(&state, &next).is_empty());
+    // The merger row is retained evidence, and P reports the action.
+    let row = rows.quantity["merger"].observation;
+    assert!(matches!(
+        next.records.get(&row),
+        Some(AuthoritativeRecordV1::ObservationVersion(_))
+    ));
+    let holdings = holdings_of(&next, P, "2026-11-30");
+    assert_eq!(holdings.unresolved, vec![id(8700)]);
+    assert_eq!(
+        (holdings.quantity, holdings.basis),
+        (balance(6, SECA_UNIT), 1)
+    );
+    assert!(holdings_of(&next, P, "2026-11-24").unresolved.is_empty());
+    assert!(holdings_of(&next, PW, "2026-11-30").unresolved.is_empty());
+
+    // No quantity change is recognized for it.
+    let mut changed = request.clone();
+    changed.adjustments = seca_split(units(-6, SECA_UNIT)).adjustments;
+    assert!(InvestmentEngine::act(&state, &changed).is_err());
+    // A split needs a positive numerator and denominator, even with the
+    // change its ratio would give.
+    for (numerator, denominator, change) in [(0, 1, -6), (2, -1, -18)] {
+        let mut bad = seca_split(units(change, SECA_UNIT));
+        bad.terms = split(numerator, denominator);
+        assert!(InvestmentEngine::act(&state, &bad).is_err());
+    }
+}
+
+#[test]
+fn cur_021_actions_replay() {
+    let (state, rows) = acting();
+    let plan = InvestmentEngine::reinvest(&state, &reinvestment(&state, &rows)).unwrap();
+    let reinvested = committed(&state, &plan);
+    // P holds 6.4 SECA after the reinvestment, so the split adds 6.4.
+    let split_plan = InvestmentEngine::act(&reinvested, &seca_split(tenths(64))).unwrap();
+    let mut next = committed(&reinvested, &split_plan);
+    let plan = InvestmentEngine::act(&next, &secw_split(&next, &rows)).unwrap();
+    next = committed(&next, &plan);
+    let plan = InvestmentEngine::act(&next, &merger(&rows)).unwrap();
+    next = committed(&next, &plan);
+    assert_eq!(next.through.0, state.through.0 + 4);
+    assert_eq!(holdings_of(&next, P, "2026-11-30").quantity, tenths(128));
+    assert_eq!(
+        holdings_of(&next, PW, "2026-11-30").quantity,
+        balance(7, SECW_UNIT)
+    );
+
+    // Frozen operations whose split entry also posts the carrying amount.
+    let AccountingIntent::Recognitions(original) = &split_plan.accounting else {
+        panic!("recognitions")
+    };
+    let mut forged = original.clone();
+    for (n, account, value) in [(8590, K, 1), (8591, DISPOSAL_CLEARING, -1)] {
+        forged[0].postings.push(PostingV1 {
+            id: id(n),
+            account_id: account_id(account),
+            amount: amount(value),
+            effective: date("2026-11-20"),
+            posting: date("2026-11-20"),
+        });
+    }
+    let head = &reinvested;
+    let intent = AccountingIntent::Recognitions(forged.clone());
+    let batch = AccountingAdapter::freeze(&intent, head).unwrap();
+    let records = split_plan.records.clone();
+    rejected(head, &candidate(head, records, batch.clone()));
+    // Nor do records that agree with those operations.
+    let records = split_plan
+        .records
+        .iter()
+        .map(|r| match r {
+            AuthoritativeRecordV1::Recognition(_) => {
+                AuthoritativeRecordV1::Recognition(forged[0].clone())
+            }
+            other => other.clone(),
+        })
+        .collect();
+    rejected(head, &candidate(head, records, batch));
+    // A split adjustment with no corporate action has no owner.
+    let alone = vec![AuthoritativeRecordV1::Recognition(original[0].clone())];
+    let batch = AccountingAdapter::freeze(&split_plan.accounting, head).unwrap();
+    rejected(head, &candidate(head, alone, batch));
 }

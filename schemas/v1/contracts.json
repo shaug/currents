@@ -20037,6 +20037,396 @@
             "value"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "CorporateAction"
+            },
+            "value": {
+              "additionalProperties": false,
+              "properties": {
+                "adjustments": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "position": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "recognition"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "cash_in_lieu": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cash": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "leg_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "amount": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "coefficient": {
+                                    "maxLength": 40,
+                                    "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                    "type": "string"
+                                  },
+                                  "scale": {
+                                    "maximum": 18,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "unit_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "coefficient",
+                                  "scale",
+                                  "unit_id"
+                                ],
+                                "type": "object"
+                              },
+                              "facet": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "observation": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "parse_product": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "observation",
+                              "parse_product",
+                              "facet",
+                              "amount"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "leg_id",
+                          "source"
+                        ],
+                        "type": "object"
+                      },
+                      "event_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "fraction": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "coefficient": {
+                            "maxLength": 40,
+                            "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                            "type": "string"
+                          },
+                          "scale": {
+                            "maximum": 18,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "unit_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "coefficient",
+                          "scale",
+                          "unit_id"
+                        ],
+                        "type": "object"
+                      },
+                      "position": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "recognition": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "event_id",
+                      "cash",
+                      "fraction",
+                      "recognition"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16384,
+                  "type": "array"
+                },
+                "effective": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "civil": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "Date"
+                        },
+                        "original_text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "civil",
+                        "original_text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Instant"
+                        },
+                        "original_offset": {
+                          "anyOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "original_text": {
+                          "type": "string"
+                        },
+                        "original_zone": {
+                          "anyOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "precision": {
+                          "enum": [
+                            "Second",
+                            "Millisecond",
+                            "Microsecond",
+                            "Nanosecond",
+                            "Unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "utc": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "utc",
+                        "original_offset",
+                        "original_zone",
+                        "precision",
+                        "original_text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Unknown"
+                        },
+                        "original_text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "original_text"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "interpretation": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "authority": {
+                      "enum": [
+                        "Owner",
+                        "StandingRule",
+                        "Source"
+                      ],
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 16384,
+                      "type": "array"
+                    },
+                    "kind": {
+                      "enum": [
+                        "Interpretation",
+                        "Recognition",
+                        "Correction",
+                        "Organization",
+                        "Review",
+                        "Reconciliation",
+                        "Planning",
+                        "Catalog",
+                        "Policy"
+                      ],
+                      "type": "string"
+                    },
+                    "reason": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "authority",
+                    "evidence",
+                    "reason"
+                  ],
+                  "type": "object"
+                },
+                "schema_version": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "security": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "terms": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Split"
+                        },
+                        "value": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "denominator": {
+                              "maximum": 9223372036854775807,
+                              "minimum": -9223372036854775808,
+                              "type": "integer"
+                            },
+                            "numerator": {
+                              "maximum": 9223372036854775807,
+                              "minimum": -9223372036854775808,
+                              "type": "integer"
+                            },
+                            "prior_basis": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "resulting_basis": {
+                              "maximum": 4294967295,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "numerator",
+                            "denominator",
+                            "prior_basis",
+                            "resulting_basis"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "Unsupported"
+                        },
+                        "value": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "security",
+                "effective",
+                "terms",
+                "adjustments",
+                "cash_in_lieu",
+                "interpretation"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -57382,6 +57772,396 @@
                   "value"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "CorporateAction"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "adjustments": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "recognition": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "recognition"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "cash_in_lieu": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cash": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "leg_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "coefficient": {
+                                          "maxLength": 40,
+                                          "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                          "type": "string"
+                                        },
+                                        "scale": {
+                                          "maximum": 18,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "unit_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "coefficient",
+                                        "scale",
+                                        "unit_id"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "parse_product": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "parse_product",
+                                    "facet",
+                                    "amount"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "leg_id",
+                                "source"
+                              ],
+                              "type": "object"
+                            },
+                            "event_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "fraction": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "coefficient": {
+                                  "maxLength": 40,
+                                  "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                  "type": "string"
+                                },
+                                "scale": {
+                                  "maximum": 18,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "unit_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "coefficient",
+                                "scale",
+                                "unit_id"
+                              ],
+                              "type": "object"
+                            },
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "recognition": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "event_id",
+                            "cash",
+                            "fraction",
+                            "recognition"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "effective": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "civil": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "Date"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "civil",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Instant"
+                              },
+                              "original_offset": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "original_text": {
+                                "type": "string"
+                              },
+                              "original_zone": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "precision": {
+                                "enum": [
+                                  "Second",
+                                  "Millisecond",
+                                  "Microsecond",
+                                  "Nanosecond",
+                                  "Unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "utc": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "utc",
+                              "original_offset",
+                              "original_zone",
+                              "precision",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Unknown"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "interpretation": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "authority": {
+                            "enum": [
+                              "Owner",
+                              "StandingRule",
+                              "Source"
+                            ],
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "kind": {
+                            "enum": [
+                              "Interpretation",
+                              "Recognition",
+                              "Correction",
+                              "Organization",
+                              "Review",
+                              "Reconciliation",
+                              "Planning",
+                              "Catalog",
+                              "Policy"
+                            ],
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "authority",
+                          "evidence",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "security": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "terms": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Split"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "denominator": {
+                                    "maximum": 9223372036854775807,
+                                    "minimum": -9223372036854775808,
+                                    "type": "integer"
+                                  },
+                                  "numerator": {
+                                    "maximum": 9223372036854775807,
+                                    "minimum": -9223372036854775808,
+                                    "type": "integer"
+                                  },
+                                  "prior_basis": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "resulting_basis": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "numerator",
+                                  "denominator",
+                                  "prior_basis",
+                                  "resulting_basis"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Unsupported"
+                              },
+                              "value": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "security",
+                      "effective",
+                      "terms",
+                      "adjustments",
+                      "cash_in_lieu",
+                      "interpretation"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -73840,6 +74620,396 @@
                       "schema_version",
                       "adoption",
                       "trade"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "CorporateAction"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "adjustments": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "recognition": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "recognition"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "cash_in_lieu": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cash": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "leg_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "coefficient": {
+                                          "maxLength": 40,
+                                          "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                          "type": "string"
+                                        },
+                                        "scale": {
+                                          "maximum": 18,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "unit_id": {
+                                          "format": "uuid",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "coefficient",
+                                        "scale",
+                                        "unit_id"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "facet": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "observation": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "parse_product": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "observation",
+                                    "parse_product",
+                                    "facet",
+                                    "amount"
+                                  ],
+                                  "type": "object"
+                                }
+                              },
+                              "required": [
+                                "leg_id",
+                                "source"
+                              ],
+                              "type": "object"
+                            },
+                            "event_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "fraction": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "coefficient": {
+                                  "maxLength": 40,
+                                  "pattern": "^-?(0|[1-9][0-9]{0,38})$",
+                                  "type": "string"
+                                },
+                                "scale": {
+                                  "maximum": 18,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "unit_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "coefficient",
+                                "scale",
+                                "unit_id"
+                              ],
+                              "type": "object"
+                            },
+                            "position": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "recognition": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "position",
+                            "event_id",
+                            "cash",
+                            "fraction",
+                            "recognition"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 16384,
+                        "type": "array"
+                      },
+                      "effective": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "civil": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "Date"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "civil",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Instant"
+                              },
+                              "original_offset": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "original_text": {
+                                "type": "string"
+                              },
+                              "original_zone": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1048576,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "precision": {
+                                "enum": [
+                                  "Second",
+                                  "Millisecond",
+                                  "Microsecond",
+                                  "Nanosecond",
+                                  "Unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "utc": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "utc",
+                              "original_offset",
+                              "original_zone",
+                              "precision",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Unknown"
+                              },
+                              "original_text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "original_text"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "interpretation": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "authority": {
+                            "enum": [
+                              "Owner",
+                              "StandingRule",
+                              "Source"
+                            ],
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "maxItems": 16384,
+                            "type": "array"
+                          },
+                          "kind": {
+                            "enum": [
+                              "Interpretation",
+                              "Recognition",
+                              "Correction",
+                              "Organization",
+                              "Review",
+                              "Reconciliation",
+                              "Planning",
+                              "Catalog",
+                              "Policy"
+                            ],
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 1048576,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "authority",
+                          "evidence",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      "schema_version": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "security": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "terms": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Split"
+                              },
+                              "value": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "denominator": {
+                                    "maximum": 9223372036854775807,
+                                    "minimum": -9223372036854775808,
+                                    "type": "integer"
+                                  },
+                                  "numerator": {
+                                    "maximum": 9223372036854775807,
+                                    "minimum": -9223372036854775808,
+                                    "type": "integer"
+                                  },
+                                  "prior_basis": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "resulting_basis": {
+                                    "maximum": 4294967295,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "numerator",
+                                  "denominator",
+                                  "prior_basis",
+                                  "resulting_basis"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "Unsupported"
+                              },
+                              "value": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "schema_version",
+                      "security",
+                      "effective",
+                      "terms",
+                      "adjustments",
+                      "cash_in_lieu",
+                      "interpretation"
                     ],
                     "type": "object"
                   }
