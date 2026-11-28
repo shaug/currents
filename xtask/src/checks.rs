@@ -578,24 +578,36 @@ const CUR_018_SUITES: &Suites = &[(
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
-const CUR_021_SUITES: &Suites = &[(
-    "currents-domain",
-    "cur_021",
-    &[
-        "cur_021_security_identity_requires_source_identifier",
-        "cur_021_local_mapping_joins_sources",
-        "cur_021_control_roles_follow_unit_kind",
-        "cur_021_position_links_security_accounts",
-        "cur_021_ordinary_adoption_refuses_security_postings",
-        "cur_021_replay_readmits_declarations",
-        "cur_021_1_buy_commits_cash_and_quantity",
-        "cur_021_1_sale_holds_proceeds_in_disposal_clearing",
-        "cur_021_1_buy_fee_capitalized_once",
-        "cur_021_1_missing_side_stays_explicit",
-        "cur_021_1_no_sum_of_dollars_and_shares",
-        "cur_021_corrections_refuse_trades",
-    ],
-)];
+const CUR_021_SUITES: &Suites = &[
+    (
+        "currents-domain",
+        "cur_021",
+        &[
+            "cur_021_security_identity_requires_source_identifier",
+            "cur_021_local_mapping_joins_sources",
+            "cur_021_control_roles_follow_unit_kind",
+            "cur_021_position_links_security_accounts",
+            "cur_021_ordinary_adoption_refuses_security_postings",
+            "cur_021_replay_readmits_declarations",
+            "cur_021_1_buy_commits_cash_and_quantity",
+            "cur_021_1_sale_holds_proceeds_in_disposal_clearing",
+            "cur_021_1_buy_fee_capitalized_once",
+            "cur_021_1_missing_side_stays_explicit",
+            "cur_021_1_no_sum_of_dollars_and_shares",
+            "cur_021_corrections_refuse_trades",
+            "cur_021_3_incomplete_snapshot_keeps_missing_security",
+            "cur_021_3_complete_snapshot_records_absence_assertion",
+            "cur_021_3_absence_follows_scope",
+            "cur_021_snapshot_keeps_unmapped_positions",
+            "cur_021_snapshot_replay",
+        ],
+    ),
+    (
+        "currents-acquisition",
+        "cur_021_source",
+        &["cur_021_snapshot_rejects_bad_input"],
+    ),
+];
 /// A suite qualifies only when its listed tests are exactly the required ones
 /// and every one of them ran and passed. An ignored test fails the suite.
 fn ticket_suite(
@@ -671,7 +683,7 @@ fn ticket_cur_021() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-021",
         "suites":ticket_suites("CUR021", CUR_021_SUITES)?,
-        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, and the correction and segment refusal of quantity postings; no openings, valuation, basis or command route"
+        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, the correction and segment refusal of quantity postings, and synthetic holdings snapshots with versioned absence assertions that change no quantity; no openings, valuation, basis or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {

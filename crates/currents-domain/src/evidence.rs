@@ -107,8 +107,14 @@ impl ValidatedEvidenceBatchV1 {
         {
             return Err(EngineError::invalid());
         }
+        let holdings = batch.format == ImportFormatV1::SyntheticHoldings;
+        let kind = if holdings {
+            ObservationKind::Holding
+        } else {
+            ObservationKind::Movement
+        };
         let mut ids = BTreeSet::from([receipt.id]);
-        if receipt.id.0.is_nil() {
+        if receipt.id.0.is_nil() || holdings != batch.snapshot.is_some() {
             return Err(EngineError::invalid());
         }
         for (position, (observation, product)) in
@@ -124,7 +130,7 @@ impl ValidatedEvidenceBatchV1 {
                 || observation.source != batch.source_identity
                 || observation.prior_version.is_some()
                 || observation.tombstone_of.is_some()
-                || observation.semantic_kind != ObservationKind::Movement
+                || observation.semantic_kind != kind
                 || observation.sanitized_representation.len() > 1_048_576
                 || bytes.get(&observation.content_digest).copied()
                     != Some(observation.sanitized_representation.as_bytes())
@@ -143,7 +149,7 @@ impl ValidatedEvidenceBatchV1 {
                     return Err(EngineError::invalid());
                 }
             }
-            if facet.kind != ObservationKind::Movement
+            if facet.kind != kind
                 || !facet.relationships.is_empty()
                 || facet.temporal != observation.temporal
             {
@@ -157,10 +163,18 @@ impl ValidatedEvidenceBatchV1 {
             {
                 return Err(EngineError::invalid());
             }
-            validate_row(observation, facet, &batch.unit, file.digest, position)?;
+            if !holdings {
+                validate_row(observation, facet, &batch.unit, file.digest, position)?;
+            } else if observation.original_ids != file_ids(file.digest, position)? {
+                return Err(EngineError::invalid());
+            }
             if let SourceValue::Known(amount) = &facet.amount {
                 amount.validate()?;
             }
+        }
+        if let Some(snapshot) = &batch.snapshot {
+            let bytes = bytes.get(&file.digest).ok_or_else(EngineError::invalid)?;
+            snapshot_file(&batch, snapshot, bytes)?;
         }
         Ok(Self(batch))
     }
@@ -221,6 +235,9 @@ impl EvidenceEngine {
         batch: ValidatedEvidenceBatchV1,
     ) -> Result<DecisionPlan, EngineError> {
         let batch = batch.0;
+        if batch.snapshot.is_some() {
+            return Err(EngineError::invalid());
+        }
         let mut records = Vec::new();
         if state.records.contains_key(&batch.receipt.id) {
             return Err(EngineError::invalid());
@@ -274,6 +291,143 @@ impl EvidenceEngine {
     }
 }
 
+impl EvidenceEngine {
+    /// Publish a holdings snapshot: its receipt, one new observation and
+    /// product for each position, and the snapshot record with the absences
+    /// a complete snapshot asserts. It changes no quantity.
+    pub fn publish_holdings(
+        state: &DomainState,
+        batch: ValidatedEvidenceBatchV1,
+    ) -> Result<DecisionPlan, EngineError> {
+        let batch = batch.0;
+        let draft = batch.snapshot.ok_or_else(EngineError::invalid)?;
+        if state.records.contains_key(&batch.receipt.id) {
+            return Err(EngineError::invalid());
+        }
+        let mut records = vec![AuthoritativeRecordV1::ImportReceipt(batch.receipt)];
+        let mut rows = BTreeMap::new();
+        for (observation, product) in batch.observations.iter().zip(&batch.products) {
+            if state.records.contains_key(&observation.id)
+                || state.records.contains_key(&product.id)
+            {
+                return Err(EngineError::invalid());
+            }
+            let facet = product
+                .product
+                .facets
+                .first()
+                .ok_or_else(EngineError::invalid)?;
+            rows.insert(observation.id, (observation, facet));
+        }
+        let snapshot = crate::investments::holdings::derive(state, &rows, &draft)?;
+        records.extend(
+            batch
+                .observations
+                .iter()
+                .cloned()
+                .map(AuthoritativeRecordV1::ObservationVersion),
+        );
+        records.extend(
+            batch
+                .products
+                .into_iter()
+                .map(AuthoritativeRecordV1::AddressedParseProduct),
+        );
+        records.push(AuthoritativeRecordV1::HoldingsSnapshot(snapshot));
+        Ok(DecisionPlan {
+            records,
+            invalidations: vec![],
+            accounting: AccountingIntent::NoEffect(NoEffectV1 {
+                reason: "Holdings snapshot evidence only; no quantity change.".into(),
+            }),
+        })
+    }
+}
+
+/// The file and row identities a synthetic row's observation lists first.
+fn file_ids(file: Digest, position: usize) -> Result<Vec<String>, EngineError> {
+    Ok(vec![
+        format!(
+            "file:{}",
+            serde_json::to_string(&file)
+                .map_err(invalid)?
+                .trim_matches('"')
+        ),
+        format!("row:{position}"),
+    ])
+}
+
+/// `text` as an exact amount in `unit`: an optional minus sign, digits with
+/// no leading zero, and a fraction no longer than the unit's exponent.
+pub(crate) fn decimal(text: &str, unit: &UnitDefinition) -> Result<Amount, EngineError> {
+    let unsigned = text.strip_prefix('-').unwrap_or(text);
+    let mut parts = unsigned.split('.');
+    let whole = parts.next().ok_or_else(EngineError::invalid)?;
+    let fraction = parts.next();
+    if text.len() > 58
+        || whole.is_empty()
+        || (whole.len() > 1 && whole.starts_with('0'))
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || parts.next().is_some()
+        || fraction.is_some_and(|s| s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(EngineError::invalid());
+    }
+    let scale = u8::try_from(fraction.map_or(0, str::len)).map_err(invalid)?;
+    if scale > unit.exponent {
+        return Err(EngineError::precision());
+    }
+    Amount::new(
+        text.replace('.', "").parse().map_err(invalid)?,
+        scale,
+        unit.id,
+    )
+}
+
+/// A holdings batch's snapshot draft states exactly what its file states:
+/// the scope, completeness, as-of date and total, and one observation per
+/// position in file order.
+fn snapshot_file(
+    batch: &CaptureBatchV1,
+    snapshot: &HoldingsSnapshotV1,
+    file: &[u8],
+) -> Result<(), EngineError> {
+    let source: SyntheticHoldingsV1 = serde_json::from_slice(file).map_err(invalid)?;
+    let total = source
+        .market_value
+        .as_deref()
+        .map(|text| decimal(text, &batch.unit))
+        .transpose()?;
+    let as_of = matches!(&snapshot.as_of,
+        TemporalValue::Date { original_text, .. } if *original_text == source.as_of);
+    if !as_of
+        || snapshot.receipt != batch.receipt.id
+        || snapshot.scope != source.scope
+        || snapshot.completeness != source.completeness
+        || snapshot.currency != batch.unit.id
+        || snapshot.market_value != total
+        || !snapshot.absences.is_empty()
+        || snapshot.holdings.len() != source.positions.len()
+        || source.positions.len() != batch.observations.len()
+    {
+        return Err(EngineError::invalid());
+    }
+    for ((holding, row), observation) in snapshot
+        .holdings
+        .iter()
+        .zip(&source.positions)
+        .zip(&batch.observations)
+    {
+        if holding.observation != observation.id
+            || observation.sanitized_representation
+                != serde_json::to_string(row).map_err(invalid)?
+        {
+            return Err(EngineError::invalid());
+        }
+    }
+    Ok(())
+}
+
 // Validate independently supplied typed batches against their retained source fields.
 fn validate_row(
     observation: &ObservationVersionV1,
@@ -312,15 +466,7 @@ fn validate_row(
     if observation.reported_fields != expected {
         return Err(EngineError::invalid());
     }
-    let mut original_ids = vec![
-        format!(
-            "file:{}",
-            serde_json::to_string(&file)
-                .map_err(invalid)?
-                .trim_matches('"')
-        ),
-        format!("row:{position}"),
-    ];
+    let mut original_ids = file_ids(file, position)?;
     if let SourceValue::Known(id) = &expected.first().ok_or_else(EngineError::invalid)?.value {
         original_ids.push(id.clone());
     }
@@ -345,28 +491,7 @@ fn validate_row(
     }
     let amount = &expected.get(1).ok_or_else(EngineError::invalid)?.value;
     if let SourceValue::Known(text) = amount {
-        let unsigned = text.strip_prefix('-').unwrap_or(text);
-        let mut parts = unsigned.split('.');
-        let whole = parts.next().ok_or_else(EngineError::invalid)?;
-        let fraction = parts.next();
-        if text.len() > 58
-            || whole.is_empty()
-            || (whole.len() > 1 && whole.starts_with('0'))
-            || !whole.bytes().all(|b| b.is_ascii_digit())
-            || parts.next().is_some()
-            || fraction.is_some_and(|s| s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()))
-        {
-            return Err(EngineError::invalid());
-        }
-        let scale = u8::try_from(fraction.map_or(0, str::len)).map_err(invalid)?;
-        if scale > unit.exponent {
-            return Err(EngineError::precision());
-        }
-        let parsed = Amount::new(
-            text.replace('.', "").parse().map_err(invalid)?,
-            scale,
-            unit.id,
-        )?;
+        let parsed = decimal(text, unit)?;
         if facet.amount != SourceValue::Known(parsed) {
             return Err(EngineError::invalid());
         }

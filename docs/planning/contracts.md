@@ -95,6 +95,13 @@ CUR012 adds the compatible authoritative `AddressedParseProductV1 { id:RecordId,
 
 Schema version 2 adds `balance_kinds:Vec<BalanceFacetKindV1 { facet:RecordId, kind:BalanceKindV1 }>`, where `BalanceKindV1` is `Posted`, `Available`, `Statement` or `Unknown`. A version-2 product names exactly one kind for each `Balance` facet, in ascending facet ID order, and none for any other facet. A version-1 product has no `balance_kinds` field, keeps its canonical bytes and admission rules, and reports every balance as `Unknown`; its wire form with the field is refused. Every other version is refused with `UnsupportedVersion`. Domain replay and storage admit both versions through `AddressedParseProductV1::validate`. The synthetic import profiles still emit version-1 movement products, and evidence batch admission still requires version 1. Every addressed product of one observation must report the same kind for a facet; a version-1 or unaddressed product reports `Unknown`. Reconciliation refuses an observation whose products disagree.
 
+CUR-021 adds the `SyntheticHoldings` profile,
+`FileParser::parse_holdings(input,HoldingsProfileV1)`, and
+`CaptureBatchV1.snapshot`, which only that profile sets. Evidence batch
+admission accepts `Holding` observations from that profile only, and
+`EvidenceEngine::publish` refuses a holdings batch; see [CUR-021 holdings
+snapshots](#cur-021-holdings-snapshots).
+
 `FileParser::parse(input:BoundedEvidence,profile:ParserProfileV1)->Result<CaptureBatchV1,EngineError>`; `EvidenceEngine::publish(state:&DomainState,batch:ValidatedEvidenceBatchV1)->Result<DecisionPlan,EngineError>`; `IdentityEngine::associate(state:&DomainState,request:AssociationRequestV1)->Result<DecisionPlan,EngineError>`. `AssociationRequestV1` specifies relationship type, legs/facets, exact allocations, survivor/corrections and reasons. `ReadOnlyAdapter` methods `describe_capabilities()->AdapterCapabilitiesV1`, `async fetch_changes(cursor:Option<String>)->Result<CaptureBatchV1,EngineError>`, `async fetch_snapshot(scope:SourceScopeV1)->Result<CaptureBatchV1,EngineError>`, `async resume_import(receipt:RecordId)->Result<CaptureBatchV1,EngineError>`; source scope is explicit accounts/time/type. No write institution methods. `RefreshCoordinator::next_attempt(state:&ConnectionState,now:OffsetDateTime)->RefreshDecision` is deterministic; 24 hours schedule opt-in,1/5/30 minutes retry then next scheduled, Retry-After, lock/auth failures suppress attempts.
 
 ### CUR015 complete relationship route
@@ -1063,7 +1070,7 @@ Files: `crates/currents-domain/src/{organization,rules}.rs`.
 
 ## C11: Investments/FX/manual, owners CUR-021–024
 
-Files: `crates/currents-domain/src/investments/{quantity,basis,valuation}.rs`, `crates/currents-domain/src/{fx,loans,manual}.rs`.
+Files: `crates/currents-domain/src/investments/{quantity,holdings,basis,valuation}.rs`, `crates/currents-domain/src/{fx,loans,manual}.rs`.
 
 `TradeRequestV1` specifies adopted security identity, cash/quantity legs, fees, dates and source references. `LotSelectionV1 = Fifo | Explicit { acquisitions, attributed_choice }`; `BasisResultV1 = Known { carrying_cost,gross_gain,fees,net_result,remainder } | Partial { known,unknown_quantity } | Unknown { reason }`. `InvestmentEngine::recognize(state,&TradeRequestV1)->Result<DecisionPlan,EngineError>`; `BasisEngine::allocate(state,disposal:LegId,selection:LotSelectionV1)->Result<BasisResultV1,EngineError>`; `ValuationEngine::value(state,basis:&ReadBasis,account:AccountId)->Result<PositionResponseV1,EngineError>`. Supported corporate-action payloads specify split numerator/denominator, effective date and resulting basis; cash-in-lieu distinct. Unknown cohorts participate in FIFO eligibility; transfers preserve lineage.
 
@@ -1149,6 +1156,46 @@ the recognition, so a batch that holds only one side's postings is refused.
 Every correction path and segment replacement refuses a recognition that
 holds a security-unit posting, or a closure that includes one, until CUR-022
 extends `ReplacedLegs` to trade quantity legs.
+
+### CUR-021 holdings snapshots
+
+```text
+SnapshotHoldingV1 { observation, security:Option<RecordId>, quantity:Option<Amount>, market_value:Option<Amount> }
+HoldingAbsenceV1 { position, security, version, prior:Option<RecordId> }
+HoldingsSnapshotV1 { id, schema_version, receipt, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings, market_value:Option<Amount>, absences }
+```
+
+A holdings snapshot is evidence of what a source reports an account scope
+held on one day. It never changes a recognized quantity. The C07
+`SyntheticHoldings` profile parses one snapshot into a receipt, one `Holding`
+observation and product per position, and a snapshot draft.
+`EvidenceEngine::publish_holdings(state,ValidatedEvidenceBatchV1)` publishes
+them with a version 1 `HoldingsSnapshotV1` and `NoEffect` accounting.
+`AuthoritativeRecordV1` adds `HoldingsSnapshot(HoldingsSnapshotV1)`.
+
+Each holding names its observation and the security its source identifier
+names when the snapshot is published, with the quantity in that security's
+unit. A position whose identifier names no security keeps its observation,
+with an `Unknown` facet amount and no security; the snapshot lists it as
+unmapped. A display symbol never names a security. The planner refuses a
+snapshot that names one security twice, a quantity or market value beyond its
+unit's exponent, a scope account that is not declared, and a scope whose
+positions hold one security twice.
+
+`scope` names the local accounts the snapshot covers. Only a `Complete`
+snapshot records absences. For each position whose quantity account is in its
+scope and whose security it omits, it records a `HoldingAbsenceV1`. The first
+absence for a position is version 1; each later one is the next version and
+names, as `prior`, the snapshot that holds the version before. A `Partial` or
+`Unknown` snapshot records no absence.
+
+`InvestmentEngine::holdings` adds `snapshot`, the latest snapshot whose scope
+covers the position's quantity account and lists its security, with that
+quantity and market value, and `absence`, the latest absence for the position
+when no snapshot at least as late lists the security. Snapshots order by
+as-of date, then by the commit of their receipt. Replay derives the snapshot
+record again from the prior prefix and the commit's own observations, so a
+forged holding or absence is refused. Holdings claims stay with CUR-017.
 
 `FxRequestV1 { source_amount,destination_amount,quote,quote_direction,quote_time,source,fees,rounding,residual }`; `FxEngine::recognize(state,&FxRequestV1)->Result<DecisionPlan,EngineError>`. `ManualPositionV1 { component,amount,as_of,method,evidence,ownership_share }`; `LoanPaymentV1 { cash,principal,interest,fees,unknown_allocation,source }`; `ManualEngine::observe(state,&ManualPositionV1)->Result<DecisionPlan,EngineError>`; `LoanEngine::recognize(state,&LoanPaymentV1)->Result<DecisionPlan,EngineError>`. These create no institution operations.
 
