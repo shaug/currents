@@ -593,7 +593,7 @@ const CUR_018_SUITES: &Suites = &[
             "cur_018_transfer_fee_leg_moves_no_funds",
             "cur_018_transfer_between_unequal_shares",
             "cur_018_senders_at_different_shares",
-            "cur_018_later_transfer_leaves_earlier_total",
+            "cur_018_later_transfer_needs_coverage",
             "cur_018_admitted_transfer_rows_decide_membership",
             "cur_018_uncounted_sender_leaves_amount_unknown",
         ],

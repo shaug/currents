@@ -261,15 +261,16 @@ fn covered(
 /// Whether a counted amount includes `leg` of transfer `head` (ruling G7 on
 /// #27). A selected source balance includes it when a line allocated to it
 /// from that source is dated on or before the balance's as-of. It excludes
-/// it when every such line is dated after the as-of and either the leg's
-/// effective date is after the as-of, so the funds had not moved yet, or a
-/// receipt from that source reports complete posting-date coverage from the
-/// leg's posting date through the as-of. Coverage proves nothing for a leg
-/// that a line from another source already stands for, because the
-/// balance's own line would never be allocated to it. Several selected balances must agree. The
-/// anchored balance includes the legs it adds. A component that another
-/// counts in place of, `None`, has no counted amount to decide from. Any of
-/// them excludes a leg dated after `day`. Anything else is unknown.
+/// it when every such line is dated after the as-of and a receipt from that
+/// source reports complete posting-date coverage from the leg's posting date
+/// through the as-of. Coverage proves nothing for a leg that a line from
+/// another source already stands for, because the balance's own line would
+/// never be allocated to it. Several selected balances must agree. A leg's
+/// own dates are journal dates, not the source's, so they never decide a
+/// reported balance. The anchored balance includes the legs it adds and, adding none
+/// after `day`, excludes a leg dated after it. A component that another
+/// counts in place of, `None`, has no counted amount to decide from.
+/// Anything else is unknown.
 fn member(
     state: &DomainState,
     day: Date,
@@ -278,19 +279,20 @@ fn member(
     evidence: &[RecordId],
     basis: Option<&Basis>,
 ) -> Result<Member, EngineError> {
-    let moved = Boundary::of(&leg.effective);
-    let unknown = if moved.is_some_and(|m| m.after(Boundary::Date(day))) {
-        Member::Excluded
-    } else {
-        Member::Unknown
-    };
     let reported = match basis {
-        None => return Ok(unknown),
+        None => return Ok(Member::Unknown),
         Some(Basis::Reported(reported)) => reported,
         Some(Basis::Anchored) if evidence.contains(&RecordId(leg.id.0)) => {
             return Ok(Member::Included);
         }
-        Some(Basis::Anchored) => return Ok(unknown),
+        Some(Basis::Anchored) => {
+            let later = Boundary::of(&leg.effective).is_some_and(|m| m.after(Boundary::Date(day)));
+            return Ok(if later {
+                Member::Excluded
+            } else {
+                Member::Unknown
+            });
+        }
     };
     let lines = lines(state, head, leg)?;
     let mut joined: Option<Member> = None;
@@ -299,8 +301,8 @@ fn member(
         let each = if dates().any(|d| d.is_some_and(|d| d.by(*as_of))) {
             Member::Included
         } else if dates().all(|d| d.is_some_and(|d| d.after(*as_of)))
-            && (moved.is_some_and(|m| m.after(*as_of))
-                || (lines.iter().all(|(s, _)| *s == source) && covered(state, source, leg, *as_of)))
+            && lines.iter().all(|(s, _)| *s == source)
+            && covered(state, source, leg, *as_of)
         {
             Member::Excluded
         } else {
@@ -308,10 +310,7 @@ fn member(
         };
         joined = Some(joined.map_or(each, |j| j.and(each)));
     }
-    Ok(match joined {
-        Some(Member::Unknown) | None => unknown,
-        Some(known) => known,
-    })
+    Ok(joined.unwrap_or(Member::Unknown))
 }
 
 /// A component that counts, or that another counts in place of, by its

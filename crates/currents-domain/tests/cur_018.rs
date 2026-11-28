@@ -2862,9 +2862,9 @@ fn cur_018_uncounted_sender_leaves_amount_unknown() {
 }
 
 #[test]
-fn cur_018_later_transfer_leaves_earlier_total() {
-    // Both balances are as of 2026-11-03, before the transfer's legs, and
-    // no coverage is reported.
+fn cur_018_later_transfer_needs_coverage() {
+    // Both balances are as of 2026-11-03. The outflow and receipt lines are
+    // dated 2026-11-04 and 2026-11-05, after the as-of.
     let mut state = transfer_world();
     transfer(&mut state, true, &[(1000, true)]);
     for (n, connection, original, value) in [(2000, S1, "A-1", 5000), (2010, S2, "B-2", 2000)] {
@@ -2872,17 +2872,34 @@ fn cur_018_later_transfer_leaves_earlier_total() {
         report.original_ids = vec![original];
         publish(&mut state, report.records());
     }
-    // On 2026-11-03 no funds have moved.
+    // A later line does not show that the balance excludes the leg, and the
+    // leg's own date comes from another source, so without coverage each
+    // membership is unknown: 7,000.00, less or plus 1,000.00.
     assert_eq!(
         total(&state, "2026-11-03", SCOPED),
-        AggregateV1::Exact(amount(7000))
+        AggregateV1::Range {
+            low: amount(6000),
+            high: amount(8000),
+        }
     );
-    // Later, the same balances still predate both legs, so neither
-    // includes them.
-    assert_eq!(
-        total(&state, ASKED, SCOPED),
-        AggregateV1::Exact(amount(7000))
-    );
+    // Complete coverage from each source through 2026-11-03 shows that
+    // neither balance holds its leg, so no funds have moved for either.
+    for (n, connection) in [(5400, S1), (5410, S2)] {
+        publish(
+            &mut state,
+            vec![receipt(
+                n,
+                connection,
+                vec![posting_coverage("2026-11-01", "2026-11-03")],
+            )],
+        );
+    }
+    for requested in ["2026-11-03", ASKED] {
+        assert_eq!(
+            total(&state, requested, SCOPED),
+            AggregateV1::Exact(amount(7000))
+        );
+    }
 }
 
 // One read basis (C09). Components A (checking) and B (savings). Basis B0

@@ -1064,18 +1064,20 @@ A leg's membership in a counted amount is included, excluded or unknown:
   one reported date, or a captured relationship row that the revision's
   `captured_allocations` name, from the capture's source and dated by the
   row. Admission allocates only captured rows to transfer legs.
-- It excludes the leg when every such line is dated after the as-of, and
-  either the leg's effective date is after the as-of or a receipt from that
-  source reports `Complete` coverage by posting date from the leg's posting
-  date through the as-of. Coverage counts only when no line from another
-  source is allocated to the leg: such a line already stands for the leg,
-  so the balance's own line would never be allocated to it.
+- It excludes the leg when every such line is dated after the as-of and a
+  receipt from that source reports `Complete` coverage by posting date from
+  the leg's posting date through the as-of. Coverage counts only when no
+  line from another source is allocated to the leg: such a line already
+  stands for the leg, so the balance's own line would never be allocated to
+  it.
 - Several selected balances must agree; otherwise the leg is unknown.
-- The anchored balance includes the legs it adds as evidence.
+- The leg's own dates are journal dates, not the balance source's, so they
+  never decide a reported balance's membership.
+- The anchored balance includes the legs it adds as evidence. It adds none
+  after the requested date, so it excludes a leg whose effective date is
+  after that date.
 - A leg on a component that its total or parts represent is unknown,
   because no counted balance of that component decides it.
-- A leg whose effective date is after the requested date has moved no funds
-  yet, so any of these excludes it unless a line shows that it is included.
 - Everything else is unknown. An as-of time alone never proves inclusion,
   and dates compare as in the position selection checkpoint, so an answer
   that depends on the timezone is unknown.
