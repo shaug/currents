@@ -5,7 +5,6 @@
 //! counts, or its cash and holdings parts do, never both. Funds a transfer
 //! moves between counted components count once: in flight, they are added,
 //! and counted by both balances, they are removed.
-use crate::activity_predicate::civil_date;
 use crate::associations::{IdentityEngine, current_heads};
 use crate::catalog::{incomplete, unit};
 use crate::policy::{PolicyEngine, dataset};
@@ -253,10 +252,11 @@ fn covered(
 /// from that source is dated on or before the balance's as-of. It excludes
 /// it when every such line is dated after the as-of and a receipt from that
 /// source reports complete posting-date coverage from the leg's posting date
-/// through the as-of. Several selected balances must agree. The anchored
-/// balance includes the legs it adds and excludes a leg dated after `day`.
-/// A component that another counts in place of, `None`, has no counted
-/// amount to decide from. Anything else is unknown.
+/// through the as-of, or when the leg's effective date is after the as-of,
+/// so the funds had not moved yet. Several selected balances must agree. The
+/// anchored balance includes the legs it adds. A component that another
+/// counts in place of, `None`, has no counted amount to decide from. Any of
+/// them excludes a leg dated after `day`. Anything else is unknown.
 fn member(
     state: &DomainState,
     day: Date,
@@ -265,21 +265,19 @@ fn member(
     evidence: &[RecordId],
     basis: Option<&Basis>,
 ) -> Result<Member, EngineError> {
+    let moved = Boundary::of(&leg.effective);
+    let unknown = if moved.is_some_and(|m| m.after(Boundary::Date(day))) {
+        Member::Excluded
+    } else {
+        Member::Unknown
+    };
     let reported = match basis {
-        None => return Ok(Member::Unknown),
+        None => return Ok(unknown),
         Some(Basis::Reported(reported)) => reported,
         Some(Basis::Anchored) if evidence.contains(&RecordId(leg.id.0)) => {
             return Ok(Member::Included);
         }
-        Some(Basis::Anchored) => {
-            let later = civil_date(DateBasis::Effective, &leg.effective, &leg.posting)
-                .is_some_and(|leg_day| leg_day > day);
-            return Ok(if later {
-                Member::Excluded
-            } else {
-                Member::Unknown
-            });
-        }
+        Some(Basis::Anchored) => return Ok(unknown),
     };
     let lines = lines(state, head, leg)?;
     let mut joined: Option<Member> = None;
@@ -288,7 +286,7 @@ fn member(
         let each = if dates().any(|d| d.is_some_and(|d| d.by(*as_of))) {
             Member::Included
         } else if dates().all(|d| d.is_some_and(|d| d.after(*as_of)))
-            && covered(state, source, leg, *as_of)
+            && (moved.is_some_and(|m| m.after(*as_of)) || covered(state, source, leg, *as_of))
         {
             Member::Excluded
         } else {
@@ -296,7 +294,10 @@ fn member(
         };
         joined = Some(joined.map_or(each, |j| j.and(each)));
     }
-    Ok(joined.unwrap_or(Member::Unknown))
+    Ok(match joined {
+        Some(Member::Unknown) | None => unknown,
+        Some(known) => known,
+    })
 }
 
 /// A component that counts, or that another counts in place of, by its
@@ -332,9 +333,10 @@ fn fee(
 /// outflow or not, and the receiving balance includes the receipt or not. An
 /// outflow without its receipt adds the receipt, a receipt without its
 /// outflow removes it, and agreement adds nothing. The amount is the
-/// receiving leg's movement at the receiving component's share. Fee legs
-/// move no funds between accounts, and funds that stay inside one counted
-/// amount adjust nothing.
+/// receiving leg's movement, added at the receiving component's share and
+/// removed at the sending components' share, which must be one share. Fee
+/// legs move no funds between accounts, and funds that stay inside one
+/// counted amount adjust nothing.
 fn transfers(
     state: &DomainState,
     day: Date,
@@ -353,6 +355,7 @@ fn transfers(
     {
         let mut sending: Option<Member> = None;
         let mut senders = BTreeSet::new();
+        let mut sender_shares = BTreeSet::new();
         let mut receiving = Vec::new();
         for id in &head.legs {
             let Some(AuthoritativeRecordV1::FinancialLeg(leg)) = state.records.get(&RecordId(id.0))
@@ -370,6 +373,7 @@ fn transfers(
                 -1 => {
                     sending = Some(sending.map_or(m, |s| s.and(m)));
                     senders.insert(c.by);
+                    sender_shares.insert(c.share);
                 }
                 1 => receiving.push((leg, c.share, m, c.by)),
                 _ => {}
@@ -390,19 +394,29 @@ fn transfers(
             }
             let known = matches!(leg.unresolved_residual, SourceValue::Absent)
                 && leg.movement.unit_id == currency;
-            let Some(amount) = owned(leg.movement, share).filter(|_| known) else {
+            // Funds in flight belong to the receiver; funds counted twice are
+            // removed from the sender, whose share counted them.
+            let added = owned(leg.movement, share).filter(|_| known);
+            let removed = match sender_shares.iter().collect::<Vec<_>>()[..] {
+                [sender] => owned(leg.movement, *sender).filter(|_| known),
+                _ => None,
+            };
+            // Moves `bound` one step in direction `k`, or reports that the
+            // amount that step needs is not known.
+            let shift = |k: i8, bound: &mut Amount| -> Result<bool, EngineError> {
+                let step = match k {
+                    1 => added,
+                    -1 => removed.map(|a| a.checked_neg()).transpose()?,
+                    _ => return Ok(true),
+                };
+                let Some(step) = step else {
+                    return Ok(false);
+                };
+                *bound = bound.checked_add(&step)?;
+                Ok(true)
+            };
+            if !shift(least, &mut low)? || !shift(most, &mut high)? {
                 return Ok(None);
-            };
-            let times = |k: i8| match k {
-                1 => Ok(Some(amount)),
-                -1 => amount.checked_neg().map(Some),
-                _ => Ok(None),
-            };
-            if let Some(add) = times(least)? {
-                low = low.checked_add(&add)?;
-            }
-            if let Some(add) = times(most)? {
-                high = high.checked_add(&add)?;
             }
         }
     }

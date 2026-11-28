@@ -2170,13 +2170,20 @@ const AS_OF: &str = "2026-11-05";
 const ASKED: &str = "2026-11-06";
 const SCOPED: &[u32] = &[CHECKING, SAVINGS_B];
 
-/// Declare B.
+/// Declare B, owned 1/1.
 fn declare_savings_b(state: &mut DomainState) {
+    declare_savings_b_owned(state, 1, 1);
+}
+
+/// Declare B, owned `numerator / denominator`.
+fn declare_savings_b_owned(state: &mut DomainState, numerator: u64, denominator: u64) {
     let mut request = catalog();
     request.revision_id = id(SAVINGS_B + 2);
     request.catalog.component_id = id(SAVINGS_B + 1);
     request.catalog.account_id = account(SAVINGS_B);
     request.ownership.account_id = account(SAVINGS_B);
+    request.ownership.numerator = CommitSeq(numerator);
+    request.ownership.denominator = CommitSeq(denominator);
     request.catalog.display_name = "B".into();
     request.catalog.aliases = vec![alias(S2, "B-2")];
     let plan = CatalogEngine::set_complete(state, &request).unwrap();
@@ -2713,5 +2720,97 @@ fn cur_018_transfer_fee_leg_moves_no_funds() {
     assert_eq!(
         total(&state, REQUESTED, &[CHECKING, 60, 70]),
         AggregateV1::Exact(amount(5000))
+    );
+}
+
+#[test]
+fn cur_018_transfer_between_unequal_shares() {
+    // B is owned 1/2. After the transfer the household holds 1,000.00 less
+    // in A and 500.00 more through B, so both orders of arrival give
+    // 5,500.00.
+    let half = || {
+        let mut state = positions();
+        declare_savings_b_owned(&mut state, 1, 2);
+        state
+    };
+    // A still holds the funds and B holds them too: 5,000.00 + 1,500.00,
+    // less A's copy of 1,000.00 at A's share.
+    let mut state = half();
+    transfer(&mut state, false, &[(1000, true)]);
+    transfer_balances(&mut state, 5000, 3000, &[S1]);
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(5500))
+    );
+    // The funds are in flight: 4,000.00 + 1,000.00, plus 1,000.00 at B's
+    // share.
+    let mut state = half();
+    transfer(&mut state, true, &[(1000, false)]);
+    transfer_balances(&mut state, 4000, 2000, &[S2]);
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(5500))
+    );
+}
+
+#[test]
+fn cur_018_senders_at_different_shares() {
+    // A, owned 1/1, and savings S, owned 1/2, send 600.00 and 400.00 to B.
+    // Both still hold the funds and B holds them too, so the copy to remove
+    // has no single share.
+    let mut state = transfer_world();
+    let legs = [
+        transfer_leg(&mut state, 5100, S1, account(CHECKING), -600, SENT, false),
+        transfer_leg(&mut state, 5110, S1, account(SAVINGS), -400, SENT, false),
+        transfer_leg(
+            &mut state,
+            5200,
+            S2,
+            account(SAVINGS_B),
+            1000,
+            RECEIVED,
+            true,
+        ),
+    ];
+    let ids: Vec<LegId> = legs.iter().map(|l| l.id).collect();
+    let mut records: Vec<_> = legs
+        .into_iter()
+        .map(AuthoritativeRecordV1::FinancialLeg)
+        .collect();
+    records.push(transfer_revision(TRANSFER, None, &ids, vec![]));
+    publish(&mut state, records);
+    transfer_balances(&mut state, 5000, 3000, &[S1]);
+    let mut savings = Report::posted(2020, S1, 2000, AS_OF);
+    savings.original_ids = vec!["B-1"];
+    publish(&mut state, savings.records());
+    let AggregateV1::Indeterminate { obstructions, .. } =
+        total(&state, ASKED, &[CHECKING, SAVINGS, SAVINGS_B])
+    else {
+        panic!("an indeterminate aggregate")
+    };
+    assert_eq!(obstructions, vec!["transfer_membership"]);
+}
+
+#[test]
+fn cur_018_later_transfer_leaves_earlier_total() {
+    // Both balances are as of 2026-11-03, before the transfer's legs, and
+    // no coverage is reported.
+    let mut state = transfer_world();
+    transfer(&mut state, true, &[(1000, true)]);
+    for (n, connection, original, value) in [(2000, S1, "A-1", 5000), (2010, S2, "B-2", 2000)] {
+        let mut report = Report::posted(n, connection, value, "2026-11-03");
+        report.original_ids = vec![original];
+        publish(&mut state, report.records());
+    }
+    // On 2026-11-03 no funds have moved.
+    assert_eq!(
+        total(&state, "2026-11-03", SCOPED),
+        AggregateV1::Exact(amount(7000))
+    );
+    // Later, the same balances still predate both legs, so neither
+    // includes them.
+    assert_eq!(
+        total(&state, ASKED, SCOPED),
+        AggregateV1::Exact(amount(7000))
     );
 }

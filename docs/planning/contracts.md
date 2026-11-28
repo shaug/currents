@@ -1055,39 +1055,42 @@ A leg's membership in a counted amount is included, excluded or unknown:
   balance's as-of. A line is a movement facet that the leg's own
   `allocations` or the revision's `allocations` name, and its date is the
   facet's one reported date. Relationship-capture rows are not lines.
-- It excludes the leg when every such line is dated after the as-of and a
-  receipt from that source reports `Complete` coverage by posting date from
-  the leg's posting date through the as-of.
+- It excludes the leg when every such line is dated after the as-of, and
+  either the leg's effective date is after the as-of or a receipt from that
+  source reports `Complete` coverage by posting date from the leg's posting
+  date through the as-of.
 - Several selected balances must agree; otherwise the leg is unknown.
-- The anchored balance includes the legs it adds as evidence and excludes a
-  leg whose effective date is after the requested date.
+- The anchored balance includes the legs it adds as evidence.
 - A leg on a component that its total or parts represent is unknown,
   because no counted balance of that component decides it.
+- A leg whose effective date is after the requested date has moved no funds
+  yet, so any of these excludes it unless a line shows that it is included.
 - Everything else is unknown. An as-of time alone never proves inclusion,
   and dates compare as in the position selection checkpoint, so an answer
   that depends on the timezone is unknown.
 
 The sending side of a transfer is included when every sending leg is, and
 excluded when every one is; otherwise it is unknown. For each receiving
-leg, the aggregate adjusts once by the leg's movement at its component's
-share:
+leg, the aggregate adjusts once by the leg's movement:
 
 - The sending side is included and the receiving leg is excluded: the funds
-  are in flight, so the aggregate adds the amount.
+  are in flight to the receiver, so the aggregate adds the amount at the
+  receiving component's share.
 - The sending side is excluded and the receiving leg is included: both
-  balances count the funds, so the aggregate subtracts it.
+  balances count the funds, so the aggregate removes the sender's copy at
+  the sending components' share. Sending components at different shares
+  leave that amount unknown.
 - The two agree: no adjustment.
 
 A receiving leg whose funds one counted amount holds on both sides, such as
 a move from a brokerage's cash part to its holdings part while the total
 counts, adjusts nothing. Each receiving leg adjusts only its own amount, so
-partial receipts each
-count once. Neither assertion nor any anchored balance is rewritten. When
-either side is unknown, the aggregate takes the least and the most total
-over the memberships the known sides allow. A receiving leg whose amount
-matters has no known amount when it has an unresolved residual, is in a unit
-other than the reporting currency, or its amount times its share has no
-exact decimal.
+partial receipts each count once. Neither assertion nor any anchored
+balance is rewritten. When either side is unknown, the aggregate takes the
+least and the most total over the memberships the known sides allow. An
+amount that matters is not known when the receiving leg has an unresolved
+residual or is in a unit other than the reporting currency, or when its
+movement times the share has no exact decimal.
 
 - `Exact(total)`: no in-perimeter component is omitted, and every transfer
   adjustment is known. A scope the known perimeter leaves wholly outside the
