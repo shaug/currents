@@ -167,7 +167,7 @@ fn overlaps(state: &DomainState, request: &CatalogRequestV1) -> Result<Vec<Recor
         if current.catalog.lifecycle == Lifecycle::Closed
             || !root.overlapping_components.is_empty()
             || listed
-            || n * denominator != numerator * d
+            || n.checked_mul(denominator) != numerator.checked_mul(d)
         {
             return Err(EngineError::invalid());
         }
