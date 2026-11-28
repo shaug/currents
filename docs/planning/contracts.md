@@ -527,8 +527,11 @@ The claim is `Proposed` only when it has no reasons. Otherwise it is
   An interval that starts after the cutoff keeps its earlier result, even
   when its opening is the anchor's evidence.
 - `UnexplainedResidual`: the opening plus the source lines in the interval,
-  excluded lines included, is not the closing. `differences` holds the
-  closing minus that sum.
+  excluded lines included, is not the closing. The balances are in the
+  source's convention and the lines in journal sign, so the comparison
+  converts the balances to journal sign by the account's normal sign.
+  `differences` holds the closing minus that sum, converted back to the
+  source's convention.
 - `MissingDateMapping`: a named line or balance, or a live leg on the account,
   has no civil date by the request's basis. It leaves the comparison.
 - `MissingAllocation`, `UnexpectedAllocation`, `RepeatedIdentity` and

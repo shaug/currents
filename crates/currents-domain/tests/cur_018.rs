@@ -1555,12 +1555,13 @@ fn cur_018_card_opening_purchase_claim_and_aggregate_agree() {
     apply(&mut state, &plan);
     // A 50.00 purchase on 2026-11-03 credits the card.
     movement_on(&mut state, account(CARD), 5300, -50, "2026-11-03");
-    let scope = AccountScope {
+    let household = AccountScope {
         accounts: vec![],
         components: [CHECKING, SAVINGS, CARD].map(|n| id(n + 1)).to_vec(),
     };
 
-    let response = PositionEngine::query(&state, &read_basis(&state, REQUESTED), &scope).unwrap();
+    let response =
+        PositionEngine::query(&state, &read_basis(&state, REQUESTED), &household).unwrap();
     // The journal reports the card's credit balance; 450.00 is owed.
     let [anchored] = response.anchored_balance.as_slice() else {
         panic!("one anchored balance")
@@ -1585,9 +1586,35 @@ fn cur_018_card_opening_purchase_claim_and_aggregate_agree() {
     assert_eq!(claim.reasons, vec![ClaimReasonV1::UnexplainedResidual]);
     assert_eq!(claim.differences, vec![amount(10)]);
 
+    // An activity statement from 400.00 owed through the purchase to
+    // 450.00 owed has no residual; one that closes at 460.00 owed is
+    // 10.00 short.
+    let mut opened = Report::posted(6300, S1, 400, "2026-11-02");
+    opened.original_ids = vec!["unbound"];
+    publish(&mut state, opened.records());
+    let activity = |closing: u32| {
+        let request = ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Activity,
+            scope: AccountScope {
+                accounts: vec![account(CARD)],
+                components: vec![],
+            },
+            cutoffs: scope(Some("2026-11-03"), Some("2026-11-10")),
+            evidence: vec![id(5300), id(6300), id(closing)],
+            exclusions: vec![],
+            basis: read_basis(&state, "2026-11-10"),
+        };
+        ReconciliationEngine::evaluate(&state, &request).unwrap()
+    };
+    let claim = activity(6000);
+    assert!(!claim.reasons.contains(&ClaimReasonV1::UnexplainedResidual));
+    assert!(claim.differences.is_empty());
+    assert_eq!(activity(6100).differences, vec![amount(10)]);
+
     // Selected, the card's own report of 450.00 owed subtracts the same.
     publish(&mut state, report(6200, "D-1", 450, 1));
-    let response = PositionEngine::query(&state, &read_basis(&state, REQUESTED), &scope).unwrap();
+    let response =
+        PositionEngine::query(&state, &read_basis(&state, REQUESTED), &household).unwrap();
     assert!(response.selected_basis.contains(&id(6200)));
     assert_eq!(response.aggregate, AggregateV1::Exact(amount(800)));
 }

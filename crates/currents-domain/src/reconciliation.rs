@@ -512,7 +512,8 @@ fn activity(
     )?;
     let start = scope.start.ok_or_else(EngineError::invalid)?;
     let inputs = ClaimInputs::read(state, &scope)?;
-    let unit = dependencies::catalog(state, scope.account)?.unit_id;
+    let catalog = dependencies::catalog(state, scope.account)?;
+    let unit = catalog.unit_id;
     let legs = dependencies::live_legs(state)?;
     let statement = Statement::read(state, &evidence)?;
     for id in &exclusions {
@@ -606,7 +607,14 @@ fn activity(
         reasons.push(ClaimReasonV1::UnknownClosing);
     }
     if let (Some(opening), Some(closing)) = (opening, closing) {
-        let residual = closing.checked_add(&opening.checked_add(&movement)?.checked_neg()?)?;
+        // The balances are in the source's convention and the lines in
+        // journal sign. The residual is reported in the source's convention.
+        let sign = catalog.normal_sign;
+        let expected = journal_sign(sign, opening)?.checked_add(&movement)?;
+        let residual = journal_sign(
+            sign,
+            journal_sign(sign, closing)?.checked_add(&expected.checked_neg()?)?,
+        )?;
         if residual.coefficient != 0 {
             reasons.push(ClaimReasonV1::UnexplainedResidual);
             differences.push(residual.normalized()?);
