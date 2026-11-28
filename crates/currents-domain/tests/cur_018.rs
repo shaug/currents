@@ -1633,3 +1633,201 @@ fn cur_018_outside_perimeter_contributes_nothing() {
         AggregateV1::Exact(amount(1000))
     );
 }
+
+// Brokerage overlap. Brokerage total T is declared over cash C and holdings
+// H, each a USD asset owned 1/1. C reports 2,000.00.
+
+/// Brokerage total T.
+const BROKERAGE: u32 = 4500;
+
+/// A version-2 request that declares T, a USD asset owned 1/1 with the S1
+/// alias `"T-1"`, over `parts`.
+fn brokerage_total(parts: &[u32]) -> CatalogRequestV1 {
+    let mut request = checking(BROKERAGE, S1, "T");
+    request.schema_version = 2;
+    request.overlaps = parts.iter().map(|n| id(n + 1)).collect();
+    request
+}
+
+/// T over C and H, where C reports 2,000.00. T reports `total` and H a
+/// market value of `holdings`; `None` reports nothing.
+fn brokerage(total: Option<i128>, holdings: Option<i128>) -> DomainState {
+    let mut state = positions();
+    add_account(&mut state, CASH, AccountClass::Asset, 1, "C");
+    add_account(&mut state, HOLDINGS, AccountClass::Asset, 1, "H");
+    let plan = CatalogEngine::set_complete(&state, &brokerage_total(&[CASH, HOLDINGS])).unwrap();
+    apply(&mut state, &plan);
+    publish(&mut state, report(7000, "C-1", 2000, 1));
+    if let Some(value) = holdings {
+        publish(&mut state, report(7010, "H-1", value, 1));
+    }
+    if let Some(value) = total {
+        publish(&mut state, report(7020, "T-1", value, 1));
+    }
+    state
+}
+
+const BROKERED: &[u32] = &[BROKERAGE, CASH, HOLDINGS];
+
+#[test]
+fn cur_018_brokerage_total_counts_once() {
+    let state = brokerage(Some(10000), Some(8000));
+    assert_eq!(
+        total(&state, REQUESTED, BROKERED),
+        AggregateV1::Exact(amount(10000))
+    );
+}
+
+#[test]
+fn cur_018_brokerage_parts_when_total_unknown() {
+    let state = brokerage(None, Some(8000));
+    assert_eq!(
+        total(&state, REQUESTED, BROKERED),
+        AggregateV1::Exact(amount(10000))
+    );
+}
+
+#[test]
+fn cur_018_brokerage_unresolved_overlap() {
+    let state = brokerage(None, None);
+    assert_eq!(
+        subtotal(&total(&state, REQUESTED, BROKERED)),
+        (
+            amount(2000),
+            vec![
+                (id(HOLDINGS + 1), "overlap_unresolved"),
+                (id(BROKERAGE + 1), "overlap_unresolved"),
+            ]
+        )
+    );
+}
+
+#[test]
+fn cur_018_brokerage_total_wins_when_parts_disagree() {
+    let state = brokerage(Some(10000), Some(7900));
+    assert_eq!(
+        total(&state, REQUESTED, BROKERED),
+        AggregateV1::Exact(amount(10000))
+    );
+}
+
+#[test]
+fn cur_018_overlap_declaration_rules() {
+    // A version-1 request keeps its wire form and its record bytes.
+    let command: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/contracts/v1/recognition/catalog.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(catalog()).unwrap(),
+        command["operation"]["value"]
+    );
+    let plan = CatalogEngine::set_complete(&state(), &catalog()).unwrap();
+    assert_eq!(
+        serde_json::to_string(&plan.records).unwrap(),
+        concat!(
+            r#"[{"kind":"AccountComponent","value":{"id":"00000000-0000-0000-0000-000000000011","#,
+            r#""account_id":"00000000-0000-0000-0000-000000000010","account_class":"Asset","#,
+            r#""unit_id":"00000000-0000-0000-0000-000000000001","normal_sign":"Debit","aliases":[],"#,
+            r#""ownership":{"account_id":"00000000-0000-0000-0000-000000000010","numerator":"1","#,
+            r#""denominator":"1"},"coverage":[],"opening_boundary":{"state":"Unknown"},"#,
+            r#""overlapping_components":[],"lifecycle":"Open","display_name":"Synthetic checking"}},"#,
+            r#"{"kind":"AccountCatalogRevision","value":{"id":"00000000-0000-0000-0000-000000000012","#,
+            r#""schema_version":1,"component_id":"00000000-0000-0000-0000-000000000011","#,
+            r#""account_id":"00000000-0000-0000-0000-000000000010","prior_revision":null,"#,
+            r#""catalog":{"account_id":"00000000-0000-0000-0000-000000000010","#,
+            r#""component_id":"00000000-0000-0000-0000-000000000011","account_class":"Asset","#,
+            r#""unit_id":"00000000-0000-0000-0000-000000000001","normal_sign":"Debit","aliases":[],"#,
+            r#""lifecycle":"Open","display_name":"Synthetic checking"},"origin":{"kind":"External"}}}]"#,
+        )
+    );
+    // Only version 2 carries `overlaps`.
+    let mut wire = serde_json::to_value(catalog()).unwrap();
+    wire["overlaps"] = json!([]);
+    assert!(serde_json::from_value::<CatalogRequestV1>(wire.clone()).is_err());
+    wire["schema_version"] = json!(2);
+    assert!(serde_json::from_value::<CatalogRequestV1>(wire).is_ok());
+    let mut request = catalog();
+    request.overlaps = vec![id(11)];
+    assert!(serde_json::to_value(&request).is_err());
+    assert!(CatalogEngine::set_complete(&state(), &request).is_err());
+
+    // Parts C and H, part R, which a revision closes, part P owned 1/2, and
+    // part Q.
+    const C: u32 = 830;
+    const H: u32 = 840;
+    const R: u32 = 860;
+    const P: u32 = 880;
+    const Q: u32 = 890;
+    let mut state = world();
+    for (n, name) in [(C, "C"), (H, "H"), (R, "R"), (Q, "Q")] {
+        let plan = CatalogEngine::set_complete(&state, &checking(n, S1, name)).unwrap();
+        replay(&mut state, plan.records);
+    }
+    let mut half = checking(P, S1, "P");
+    half.ownership.numerator = CommitSeq(1);
+    half.ownership.denominator = CommitSeq(2);
+    let plan = CatalogEngine::set_complete(&state, &half).unwrap();
+    replay(&mut state, plan.records);
+    let mut closed = checking(R, S1, "R");
+    closed.revision_id = id(R + 3);
+    closed.prior_revision = Some(id(R + 2));
+    closed.catalog.lifecycle = Lifecycle::Closed;
+    let plan = CatalogEngine::set_complete(&state, &closed).unwrap();
+    replay(&mut state, plan.records);
+
+    let refuses = |state: &DomainState, request: &CatalogRequestV1| {
+        assert!(
+            CatalogEngine::set_complete(state, request).is_err(),
+            "accepted {:?}",
+            request.overlaps
+        );
+    };
+    // An overlap list on a revision.
+    let mut revision = checking(Q, S1, "Q");
+    revision.schema_version = 2;
+    revision.revision_id = id(Q + 3);
+    revision.prior_revision = Some(id(Q + 2));
+    revision.overlaps = vec![id(C + 1)];
+    refuses(&state, &revision);
+    revision.overlaps = vec![];
+    assert!(CatalogEngine::set_complete(&state, &revision).is_ok());
+    // An undeclared part, a closed part, the total itself, which does not
+    // exist yet, a repeated part and a part owned at another share.
+    for parts in [
+        vec![id(999)],
+        vec![id(R + 1)],
+        vec![id(BROKERAGE + 1)],
+        vec![id(C + 1), id(C + 1)],
+        vec![id(P + 1)],
+    ] {
+        let mut request = brokerage_total(&[]);
+        request.overlaps = parts;
+        refuses(&state, &request);
+    }
+
+    // T over C and H. Its component lists the parts, and replay re-admits it.
+    let plan = CatalogEngine::set_complete(&state, &brokerage_total(&[H, C])).unwrap();
+    let AuthoritativeRecordV1::AccountComponent(root) = &plan.records[0] else {
+        panic!("the total's component")
+    };
+    assert_eq!(root.overlapping_components, vec![id(C + 1), id(H + 1)]);
+    let mut forged = plan.records.clone();
+    if let AuthoritativeRecordV1::AccountComponent(root) = &mut forged[0] {
+        root.overlapping_components = vec![id(C + 1), id(R + 1)];
+    }
+    refused(&state, forged);
+    replay(&mut state, plan.records);
+
+    // A second total over a part T lists, or over T itself, is refused; one
+    // over Q is not.
+    let second = |parts: Vec<RecordId>| {
+        let mut request = checking(870, S1, "U");
+        request.schema_version = 2;
+        request.overlaps = parts;
+        request
+    };
+    refuses(&state, &second(vec![id(C + 1)]));
+    refuses(&state, &second(vec![id(BROKERAGE + 1)]));
+    assert!(CatalogEngine::set_complete(&state, &second(vec![id(Q + 1)])).is_ok());
+}

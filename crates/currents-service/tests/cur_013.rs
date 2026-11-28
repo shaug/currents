@@ -1126,6 +1126,7 @@ async fn catalog_batch_recovery(case: CatalogBatchCase) {
                 catalog: revision.catalog.clone(),
                 ownership: root.ownership.clone(),
                 origin: revision.origin.clone(),
+                overlaps: vec![],
             },
         )
         .unwrap();

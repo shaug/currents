@@ -145,6 +145,35 @@ fn validate_aliases(state: &DomainState, request: &SetAccountCatalogV1) -> Resul
     }
     Ok(())
 }
+/// The parts a new total component overlaps, sorted. Each part is an
+/// already declared, open component that is not itself a total, that no
+/// other total lists, and whose ownership share equals the total's.
+fn overlaps(state: &DomainState, request: &CatalogRequestV1) -> Result<Vec<RecordId>, EngineError> {
+    let parts: BTreeSet<RecordId> = request.overlaps.iter().copied().collect();
+    if parts.len() != request.overlaps.len() || parts.len() > 256 {
+        return Err(EngineError::invalid());
+    }
+    let share = |o: &OwnershipV1| (u128::from(o.numerator.0), u128::from(o.denominator.0));
+    let (numerator, denominator) = share(&request.ownership);
+    for part in &parts {
+        let Some(AuthoritativeRecordV1::AccountComponent(root)) = state.records.get(part) else {
+            return Err(EngineError::invalid());
+        };
+        let current = CatalogEngine::current(state, *part)?;
+        let (n, d) = share(&root.ownership);
+        let listed = state.records.values().any(|r| {
+            matches!(r, AuthoritativeRecordV1::AccountComponent(t) if t.overlapping_components.contains(part))
+        });
+        if current.catalog.lifecycle == Lifecycle::Closed
+            || !root.overlapping_components.is_empty()
+            || listed
+            || n * denominator != numerator * d
+        {
+            return Err(EngineError::invalid());
+        }
+    }
+    Ok(parts.into_iter().collect())
+}
 impl CatalogEngine {
     /// Legacy incomplete route cannot establish creation or revision provenance.
     pub fn set(_: &DomainState, _: &SetAccountCatalogV1) -> Result<DecisionPlan, EngineError> {
@@ -227,7 +256,12 @@ impl CatalogEngine {
         state: &DomainState,
         request: &CatalogRequestV1,
     ) -> Result<DecisionPlan, EngineError> {
-        version(request.schema_version)?;
+        match request.schema_version {
+            1 if request.overlaps.is_empty() => {}
+            1 => return Err(EngineError::invalid()),
+            2 => {}
+            _ => return Err(EngineError::version()),
+        }
         let c = &request.catalog;
         let expected_sign = match c.account_class {
             AccountClass::Asset | AccountClass::Expense => NormalSign::Debit,
@@ -256,7 +290,11 @@ impl CatalogEngine {
             let AuthoritativeRecordV1::AccountComponent(root) = record else {
                 return Err(EngineError::invalid());
             };
-            if !same_identity(root, c) || root.ownership != request.ownership {
+            // Overlaps are declared only when the total is created.
+            if !same_identity(root, c)
+                || root.ownership != request.ownership
+                || !request.overlaps.is_empty()
+            {
                 return Err(EngineError::invalid());
             }
             let has_revision = state.records.values().any(|r| matches!(r, AuthoritativeRecordV1::AccountCatalogRevision(r) if r.component_id == c.component_id));
@@ -326,7 +364,7 @@ impl CatalogEngine {
                 ownership: request.ownership.clone(),
                 coverage: vec![],
                 opening_boundary: boundary,
-                overlapping_components: vec![],
+                overlapping_components: overlaps(state, request)?,
                 lifecycle: c.lifecycle,
                 display_name: c.display_name.clone(),
             };
