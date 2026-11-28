@@ -2,6 +2,7 @@
 use crate::{
     catalog::CatalogEngine,
     investments::{InvestmentEngine, quantity::declaration_in},
+    policy::{PolicyEngine, request_of},
     recognition::{RecognitionEngine, restore},
 };
 use currents_types::*;
@@ -147,6 +148,15 @@ pub(crate) fn validate_transition(
                 prior,
                 &crate::investments::replay::trade_request(next, trade)?,
             )?),
+            // A revision is the plan the engine derives again from the prior
+            // prefix. Two revisions of one family version share an ID, so the
+            // projection must keep exactly this one.
+            AuthoritativeRecordV1::DatasetPolicyRevision(revision) => {
+                if next.records.get(&revision.id) != Some(record) {
+                    return Err(EngineError::invalid());
+                }
+                Some(PolicyEngine::set(prior, &request_of(revision))?)
+            }
             AuthoritativeRecordV1::RelationshipParseRevision(p) => {
                 let Some(AuthoritativeRecordV1::ImportReceipt(r)) = next.records.get(&p.receipt_id)
                 else {
@@ -252,7 +262,8 @@ pub(crate) fn validate_transition(
             | AuthoritativeRecordV1::SegmentReemission(_)
             | AuthoritativeRecordV1::Security(_)
             | AuthoritativeRecordV1::Position(_)
-            | AuthoritativeRecordV1::Trade(_) => true,
+            | AuthoritativeRecordV1::Trade(_)
+            | AuthoritativeRecordV1::DatasetPolicyRevision(_) => true,
             // Only a security declaration declares a security unit.
             AuthoritativeRecordV1::UnitCatalog(catalog) => catalog
                 .units

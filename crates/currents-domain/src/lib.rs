@@ -11,6 +11,7 @@ pub mod segments;
 
 mod lookup;
 
+pub mod policy;
 pub mod policy_history;
 
 mod recognition_replay;

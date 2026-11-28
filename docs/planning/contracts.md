@@ -747,6 +747,61 @@ the claim's applicability at that commit. `applicability` refuses a claim
 with another comparison version with `UnsupportedVersion`, and an Activity
 or Balance claim whose accounting index lags the state with `StaleBasis`.
 
+### CUR-018 dataset policy revisions
+
+```text
+DatasetPolicyRevisionV1 { id, policy_id, version, prior_version:Option<u32>, effective_scope:DateScope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }
+PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>
+PolicyEngine::governing(state:&DomainState,day:Date)->Result<GoverningPolicyV1,EngineError>
+GoverningPolicyV1 { ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }
+PolicySettingV1<T> = NotSet | Set { version, value:SourceValue<T> }
+```
+
+An owner's `SetDatasetPolicyV1` becomes a new immutable
+`DatasetPolicyRevisionV1`. Each revision field is the request's
+`Option<PolicyChangeV1<T>>` unchanged: null when the revision does not set
+the field, and otherwise the value exactly as stated, `Unknown` included.
+`version` is the family's latest revision version plus one, starting at 1,
+and `prior_version` is that latest version. The ID is a version 8 UUID
+derived from `policy_id` and `version`, so one family version names one
+record. The plan holds the one revision, no invalidations and
+`AccountingIntent::NoEffect`. Its commit holds one `Policy` decision.
+
+`set` refuses, with no plan:
+
+- a `policy_id` that names no `DatasetPolicy` record, or a second family
+  when another family already has revisions; a dataset has one revision
+  family;
+- a `prior_version` other than the family's latest revision version (`None`
+  for the first revision);
+- an effective scope whose basis is not `Effective`, or whose start is after
+  its end;
+- a request that changes no field;
+- a change whose `basis` names another dataset or a commit after the state's;
+- a known ownership perimeter that names an account no component declares,
+  names one account twice, or holds a zero denominator or a numerator above
+  its denominator;
+- a known source priority or freshness threshold list that names a connection
+  no import receipt or account alias uses, or names one connection twice, or
+  a threshold of zero seconds; and
+- a known reporting currency that is not a declared `Currency` unit.
+
+`governing` gives, for each field, the value of the highest-version revision
+whose effective scope contains `day` (both ends inclusive, an open end
+unbounded) and which sets that field, with that revision's version. When no
+such revision exists the field is `NotSet`. It never falls back to the
+latest revision outside its dates, or to a bootstrap `DatasetPolicyV1` field
+such as `freshness_seconds`. Replay through an earlier commit reads only the
+revisions committed by then.
+
+Replay re-admits a revision only when `PolicyEngine::set` at the prior state
+yields the same record, so a stale prior version, a second revision on the
+same prior version and a share above one are refused. Storage checks that
+`policy_id` names a `DatasetPolicy` record. `DatasetPolicyV1` records,
+`PolicyHistory` and the exact `(id, version)` policy a recognition or
+adoption names are unchanged. The service route and its preview belong to
+later work.
+
 <a id="c10"></a>
 
 ## C10: Organization and deterministic rules, owner CUR-019

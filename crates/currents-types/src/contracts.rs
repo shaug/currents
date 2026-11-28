@@ -19,6 +19,23 @@ dto!(FreshnessThresholdV1 {
 });
 dto!(TimezonePolicyV1 { zone:SourceValue<String>, timezone_data_version:String, calendar_version:u32 });
 dto!(SetDatasetPolicyV1 { policy_id:RecordId, prior_version:Option<u32>, effective_scope:DateScope, ownership_perimeter:Option<PolicyChangeV1<Vec<OwnershipV1>>>, source_priority:Option<PolicyChangeV1<Vec<RecordId>>>, freshness_thresholds:Option<PolicyChangeV1<Vec<FreshnessThresholdV1>>>, timezone:Option<PolicyChangeV1<TimezonePolicyV1>>, reporting_currency:Option<PolicyChangeV1<UnitId>> });
+/// The value one policy field has on a day. `NotSet` means no revision in
+/// effect that day sets the field; `Set` names the revision version that does.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", content = "value", deny_unknown_fields)]
+pub enum PolicySettingV1<T> {
+    NotSet,
+    Set { version: u32, value: SourceValue<T> },
+}
+impl<T: Schema> Schema for PolicySettingV1<T> {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"oneOf":[
+         {"type":"object","additionalProperties":false,"required":["state"],"properties":{"state":{"const":"NotSet"}}},
+         {"type":"object","additionalProperties":false,"required":["state","value"],"properties":{"state":{"const":"Set"},"value":{"type":"object","additionalProperties":false,"required":["version","value"],"properties":{"version":u32::schema(),"value":SourceValue::<T>::schema()}}}}
+        ]})
+    }
+}
+dto!(GoverningPolicyV1 { ownership_perimeter:PolicySettingV1<Vec<OwnershipV1>>, source_priority:PolicySettingV1<Vec<RecordId>>, freshness_thresholds:PolicySettingV1<Vec<FreshnessThresholdV1>>, timezone:PolicySettingV1<TimezonePolicyV1>, reporting_currency:PolicySettingV1<UnitId> });
 dto!(SetAccountCatalogV1 { account_id:AccountId, component_id:RecordId, account_class:AccountClass, unit_id:UnitId, normal_sign:NormalSign, aliases:Vec<SourceAliasV1>, lifecycle:Lifecycle, display_name:String });
 dto!(OwnershipShareV1 {
     numerator: CommitSeq,
