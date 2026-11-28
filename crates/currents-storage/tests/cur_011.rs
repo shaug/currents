@@ -452,7 +452,7 @@ async fn cur_011_1() {
         let record = AuthoritativeRecordV1::Organization(OrganizationRecordV1 {
             id: fixture::id(50000),
             version: 1,
-            kind: OrganizationKind::Note,
+            kind: OrganizationKind::Party,
             targets: vec![],
             parent: None,
             text: if variant == 4 { "changed" } else { "original" }.into(),

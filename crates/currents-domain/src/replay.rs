@@ -112,12 +112,9 @@ impl ReplayEngine {
                 | AuthoritativeRecordV1::OccurrenceMatch(_) => return Err(EngineError::version()),
                 AuthoritativeRecordV1::ReconciliationClaim(v) => Some(v.id),
                 AuthoritativeRecordV1::ReconciliationDisposition(v) => Some(v.id),
-                AuthoritativeRecordV1::Organization(v) => {
-                    if !v.allocations.is_empty() {
-                        return Err(EngineError::version());
-                    }
-                    Some(v.id)
-                }
+                // `organization::validate` checks these below.
+                AuthoritativeRecordV1::Organization(v) => Some(v.id),
+                AuthoritativeRecordV1::OrganizationAssignment(v) => Some(v.id),
                 AuthoritativeRecordV1::Rule(v) => Some(v.id),
                 AuthoritativeRecordV1::Review(v) => Some(v.id),
                 AuthoritativeRecordV1::Commitment(v) => Some(RecordId(v.id.0)),
@@ -133,6 +130,7 @@ impl ReplayEngine {
                 records.insert(id, record);
             }
         }
+        crate::organization::validate(&state.records, &records, &commit.records)?;
         let mut projection = state.clone();
         projection.records = records;
         projection.dataset_policies =

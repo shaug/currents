@@ -55,6 +55,7 @@ const RECORDS: &[&str] = &[
     "ReconciliationClaim",
     "ReconciliationDisposition",
     "Organization",
+    "OrganizationAssignment",
     "Rule",
     "Review",
     "Commitment",
@@ -753,6 +754,28 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             m.reference(&["Organization"], &v["parent"], None);
             m.reference(&["Organization"], &v["supersedes"], None);
             m.allocations(&v["allocations"]);
+        }
+        AuthoritativeRecordV1::OrganizationAssignment(a) => {
+            // Rule and proposal sources name record kinds later CUR-019
+            // leaves define.
+            if a.schema_version != 1 || a.source != OrganizationSourceV1::Owner {
+                return Err(EngineError::version());
+            }
+            match (a.version, a.supersedes) {
+                (1, None) => {}
+                (version, Some(prior)) if version > 1 && prior != a.id => {
+                    m.reference(&["OrganizationAssignment"], &v["supersedes"], None);
+                    m.define(
+                        "OrganizationAssignmentSuccessor",
+                        &v["supersedes"],
+                        0,
+                        false,
+                    );
+                }
+                _ => return Err(EngineError::invalid()),
+            }
+            m.many(&["FinancialLeg"], &v["legs"]);
+            m.reference(&["Organization"], &v["value"], None);
         }
         AuthoritativeRecordV1::Rule(_) => m.many(&["Account"], &v["accounts"]),
         AuthoritativeRecordV1::Review(_) => m.many(RECORDS, &v["targets"]),

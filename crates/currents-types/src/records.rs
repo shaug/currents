@@ -519,13 +519,46 @@ dto!(ReconciliationDispositionV1 {
     reason: String
 });
 dto!(OrganizationRecordV1 { id:RecordId, version:u32, kind:OrganizationKind, targets:Vec<RecordId>, parent:Option<RecordId>, text:String, allocations:Vec<EvidenceAllocationV1>, supersedes:Option<RecordId> });
+// The field an organization assignment sets on legs.
+choices!(OrganizationFieldV1 {
+    Party,
+    Category,
+    Tag
+});
+// A rule version that produced a value, with the grant it adopted under.
+dto!(RuleSourceV1 {
+    rule: RecordId,
+    version: u32,
+    grant: Option<GrantId>
+});
+/// Where an assignment's value came from: the owner, a rule version, or an
+/// adopted proposal.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
+pub enum OrganizationSourceV1 {
+    Owner,
+    Rule(RuleSourceV1),
+    Proposal(RecordId),
+}
+impl Schema for OrganizationSourceV1 {
+    fn schema() -> serde_json::Value {
+        serde_json::json!({"oneOf":[
+            {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"Owner"}}},
+            {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"Rule"},"value":RuleSourceV1::schema()}},
+            {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"Proposal"},"value":RecordId::schema()}}
+        ]})
+    }
+}
+// One version of a field's value on legs. `value` names a definition's first
+// version, and is null when the version clears the value.
+dto!(OrganizationAssignmentV1 { id:RecordId, schema_version:u32, version:u32, supersedes:Option<RecordId>, field:OrganizationFieldV1, legs:Vec<LegId>, value:Option<RecordId>, override_action:OverrideActionV1, source:OrganizationSourceV1 });
 dto!(RuleV1 { id:RecordId, version:u32, operation_kinds:Vec<DecisionKind>, accounts:Vec<AccountId>, conditions:Vec<ReportedFieldV1>, grant_id:GrantId, revoked:bool });
 dto!(ReviewRecordV1 { id:RecordId, targets:Vec<RecordId>, disposition:ReviewDisposition, reason:String });
 dto!(ScenarioV1 { id:RecordId, version:u32, basis:ReadBasis, commitments:Vec<CommitmentId>, assumptions:Vec<String> });
 dto!(ForecastPointV1 { account_id:AccountId, at:TemporalValue, amount:SourceValue<Amount>, uncertainty:Vec<String> });
 dto!(DecisionEnvelopeV1 { id:RecordId, commit:CommitSeq, item_position:u32, decision_type:DecisionKind, schema_version:u32, actor:RecordId, authority:AuthorityKind, grant_id:Option<GrantId>, command_id:CommandId, command_digest:Digest, references:Vec<RecordId>, recorded_time:RecordedInstant, adopted_result:Vec<RecordId>, policy:PolicyReferenceV1, corrections:Vec<RecordId>, supersedes:Vec<RecordId> });
 tagged!(AuthoritativeRecordV1 {
- DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), SegmentReemission(SegmentReemissionV1), ReconciliationClaim(ReconciliationClaimV1), ReconciliationDisposition(ReconciliationDispositionV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1), Security(SecurityV1), Position(PositionV1), Trade(TradeV1), DatasetPolicyRevision(DatasetPolicyRevisionV1)
+ DateConversionPolicy(DateConversionPolicyV1), FrozenAccountingManifest(FrozenAccountingManifestV1), Dataset(DatasetDefinitionV1), DatasetPolicy(DatasetPolicyV1), UnitCatalog(UnitCatalogV1), AccountComponent(AccountComponentV1), AccountAlias(AccountAliasV1), OwnershipPerimeter(OwnershipPerimeterV1), ImportReceipt(ImportReceiptV1), ObservationVersion(ObservationVersionV1), ParseProduct(ParseProductV1), AddressedParseProduct(AddressedParseProductV1), FinancialEvent(FinancialEventV1), FinancialLeg(FinancialLegV1), Association(AssociationV1), Allocation(EvidenceAllocationV1), Decision(DecisionEnvelopeV1), Recognition(RecognitionV1), RecognitionCorrectionRevision(RecognitionCorrectionRevisionV1), AccountingSegment(AccountingSegmentV1), SegmentReemission(SegmentReemissionV1), ReconciliationClaim(ReconciliationClaimV1), ReconciliationDisposition(ReconciliationDispositionV1), Organization(OrganizationRecordV1), Rule(RuleV1), Review(ReviewRecordV1), Commitment(CommitmentV1), OccurrenceMatch(OccurrenceMatchV1), Scenario(ScenarioV1), ForecastRun(ForecastRunV1), AccountCatalogRevision(AccountCatalogRevisionV1), ActivityAdoption(ActivityAdoptionV1), PendingExpiry(PendingExpiryV1), AssociationRevision(AssociationRevisionV1), RelationshipCapture(RelationshipCaptureV1), RelationshipParseRevision(RelationshipParseRevisionV1), Security(SecurityV1), Position(PositionV1), Trade(TradeV1), DatasetPolicyRevision(DatasetPolicyRevisionV1), OrganizationAssignment(OrganizationAssignmentV1)
 });
 choices!(CommandState {
     Committed,
@@ -576,6 +609,36 @@ impl DomainState {
     pub fn claim_invalidated(&self, id: RecordId) -> bool {
         self.claim_status(id).is_some() && self.invalidated.contains(&id)
     }
+    /// The owner's current value of `field` on `leg` at this prefix: the
+    /// latest version of the owner assignment that holds the leg, unless that
+    /// version clears the value.
+    pub fn owner_value(&self, leg: LegId, field: OrganizationFieldV1) -> Option<OwnerValueV1> {
+        let assignments = self.records.values().filter_map(|record| match record {
+            AuthoritativeRecordV1::OrganizationAssignment(a) => Some(a),
+            _ => None,
+        });
+        let superseded: BTreeSet<RecordId> =
+            assignments.clone().filter_map(|a| a.supersedes).collect();
+        let current = assignments.into_iter().find(|a| {
+            a.field == field
+                && a.source == OrganizationSourceV1::Owner
+                && a.legs.contains(&leg)
+                && !superseded.contains(&a.id)
+        })?;
+        Some(OwnerValueV1 {
+            record: current.id,
+            version: current.version,
+            value: current.value?,
+        })
+    }
+}
+/// A leg's current owner value: the assignment version that holds it and the
+/// definition it names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OwnerValueV1 {
+    pub record: RecordId,
+    pub version: u32,
+    pub value: RecordId,
 }
 impl Schema for Health {
     fn schema() -> serde_json::Value {

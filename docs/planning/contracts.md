@@ -22,7 +22,7 @@ ID newtypes over UUID: `DatasetId`, `InstanceId`, `CommandId`, `RecordId`, `Acco
 
 `TemporalValue = Date { civil, original_text } | Instant { utc, original_offset, original_zone, precision, original_text } | Unknown { original_text }`; `DateScope { start:Option<Date>, end:Option<Date>, basis:Effective|Posting }`; `ReadBasis { dataset_id, through_commit, effective_scope, evaluation_instant, query_semantics_version, selection_policy_version, unit_catalog_version }`. Dates use `time::Date`; instants use `time::OffsetDateTime`; source unknown/null/absent values are distinct enums. IANA timezone data and calendar definitions are explicit versioned input, not an ambient conversion.
 
-`AuthoritativeRecordV1` is a tagged enum for dataset/policy/catalog definitions, account components/aliases/perimeter, import receipts, observation versions, parse products, economic events/legs, associations/allocations, decisions/recognitions/segments, reconciliation claims, organization/rules/review, commitments/matches/scenarios/forecast runs. CUR-002 creates schemas for every required field in design section 3 and the owning subsystem extends its variant before use. A semantic version change never silently ignores unknown variants. `DomainCommitV1 { seq, previous_digest, records:Vec<AuthoritativeRecordV1>, decisions:Vec<DecisionEnvelopeV1>, native_head_after, command_result, digest }`; decision envelopes carry actor/grant identity, recorded time, policy, command/digest and supersession, never bearer authorization. `DomainState` is the replayed typed state indexed by stable IDs; it is not authoritative by itself. `DecisionPlan { records, invalidations:Vec<RecordId>, accounting:AccountingIntent }` is a proposed effect, never writes by itself. `AccountingIntent` is a typed enum of metadata declaration, recognition, correction and no-effect; the frozen native form is C05.
+`AuthoritativeRecordV1` is a tagged enum for dataset/policy/catalog definitions, account components/aliases/perimeter, import receipts, observation versions, parse products, economic events/legs, associations/allocations, decisions/recognitions/segments, reconciliation claims, organization records and assignments/rules/review, commitments/matches/scenarios/forecast runs. C10 gives the exact `OrganizationAssignmentV1` schema. CUR-002 creates schemas for every required field in design section 3 and the owning subsystem extends its variant before use. A semantic version change never silently ignores unknown variants. `DomainCommitV1 { seq, previous_digest, records:Vec<AuthoritativeRecordV1>, decisions:Vec<DecisionEnvelopeV1>, native_head_after, command_result, digest }`; decision envelopes carry actor/grant identity, recorded time, policy, command/digest and supersession, never bearer authorization. `DomainState` is the replayed typed state indexed by stable IDs; it is not authoritative by itself. `DecisionPlan { records, invalidations:Vec<RecordId>, accounting:AccountingIntent }` is a proposed effect, never writes by itself. `AccountingIntent` is a typed enum of metadata declaration, recognition, correction and no-effect; the frozen native form is C05.
 
 `EngineError` has the stable classes listed in design section 10, affected scope and safe next action; no raw SQL, secrets, path, or private excluded fields in external errors. `Health = Healthy | SourcePartial | SourceStale | Locked | ProjectionLagging | IntegrityFailed | MigrationRequired | RecoveryInProgress`; independent source conditions may coexist.
 
@@ -966,7 +966,76 @@ CUR-018 work.
 
 Files: `crates/currents-domain/src/{organization,rules}.rs`.
 
-`OrganizationRequestV1 { economic_ids, field, value, allocation, provenance, override_action }`; `RuleDefinitionV1 { id,version,scope,priority,predicate,allowed_operation,adopted_value }`; `RuleGrantV1 { grant_id,rule_id,version,accounts,conditions,operation_kinds,revoked }`. `OrganizationEngine::set(state,&OrganizationRequestV1)->Result<DecisionPlan,EngineError>`; `RuleEvaluator::propose(state,&RuleDefinitionV1)->Result<Vec<DecisionPlan>,EngineError>`. Only service-internal authorized evaluator can adopt with an active exact grant. AI proposals contain input field/model/version provenance and never a grant; no remote AI adapter in v1. Categories partition signed amounts; tags nonadditive; hierarchy deduplicates stable leg IDs; conflicting equal-priority rules remain conflicts.
+`OrganizationRequestV1 { economic_ids, field, value, allocation, provenance, override_action }` is the protocol `SetOrganization` payload; its bytes are unchanged and no route maps it yet. `RuleDefinitionV1 { id,version,scope,priority,predicate,allowed_operation,adopted_value }`; `RuleGrantV1 { grant_id,rule_id,version,accounts,conditions,operation_kinds,revoked }`. `OrganizationEngine::set(state,&OrganizationChangeV1)->Result<OrganizationPreviewV1,EngineError>`; `RuleEvaluator::propose(state,&RuleDefinitionV1)->Result<Vec<DecisionPlan>,EngineError>`. Only service-internal authorized evaluator can adopt with an active exact grant. AI proposals contain input field/model/version provenance and never a grant; no remote AI adapter in v1. Categories partition signed amounts; tags nonadditive; hierarchy deduplicates stable leg IDs; conflicting equal-priority rules remain conflicts.
+
+### CUR-019 owner organization records
+
+```text
+OrganizationRecordV1 { id, version, kind, targets, parent, text, allocations, supersedes }
+OrganizationFieldV1 = Party | Category | Tag
+OrganizationSourceV1 = Owner | Rule(RuleSourceV1 { rule, version, grant:Option<GrantId> }) | Proposal(RecordId)
+OrganizationAssignmentV1 { id, schema_version, version, supersedes:Option<RecordId>, field:OrganizationFieldV1, legs:Vec<LegId>, value:Option<RecordId>, override_action:OverrideActionV1, source:OrganizationSourceV1 }
+OrganizationChangeV1 { records:Vec<OrganizationRecordV1>, values:Vec<LegValueRequestV1> }
+LegValueRequestV1 { field, legs:Vec<LegId>, value:Option<RecordId>, action:OverrideActionV1 }
+OrganizationPreviewV1 { plan:DecisionPlan, skipped:Vec<LegId> }
+DomainState::owner_value(leg,field)->Option<OwnerValueV1 { record, version, value }>
+```
+
+Parties, aliases, categories, tags and notes are `OrganizationRecordV1`
+versions; its fields and bytes are unchanged. A party, category or tag value
+on legs is an `OrganizationAssignmentV1` version, schema version 1.
+`AuthoritativeRecordV1` adds `OrganizationAssignment(OrganizationAssignmentV1)`.
+An edit appends the next version and never changes an earlier one.
+
+`OrganizationEngine::set` previews one owner change: the change's records
+first, then one assignment per changed leg. Its plan has no invalidations and
+`AccountingIntent::NoEffect`. A leg's assignment for a field is the next
+version of its latest one, including a version that cleared the value, or a
+first version; its ID derives from the field, the leg and the version it
+supersedes. `Preserve` sets a value only on legs without one and lists the
+others in `skipped`. `Replace` supersedes the current value. `Clear` releases
+it with a version whose `value` is null; a leg with no value has nothing to
+clear and is refused.
+
+`set` refuses, with no plan, an empty change, a value request with no legs or
+a leg twice, and a request whose `value` is null for any action but `Clear`.
+It and replay both refuse:
+
+- a record whose ID is nil, already recorded, or used twice in the commit;
+- a first version other than version 1, or a revision that is not the next
+  version of the version it supersedes, changes its kind or field, or forks a
+  version another record already supersedes;
+- a party, alias, category or tag with targets; a party with a parent; a
+  category or tag whose parent is not the first version of another of its
+  kind; an alias whose parent is not a party's first version; and a parent
+  chain, read through each definition's latest version, that returns to where
+  it started;
+- a note with a parent, with no targets or a target twice, or with a target
+  that is not a `FinancialLeg` record, such as a recognition or posting ID;
+- an assignment on no legs, a leg twice or a missing leg; a `Clear` that names
+  a value or supersedes a version without one; another action whose value is
+  not the first version of a definition of the field's kind; a `Preserve` that
+  supersedes a value; and a revision whose legs differ from its predecessor's;
+- two latest owner assignments for one leg and field.
+
+Replay refuses, with a version error, an organization record with allocations
+or of kind `ReportingAllocation`, an assignment of another schema version, and
+an assignment whose source is not `Owner` until later CUR-019 leaves define
+rules and proposals. Storage checks that an assignment's legs are
+`FinancialLeg` records, its value an `Organization` record and its
+predecessor an `OrganizationAssignment`. It also refuses a second successor
+of one assignment version, and a rule or proposal source.
+
+`owner_value` gives the latest owner assignment that holds the leg for the
+field, its version and the definition it names, or `None` when there is none
+or it clears the value. Replay through an earlier commit reports that
+commit's value.
+
+Corrections and segment replacements refuse a change while an assignment
+names a leg they retire, until a later CUR-019 leaf defines its remap.
+`OrganizationRecordV1` successors in corrections work as before. Precedence
+beyond the owner tier, alias matching, rules, grants, proposals, splits, tag
+counting and the command route belong to later work.
 
 <a id="c11"></a>
 

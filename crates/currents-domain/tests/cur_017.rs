@@ -6,6 +6,7 @@ use currents_domain::ReplayEngine;
 use currents_domain::associations::IdentityEngine;
 use currents_domain::catalog::CatalogEngine;
 use currents_domain::holdings::{HoldingDifferenceV1, HoldingPositionV1, compare_holdings};
+use currents_domain::organization::{LegValueRequestV1, OrganizationChangeV1, OrganizationEngine};
 use currents_domain::recognition::RecognitionEngine;
 use currents_domain::reconciliation::{
     ClaimApplicabilityV1, InvalidationReasonV1, ReconciliationEngine,
@@ -1333,20 +1334,26 @@ fn cur_017_3_cosmetic_tag_keeps_claim() {
         id: id(3600),
         version: 1,
         kind: OrganizationKind::Tag,
-        targets: vec![RecordId(leg.0)],
+        targets: vec![],
         parent: None,
         text: "groceries".into(),
         allocations: vec![],
         supersedes: None,
     };
-    let plan = DecisionPlan {
-        records: vec![AuthoritativeRecordV1::Organization(tag)],
-        invalidations: vec![],
-        accounting: AccountingIntent::NoEffect(NoEffectV1 {
-            reason: "Tag a leg".into(),
-        }),
-    };
-    world.commit_as(&plan, DecisionKind::Organization);
+    let preview = OrganizationEngine::set(
+        &world.state,
+        &OrganizationChangeV1 {
+            records: vec![tag],
+            values: vec![LegValueRequestV1 {
+                field: OrganizationFieldV1::Tag,
+                legs: vec![leg],
+                value: Some(id(3600)),
+                action: OverrideActionV1::Replace,
+            }],
+        },
+    )
+    .unwrap();
+    world.commit_as(&preview.plan, DecisionKind::Organization);
     assert_eq!(
         applicability(&world.state, k.id),
         ClaimApplicabilityV1::Current
