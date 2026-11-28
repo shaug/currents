@@ -1,5 +1,5 @@
 //! Explicit evidence adoption and recognition, with no ambient clock or identity generation.
-use crate::catalog::{incomplete, known_time, version};
+use crate::catalog::{incomplete, journal_sign, known_time, version};
 use crate::lookup::Lookup;
 use currents_types::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -303,12 +303,12 @@ fn validate(
         if leg.allocations != expected {
             return Err(EngineError::invalid());
         }
+        let opening = request
+            .financial
+            .as_ref()
+            .is_some_and(|f| f.opening.is_some());
         for source in &item.sources {
-            let expected_kind = if request
-                .financial
-                .as_ref()
-                .is_some_and(|f| f.opening.is_some())
-            {
+            let expected_kind = if opening {
                 ObservationKind::Balance
             } else {
                 ObservationKind::Movement
@@ -326,7 +326,13 @@ fn validate(
             {
                 return Err(EngineError::invalid());
             }
-            if !equal(source.amount, leg.movement)? {
+            // An opening's balance evidence is in the source's convention.
+            let posted = if opening {
+                journal_sign(component.normal_sign, source.amount)?
+            } else {
+                source.amount
+            };
+            if !equal(posted, leg.movement)? {
                 return Err(duplicate());
             }
             if split {

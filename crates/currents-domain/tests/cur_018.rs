@@ -2,7 +2,7 @@
 //! using synthetic identities and exact public interfaces.
 use currents_domain::{
     ReplayEngine, catalog::CatalogEngine, policy::PolicyEngine, position::PositionEngine,
-    recognition::RecognitionEngine,
+    recognition::RecognitionEngine, reconciliation::ReconciliationEngine,
 };
 use currents_types::*;
 use serde_json::json;
@@ -1462,8 +1462,8 @@ fn cur_018_liability_subtracts() {
     );
 }
 
-#[test]
-fn cur_018_anchored_liability_subtracts_amount_owed() {
+/// Household A and B with card D, whose accounting index maps it.
+fn carded() -> DomainState {
     let mut state = household(500);
     add_account(&mut state, CARD, AccountClass::Liability, 1, "D");
     state.accounting.as_mut().unwrap().accounts.insert(
@@ -1475,10 +1475,15 @@ fn cur_018_anchored_liability_subtracts_amount_owed() {
             path: format!("fixture/{}", account(CARD).0),
         },
     );
-    // The card's opening credits it 400.00 at the end of 2026-11-01. The
-    // opening's balance evidence binds no alias, so the card has no
-    // selected assertion.
-    let balance = evidence(&mut state, 5000, -400, None);
+    state
+}
+
+/// The request that opens card D at the end of 2026-11-01 from a balance
+/// of `owed` and posts `posted` to the card, balanced against account 50.
+/// The balance evidence binds no alias, so it is never a selected
+/// assertion.
+fn card_opening(state: &mut DomainState, owed: i128, posted_to_card: i128) -> ActivityRequestV1 {
+    let balance = evidence(state, 5000, owed, None);
     let Some(AuthoritativeRecordV1::ObservationVersion(observation)) =
         state.records.get_mut(&id(5000))
     else {
@@ -1493,7 +1498,11 @@ fn cur_018_anchored_liability_subtracts_amount_owed() {
     product.product.facets[0].kind = ObservationKind::Balance;
     let mut opening = posted(balance.clone(), 5100, 50);
     on_account(&mut opening, account(CARD));
-    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+    opening.legs[0].leg.movement = amount(posted_to_card);
+    let terms = opening.financial.as_mut().unwrap();
+    terms.postings[0].amount = amount(posted_to_card);
+    terms.postings[1].amount = amount(-posted_to_card);
+    terms.opening = Some(OpeningBasisV1 {
         segment_id: id(5200),
         component_id: id(CARD + 1),
         amount: balance.amount,
@@ -1501,27 +1510,113 @@ fn cur_018_anchored_liability_subtracts_amount_owed() {
         evidence: balance,
         included_activity: vec![],
     });
+    opening
+}
+
+#[test]
+fn cur_018_liability_opening_credits_the_amount_owed() {
+    // A card balance of 400.00 owed opens the card with a 400.00 credit.
+    let mut state = carded();
+    let opening = card_opening(&mut state, 400, -400);
+    assert!(RecognitionEngine::adopt(&state, &opening).is_ok());
+    // Debiting the card by the amount owed contradicts the evidence.
+    let mut state = carded();
+    let opening = card_opening(&mut state, 400, 400);
+    assert!(RecognitionEngine::adopt(&state, &opening).is_err());
+    // So does crediting it by a balance in journal sign.
+    let mut state = carded();
+    let opening = card_opening(&mut state, -400, -400);
+    assert!(RecognitionEngine::adopt(&state, &opening).is_err());
+}
+
+/// A balance claim on card D at the end of 2026-11-10 from the balance in
+/// observation `n`.
+fn card_claim(state: &DomainState, n: u32) -> ReconciliationClaimV1 {
+    let request = ReconciliationRequestV1 {
+        kind: ReconciliationKindV1::Balance,
+        scope: AccountScope {
+            accounts: vec![account(CARD)],
+            components: vec![],
+        },
+        cutoffs: scope(None, Some("2026-11-10")),
+        evidence: vec![id(n)],
+        exclusions: vec![],
+        basis: read_basis(state, "2026-11-10"),
+    };
+    ReconciliationEngine::evaluate(state, &request).unwrap()
+}
+
+#[test]
+fn cur_018_card_opening_purchase_claim_and_aggregate_agree() {
+    let mut state = carded();
+    // The card opens at 400.00 owed at the end of 2026-11-01.
+    let opening = card_opening(&mut state, 400, -400);
     let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
     apply(&mut state, &plan);
-    // A 96.00 purchase on 2026-11-03 credits the card again.
-    movement_on(&mut state, account(CARD), 5300, -96, "2026-11-03");
+    // A 50.00 purchase on 2026-11-03 credits the card.
+    movement_on(&mut state, account(CARD), 5300, -50, "2026-11-03");
+    let household = AccountScope {
+        accounts: vec![],
+        components: [CHECKING, SAVINGS, CARD].map(|n| id(n + 1)).to_vec(),
+    };
 
-    let response = PositionEngine::query(
-        &state,
-        &read_basis(&state, REQUESTED),
-        &AccountScope {
-            accounts: vec![],
-            components: [CHECKING, SAVINGS, CARD].map(|n| id(n + 1)).to_vec(),
-        },
-    )
-    .unwrap();
-    // The journal reports the card's credit balance; 496.00 is owed.
+    let response =
+        PositionEngine::query(&state, &read_basis(&state, REQUESTED), &household).unwrap();
+    // The journal reports the card's credit balance; 450.00 is owed.
     let [anchored] = response.anchored_balance.as_slice() else {
         panic!("one anchored balance")
     };
-    assert_eq!(anchored.amount, SourceValue::Known(amount(-496)));
-    // 1,000.00 + 250.00 - 496.00.
-    assert_eq!(response.aggregate, AggregateV1::Exact(amount(754)));
+    assert_eq!(anchored.amount, SourceValue::Known(amount(-450)));
+    // 1,000.00 + 250.00 - 450.00.
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(800)));
+
+    // An unbound report of 450.00 owed agrees with the journal.
+    let mut agreeing = Report::posted(6000, S1, 450, "2026-11-10");
+    agreeing.original_ids = vec!["unbound"];
+    publish(&mut state, agreeing.records());
+    let claim = card_claim(&state, 6000);
+    assert_eq!(claim.status, ReconciliationStatus::Proposed);
+    assert!(claim.differences.is_empty());
+    assert_eq!(claim.matched_allocations[0].amount, amount(450));
+    // A report of 460.00 owed differs by 10.00 more owed than the journal.
+    let mut higher = Report::posted(6100, S1, 460, "2026-11-10");
+    higher.original_ids = vec!["unbound"];
+    publish(&mut state, higher.records());
+    let claim = card_claim(&state, 6100);
+    assert_eq!(claim.reasons, vec![ClaimReasonV1::UnexplainedResidual]);
+    assert_eq!(claim.differences, vec![amount(10)]);
+
+    // An activity statement from 400.00 owed through the purchase to
+    // 450.00 owed has no residual; one that closes at 460.00 owed is
+    // 10.00 short.
+    let mut opened = Report::posted(6300, S1, 400, "2026-11-02");
+    opened.original_ids = vec!["unbound"];
+    publish(&mut state, opened.records());
+    let activity = |closing: u32| {
+        let request = ReconciliationRequestV1 {
+            kind: ReconciliationKindV1::Activity,
+            scope: AccountScope {
+                accounts: vec![account(CARD)],
+                components: vec![],
+            },
+            cutoffs: scope(Some("2026-11-03"), Some("2026-11-10")),
+            evidence: vec![id(5300), id(6300), id(closing)],
+            exclusions: vec![],
+            basis: read_basis(&state, "2026-11-10"),
+        };
+        ReconciliationEngine::evaluate(&state, &request).unwrap()
+    };
+    let claim = activity(6000);
+    assert!(!claim.reasons.contains(&ClaimReasonV1::UnexplainedResidual));
+    assert!(claim.differences.is_empty());
+    assert_eq!(activity(6100).differences, vec![amount(10)]);
+
+    // Selected, the card's own report of 450.00 owed subtracts the same.
+    publish(&mut state, report(6200, "D-1", 450, 1));
+    let response =
+        PositionEngine::query(&state, &read_basis(&state, REQUESTED), &household).unwrap();
+    assert!(response.selected_basis.contains(&id(6200)));
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(800)));
 }
 
 #[test]
