@@ -461,15 +461,27 @@ pub fn candidate(
     let n = u32::try_from(seq.0).unwrap();
     let manifest = AccountingAdapter::manifest(id(9500 + n), &batch).unwrap();
     records.push(AuthoritativeRecordV1::FrozenAccountingManifest(manifest));
+    // A batch with no operations leaves the native head where it was.
+    let native_head_after = if batch.operations.is_empty() {
+        state
+            .accounting
+            .as_ref()
+            .unwrap()
+            .prefix
+            .native_head
+            .clone()
+    } else {
+        NativeHead {
+            semantics_version: 1,
+            checkpoint: Digest([u8::try_from(n).unwrap(); 32]),
+        }
+    };
     let mut commit = DomainCommitV1 {
         seq,
         previous_digest: state.domain_digest,
         records,
         decisions: vec![],
-        native_head_after: NativeHead {
-            semantics_version: 1,
-            checkpoint: Digest([u8::try_from(n).unwrap(); 32]),
-        },
+        native_head_after,
         command_result: CommandResultV1 {
             command_id: CommandId(id(9600 + n).0),
             digest: Digest([9; 32]),

@@ -202,6 +202,7 @@ fn assemble(
     parser_version: String,
     unit: UnitDefinition,
     parsed: Vec<Parsed>,
+    snapshot: Option<Box<HoldingsSnapshotV1>>,
 ) -> Result<CaptureBatchV1, EngineError> {
     let file_digest = digest(&file);
     let file_reference = ContentReferenceV1 {
@@ -282,6 +283,7 @@ fn assemble(
         receipt,
         products,
         contents,
+        snapshot,
     })
 }
 /// What one row reports: its retained bytes, its original identities and
@@ -341,6 +343,9 @@ fn field(name: &str, value: SourceValue<String>) -> ReportedFieldV1 {
         value,
     }
 }
+fn optional(value: Option<&String>) -> SourceValue<String> {
+    value.map_or(SourceValue::Absent, |v| SourceValue::Known(v.clone()))
+}
 impl FileParser {
     pub fn parse(
         input: BoundedEvidence,
@@ -350,6 +355,9 @@ impl FileParser {
             return Err(EngineError::version());
         }
         profile.unit.validate()?;
+        if profile.format == ImportFormatV1::SyntheticHoldings {
+            return Err(EngineError::invalid());
+        }
         screen(&input.bytes, &input.context)?;
         let ctx = input.context;
         let parsed = if profile.format == ImportFormatV1::InertText {
@@ -412,6 +420,118 @@ impl FileParser {
             profile.parser_version,
             profile.unit,
             out,
+            None,
+        )
+    }
+
+    /// Parse a `SyntheticHoldings` snapshot. Each position becomes one
+    /// `Holding` observation whose facet states its quantity in its
+    /// security's unit, or `Unknown` when its identifier names no security
+    /// in `profile`. The symbol never identifies a security.
+    pub fn parse_holdings(
+        input: BoundedEvidence,
+        profile: HoldingsProfileV1,
+    ) -> Result<CaptureBatchV1, EngineError> {
+        if profile.schema_version != 1 || profile.parser_version != "1" {
+            return Err(EngineError::version());
+        }
+        profile.currency.validate()?;
+        for security in &profile.securities {
+            security.unit.validate()?;
+        }
+        screen(&input.bytes, &input.context)?;
+        let ctx = input.context;
+        let reused = ctx.receipt_id == profile.snapshot
+            || ctx
+                .row_ids
+                .iter()
+                .any(|r| [r.observation, r.product, r.facet].contains(&profile.snapshot));
+        if input.bytes.len() > MAX_CHUNK_BYTES || profile.snapshot.0.is_nil() || reused {
+            return Err(EngineError::invalid());
+        }
+        let source: SyntheticHoldingsV1 = serde_json::from_slice(&input.bytes).map_err(invalid)?;
+        let scope: BTreeSet<_> = source.scope.iter().collect();
+        if source.positions.len() != ctx.row_ids.len()
+            || source.positions.len() > 9_998
+            || source.scope.is_empty()
+            || source.scope.len() > 256
+            || scope.len() != source.scope.len()
+        {
+            return Err(EngineError::invalid());
+        }
+        let as_of = day(&source.as_of)?;
+        let price = |text: Option<&String>| {
+            text.map(|t| amount(t.clone(), &profile.currency))
+                .transpose()
+        };
+        let file_digest = digest(&input.bytes);
+        let mut named = BTreeSet::new();
+        let mut out = Vec::new();
+        let mut holdings = Vec::new();
+        for (position, (row, ids)) in source.positions.iter().zip(&ctx.row_ids).enumerate() {
+            let identifier = SecuritySourceIdV1 {
+                source: row.source.clone(),
+                identifier: row.identifier.clone(),
+            };
+            if row.source.trim().is_empty()
+                || row.identifier.trim().is_empty()
+                || !named.insert((&row.source, &row.identifier))
+            {
+                return Err(EngineError::invalid());
+            }
+            let security = profile
+                .securities
+                .iter()
+                .find(|s| s.identifier == identifier);
+            let quantity = security
+                .map(|s| amount(row.quantity.clone(), &s.unit))
+                .transpose()?;
+            holdings.push(SnapshotHoldingV1 {
+                observation: ids.observation,
+                security: security.map(|s| s.security),
+                quantity,
+                market_value: price(row.market_value.as_ref())?,
+            });
+            let row = Row {
+                bytes: serde_json::to_vec(row).map_err(invalid)?,
+                original_ids: row_ids(file_digest, position)?,
+                fields: vec![
+                    field("source", SourceValue::Known(row.source.clone())),
+                    field("identifier", SourceValue::Known(row.identifier.clone())),
+                    field("symbol", optional(row.symbol.as_ref())),
+                    field("quantity", SourceValue::Known(row.quantity.clone())),
+                    field("market_value", optional(row.market_value.as_ref())),
+                ],
+                temporal: as_of.clone(),
+                kind: ObservationKind::Holding,
+                amount: quantity.map_or(SourceValue::Unknown, SourceValue::Known),
+            };
+            out.push(observed(
+                &ctx,
+                ids,
+                (ImportFormatV1::SyntheticHoldings, &profile.parser_version),
+                row,
+            )?);
+        }
+        let snapshot = HoldingsSnapshotV1 {
+            id: profile.snapshot,
+            schema_version: 1,
+            receipt: ctx.receipt_id,
+            as_of,
+            scope: source.scope,
+            completeness: source.completeness,
+            currency: profile.currency.id,
+            holdings,
+            market_value: price(source.market_value.as_ref())?,
+        };
+        assemble(
+            input.bytes,
+            ctx,
+            ImportFormatV1::SyntheticHoldings,
+            profile.parser_version,
+            profile.currency,
+            out,
+            Some(Box::new(snapshot)),
         )
     }
 }

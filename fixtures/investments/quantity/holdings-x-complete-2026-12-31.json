@@ -1,0 +1,9 @@
+{
+  "as_of": "2026-12-31",
+  "scope": ["00000000-0000-0000-0000-000000006100", "00000000-0000-0000-0000-000000006150"],
+  "completeness": "Complete",
+  "market_value": "612.00",
+  "positions": [
+    {"source": "synthetic-broker", "identifier": "SYN-0001", "symbol": "SYNA", "quantity": "6", "market_value": "612.00"}
+  ]
+}

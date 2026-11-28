@@ -63,6 +63,7 @@ const RECORDS: &[&str] = &[
     "Security",
     "Position",
     "Trade",
+    "HoldingsSnapshot",
 ];
 const EVIDENCE: &[&str] = &[
     "ObservationVersion",
@@ -744,6 +745,18 @@ pub(crate) fn describe(record: &AuthoritativeRecordV1) -> Result<Metadata, Engin
             }
             m.policy(&v["governing_policy"]);
             m.interpretation(&v["interpretation"]);
+        }
+        AuthoritativeRecordV1::HoldingsSnapshot(snapshot) => {
+            if snapshot.schema_version != 1 {
+                return Err(EngineError::version());
+            }
+            m.reference(&["ImportReceipt"], &v["receipt"], None);
+            m.many(&["Account"], &v["scope"]);
+            m.reference(&["Unit"], &v["currency"], None);
+            for holding in v["holdings"].as_array().ok_or_else(EngineError::invalid)? {
+                m.reference(&["ObservationVersion"], &holding["observation"], None);
+                m.reference(&["Security"], &holding["security"], None);
+            }
         }
         AuthoritativeRecordV1::ReconciliationDisposition(_) => {
             m.reference(&["ReconciliationClaim"], &v["claim"], None);

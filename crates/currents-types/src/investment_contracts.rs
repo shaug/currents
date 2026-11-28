@@ -42,3 +42,10 @@ dto!(TradeRequestV1 { schema_version:u32, id:RecordId, position:RecordId, side:T
 // One recognized trade: its position and side, each side's leg and source
 // or its explicit absence, the fee and the recognition of the known sides.
 dto!(TradeV1 { id:RecordId, schema_version:u32, position:RecordId, side:TradeSideV1, event_id:RecordId, cash:SourceValue<AdoptedFacetV1>, quantity:SourceValue<AdoptedFacetV1>, fee:Amount, recognition:RecognitionId, interpretation:InterpretationV1, governing_policy:PolicyReferenceV1 });
+// One position a holdings snapshot lists: its observation, and the security
+// its identifier names with the quantity in that security's unit, or none
+// when the identifier names no declared security.
+dto!(SnapshotHoldingV1 { observation:RecordId, security:Option<RecordId>, quantity:Option<Amount>, market_value:Option<Amount> });
+// A source's holdings for an account scope as of one day. It records no
+// quantity change.
+dto!(HoldingsSnapshotV1 { id:RecordId, schema_version:u32, receipt:RecordId, as_of:TemporalValue, scope:Vec<AccountId>, completeness:CoverageStatus, currency:UnitId, holdings:Vec<SnapshotHoldingV1>, market_value:Option<Amount> });

@@ -7,6 +7,7 @@ pub enum ImportFormatV1 {
     SyntheticCsv,
     SyntheticManual,
     InertText,
+    SyntheticHoldings,
 }
 impl ImportFormatV1 {
     pub fn parser_id(self) -> &'static str {
@@ -14,6 +15,7 @@ impl ImportFormatV1 {
             Self::SyntheticCsv => "synthetic-csv",
             Self::SyntheticManual => "synthetic-manual",
             Self::InertText => "inert-text",
+            Self::SyntheticHoldings => "synthetic-holdings",
         }
     }
 }
@@ -61,6 +63,9 @@ pub struct CaptureBatchV1 {
     pub receipt: ImportReceiptV1,
     pub products: Vec<AddressedParseProductV1>,
     pub contents: Vec<EvidenceContentV1>,
+    /// The holdings snapshot a `SyntheticHoldings` batch publishes; every
+    /// other format has none.
+    pub snapshot: Option<Box<HoldingsSnapshotV1>>,
 }
 
 /// Explicit synthetic source grammar, not a client command or authoritative record.
@@ -72,6 +77,45 @@ pub struct SyntheticImportRowV1 {
     pub unit: String,
     pub effective: SourceValue<String>,
     pub description: SourceValue<String>,
+}
+
+/// One security the host has declared, by an identifier that names it.
+#[derive(Clone, Debug)]
+pub struct HoldingsSecurityV1 {
+    pub identifier: SecuritySourceIdV1,
+    pub security: RecordId,
+    pub unit: UnitDefinition,
+}
+/// The `SyntheticHoldings` profile. `currency` prices market values;
+/// `securities` gives each declared security's unit, so the parser can
+/// state quantities in it. `snapshot` is the snapshot record's ID.
+#[derive(Clone, Debug)]
+pub struct HoldingsProfileV1 {
+    pub schema_version: u32,
+    pub parser_version: String,
+    pub currency: UnitDefinition,
+    pub securities: Vec<HoldingsSecurityV1>,
+    pub snapshot: RecordId,
+}
+/// Explicit synthetic holdings grammar: one account scope's positions as of
+/// one day. `scope` names local accounts.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SyntheticHoldingsV1 {
+    pub as_of: String,
+    pub scope: Vec<AccountId>,
+    pub completeness: CoverageStatus,
+    pub market_value: Option<String>,
+    pub positions: Vec<SyntheticHoldingRowV1>,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SyntheticHoldingRowV1 {
+    pub source: String,
+    pub identifier: String,
+    pub symbol: Option<String>,
+    pub quantity: String,
+    pub market_value: Option<String>,
 }
 
 /// One explicitly typed metadata content reference is mandatory for every receipt.

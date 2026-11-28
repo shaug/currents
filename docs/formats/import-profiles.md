@@ -22,6 +22,8 @@ and their own reviewed profile.
   `amount`, `unit`, `effective`, and `description`. All except `unit` use the
   existing explicit SourceValue states. Absent, Missing, Unknown, Null, Deleted,
   and Known are preserved. Unknown fields and excessive nesting are rejected.
+- `SyntheticHoldings`: one bounded JSON holdings snapshot, parsed by
+  `FileParser::parse_holdings` (see [holdings snapshots](#holdings-snapshots)).
 - `InertText`: UTF-8 text retained as an attachment without observations or parsed
   money. It exposes bytes, not an executable viewer, URL loader or local path.
   Markup, remote resource URLs, archives, executable headers and binary payloads
@@ -31,6 +33,29 @@ Numbers use an optional minus sign, decimal digits and optional dot fraction.
 Thousands separators, exponents, mixed decimal locales and precision beyond the
 selected unit are rejected, never rounded. Dates are strict Gregorian YYYY-MM-DD;
 unknown date states stay unknown. No date becomes a fabricated midnight.
+
+## Holdings snapshots
+
+A `SyntheticHoldings` file is one JSON object with exactly these fields:
+
+- `as_of`: the snapshot's day, strict YYYY-MM-DD.
+- `scope`: the local account IDs the snapshot covers, at least one, none
+  repeated. A live profile needs its own reviewed mapping from provider
+  accounts.
+- `completeness`: `Complete`, `Partial` or `Unknown`. A missing or other value
+  is refused.
+- `market_value`: optional total market value for the scope.
+- `positions`: objects with exactly `source`, `identifier`, optional `symbol`,
+  `quantity` and optional `market_value`.
+
+`HoldingsProfileV1` supplies parser version `1`, the currency for market
+values, each declared security's identifier and unit, and the snapshot
+record's ID. A position whose identifier the profile names gets a `Holding`
+facet with its quantity in that security's unit; a quantity beyond the unit's
+exponent is refused. Any other position keeps its observation with an
+`Unknown` facet amount, and the snapshot lists it as unmapped. The symbol is
+retained and never matched. A file that names one identifier twice is
+refused.
 
 ## Limits and completion
 
