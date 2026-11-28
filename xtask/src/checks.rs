@@ -568,27 +568,46 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_brokerage_unresolved_overlap",
         "cur_018_brokerage_total_wins_when_parts_disagree",
         "cur_018_overlap_declaration_rules",
+        "cur_018_1_no_freshness_threshold_is_not_assessed",
+        "cur_018_freshness_of_an_instant",
+        "cur_018_freshness_of_a_date",
+        "cur_018_3_stale_assertion_stays_labeled",
+        "cur_018_pending_stays_separate",
+        "cur_018_discrepancy_only_for_comparable_balances",
+        "cur_018_coverage_of_selected_source",
     ],
 )];
 /// Every CUR-021 test by package and target. Later CUR-021 leaves add theirs.
-const CUR_021_SUITES: &Suites = &[(
-    "currents-domain",
-    "cur_021",
-    &[
-        "cur_021_security_identity_requires_source_identifier",
-        "cur_021_local_mapping_joins_sources",
-        "cur_021_control_roles_follow_unit_kind",
-        "cur_021_position_links_security_accounts",
-        "cur_021_ordinary_adoption_refuses_security_postings",
-        "cur_021_replay_readmits_declarations",
-        "cur_021_1_buy_commits_cash_and_quantity",
-        "cur_021_1_sale_holds_proceeds_in_disposal_clearing",
-        "cur_021_1_buy_fee_capitalized_once",
-        "cur_021_1_missing_side_stays_explicit",
-        "cur_021_1_no_sum_of_dollars_and_shares",
-        "cur_021_corrections_refuse_trades",
-    ],
-)];
+const CUR_021_SUITES: &Suites = &[
+    (
+        "currents-domain",
+        "cur_021",
+        &[
+            "cur_021_security_identity_requires_source_identifier",
+            "cur_021_local_mapping_joins_sources",
+            "cur_021_control_roles_follow_unit_kind",
+            "cur_021_position_links_security_accounts",
+            "cur_021_ordinary_adoption_refuses_security_postings",
+            "cur_021_replay_readmits_declarations",
+            "cur_021_1_buy_commits_cash_and_quantity",
+            "cur_021_1_sale_holds_proceeds_in_disposal_clearing",
+            "cur_021_1_buy_fee_capitalized_once",
+            "cur_021_1_missing_side_stays_explicit",
+            "cur_021_1_no_sum_of_dollars_and_shares",
+            "cur_021_corrections_refuse_trades",
+            "cur_021_3_incomplete_snapshot_keeps_missing_security",
+            "cur_021_3_complete_snapshot_records_absence_assertion",
+            "cur_021_3_absence_follows_scope",
+            "cur_021_snapshot_keeps_unmapped_positions",
+            "cur_021_snapshot_replay",
+        ],
+    ),
+    (
+        "currents-acquisition",
+        "cur_021_source",
+        &["cur_021_snapshot_rejects_bad_input"],
+    ),
+];
 /// Every CUR-019 test by package and target. Later CUR-019 leaves add theirs.
 const CUR_019_SUITES: &Suites = &[(
     "currents-domain",
@@ -668,7 +687,7 @@ fn ticket_cur_018() -> Result<Value> {
         "ticket":"CUR-018",
         "suites":ticket_suites("CUR018", CUR_018_SUITES)?,
         "source_precedence_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/position/source-precedence.json")).map_err(|e| e.to_string())?),
-        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, and version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both; no command route, preview, labels or transfer adjustment"
+        "scope":"synthetic effective-dated dataset policy revisions with replay re-admission and the governing-policy lookup, and in-process per-component position selection by source as-of boundary with the anchored balance or known movements, freshness labels, pending activity, the selected sources' reported coverage and unrecorded balance discrepancies, and the household aggregate at exact governing ownership shares in the reporting currency with named omissions, and version-2 catalog overlap declarations so the aggregate counts a brokerage total or its parts, never both; no command route, preview or transfer adjustment"
     }))
 }
 fn ticket_cur_019() -> Result<Value> {
@@ -682,7 +701,7 @@ fn ticket_cur_021() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-021",
         "suites":ticket_suites("CUR021", CUR_021_SUITES)?,
-        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, and the correction and segment refusal of quantity postings; no openings, valuation, basis or command route"
+        "scope":"synthetic security, security unit, control role and position declarations with replay, the ordinary adoption and association refusal of security units, buy and sale trades with cash and quantity in one entry, explicit missing sides, a position holdings read, the correction and segment refusal of quantity postings, and synthetic holdings snapshots with versioned absence assertions that change no quantity; no openings, valuation, basis or command route"
     }))
 }
 fn ticket(name: &str) -> Result<Value> {

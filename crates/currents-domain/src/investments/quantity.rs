@@ -316,8 +316,10 @@ impl InvestmentEngine {
 }
 
 /// What one position holds through a date: its recognized quantity and
-/// carrying amount, and the trades by then whose quantity or cash side is
-/// missing. A read result, not a record.
+/// carrying amount, the trades by then whose quantity or cash side is
+/// missing, the latest snapshot quantity and any current absence assertion.
+/// A snapshot never changes the recognized quantity. A read result, not a
+/// record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PositionHoldingsV1 {
     pub position: RecordId,
@@ -326,6 +328,8 @@ pub struct PositionHoldingsV1 {
     pub carrying: Amount,
     pub missing_quantity: Vec<RecordId>,
     pub missing_cash: Vec<RecordId>,
+    pub snapshot: Option<super::holdings::SnapshotQuantityV1>,
+    pub absence: Option<super::holdings::SnapshotAbsenceV1>,
 }
 
 /// Whether `recognition` posts a security quantity. Until CUR-022 (#31)
@@ -790,8 +794,9 @@ impl InvestmentEngine {
     }
 
     /// What `position` holds through `through`: the quantity and carrying
-    /// amount its recognitions not reversed post on or before that day, and
-    /// the trades by then whose quantity or cash side is missing.
+    /// amount its recognitions not reversed post on or before that day, the
+    /// trades by then whose quantity or cash side is missing, and what
+    /// snapshots as of that day or earlier report for it.
     pub fn holdings(
         state: &DomainState,
         position: RecordId,
@@ -854,6 +859,7 @@ impl InvestmentEngine {
                 missing_cash.push(trade.id);
             }
         }
+        let (snapshot, absence) = super::holdings::latest(state, p, through)?;
         Ok(PositionHoldingsV1 {
             position,
             through,
@@ -861,6 +867,8 @@ impl InvestmentEngine {
             carrying: carried.normalized()?,
             missing_quantity,
             missing_cash,
+            snapshot,
+            absence,
         })
     }
 }

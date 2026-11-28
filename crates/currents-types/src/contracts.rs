@@ -85,7 +85,8 @@ dto!(AnchoredBalanceV1 { component:RecordId, opening:RecordId, amount:SourceValu
 choices!(FreshnessStatus {
     Fresh,
     Stale,
-    Unknown
+    Unknown,
+    NotAssessed
 });
 dto!(FreshnessV1 {
     source: RecordId,
