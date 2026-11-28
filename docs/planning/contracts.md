@@ -1151,9 +1151,13 @@ OrganizationSourceV1 = Owner | Rule(RuleSourceV1 { rule, version, grant:Option<G
 OrganizationAssignmentV1 { id, schema_version, version, supersedes:Option<RecordId>, field:OrganizationFieldV1, legs:Vec<LegId>, value:Option<RecordId>, override_action:OverrideActionV1, source:OrganizationSourceV1 }
 OrganizationChangeV1 { records:Vec<OrganizationRecordV1>, values:Vec<LegValueRequestV1> }
 LegValueRequestV1 { field, legs:Vec<LegId>, value:Option<RecordId>, action:OverrideActionV1 }
-OrganizationPreviewV1 { plan:DecisionPlan, skipped:Vec<LegId> }
+OrganizationPreviewV1 { plan:DecisionPlan, skipped:Vec<LegId>, party_changes:Vec<LegId> }
 DomainState::owner_assignment(leg,field)->Option<&OrganizationAssignmentV1>
 DomainState::owner_value(leg,field)->Option<OwnerValueV1 { record, version, value }>
+OrganizationTierV1 = Owner | AccountRule | DatasetRule | Provider
+ResolvedFieldV1 = Known { tier, value:OrganizationValueV1, sources:Vec<RecordId> } | Conflict { tier, sources:Vec<RecordId> } | Unknown
+OrganizationEngine::resolve(state,leg,field)->Result<ResolvedFieldV1,EngineError>
+OrganizationEngine::provider(state,leg,field)->Result<ResolvedFieldV1,EngineError>
 ```
 
 Parties, aliases, categories, tags and notes are `OrganizationRecordV1`
@@ -1207,11 +1211,35 @@ the field, including one that clears the value; the engine plans from it.
 names, or `None` when there is none or it clears the value. Replay through
 an earlier commit reports that commit's value.
 
+`resolve` gives a leg's value for one field from the first tier that has
+one, in the order owner value, account rule, dataset rule, provider proposal.
+The two rule tiers stay empty until rules exist. With no answer the field is
+`Unknown`. An owner value is a `Reference` to the definition its current
+assignment names, with that assignment as the source; a cleared value leaves
+the field to the next tier. It refuses an ID that is not a `FinancialLeg`.
+
+`provider` gives the provider tier alone, which an owner value hides but
+never changes. Each observation a leg's allocations bind is read at its latest
+explicit revision; a tombstone proposes nothing, and a forked revision chain
+is refused. Its `description` gives a party through each alias, read at its
+latest version, whose text equals the description byte for byte, so letter
+case matters; the value is a `Reference` to the alias's party and the sources
+are the observation version and the alias version. Its `category` gives
+`Text` with the observation version as the source. Only `Known` source values
+count, and no source proposes a tag. One distinct value is `Known`; several,
+such as two aliases with the same text that name different parties, are a
+`Conflict` whose sources name every record behind them. Sources are sorted
+record IDs. A new source revision changes only this tier.
+
+`party_changes` lists, in leg ID order, the legs whose resolved party differs
+after the change. A change that adds or revises an alias compares every leg;
+any other change compares the legs it sets a party on.
+
 Corrections and segment replacements refuse a change while an assignment
 names a leg they retire, until a later CUR-019 leaf defines its remap.
-`OrganizationRecordV1` successors in corrections work as before. Precedence
-beyond the owner tier, alias matching, rules, grants, proposals, splits, tag
-counting and the command route belong to later work.
+`OrganizationRecordV1` successors in corrections work as before. Rules,
+grants, proposals, splits, tag counting and the command route belong to later
+work.
 
 <a id="c11"></a>
 

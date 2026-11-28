@@ -642,6 +642,11 @@ const CUR_019_SUITES: &Suites = &[(
         "cur_019_revisions_keep_prior_meaning",
         "cur_019_revision_guards",
         "cur_019_override_actions",
+        "cur_019_1_processor_change_maps_stable_merchant",
+        "cur_019_1_category_exception_survives_import",
+        "cur_019_precedence_owner_provider_unknown",
+        "cur_019_alias_conflict_is_explicit",
+        "cur_019_s6_journey_rebuilds_identical_meaning",
     ],
 )];
 /// A suite qualifies only when its listed tests are exactly the required ones
@@ -719,7 +724,8 @@ fn ticket_cur_019() -> Result<Value> {
     Ok(json!({
         "ticket":"CUR-019",
         "suites":ticket_suites("CUR019", CUR_019_SUITES)?,
-        "scope":"synthetic owner parties, aliases, categories, tags and notes as versioned organization records, and owner party, category and tag values on legs as versioned assignments, with preserve, replace and clear, replay validation and the current owner value query; no precedence beyond the owner tier, rules, grants, proposals, splits or command route"
+        "processor_change_fixture_sha256":sha(&fs::read(root().join("fixtures/journeys/s6/processor-change.json")).map_err(|e| e.to_string())?),
+        "scope":"synthetic owner parties, aliases, categories, tags and notes as versioned organization records, and owner party, category and tag values on legs as versioned assignments, with preserve, replace and clear, replay validation and the current owner value query, and precedence resolution of each leg field from the owner value, then the provider proposal through exact-text aliases and reported categories on the latest source revision, then unknown, with explicit alias conflicts and the exact legs an alias change moves; no rules, grants, proposals, splits or command route"
     }))
 }
 fn ticket_cur_021() -> Result<Value> {
