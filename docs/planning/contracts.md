@@ -898,7 +898,9 @@ rate, ownership or value never counts as zero.
 A component's amount is its selected assertion's amount, with the selected
 observation version IDs as evidence. Without a selection it is the anchored
 balance, with the segment and legs as evidence. Without either it is
-`Unknown`. A liability's amount is the positive amount owed.
+`Unknown`. A liability's amount is the positive amount owed: a source
+balance reports it that way, and the anchored balance, which is
+debit-positive like the journal, is negated.
 
 The governing ownership perimeter for the requested date
 (`PolicyEngine::governing`) decides each share. When it is `NotSet`, each

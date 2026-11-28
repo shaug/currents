@@ -367,9 +367,16 @@ impl PositionEngine {
                 }
                 (Some(_), None) => Found::Missing("unknown_opening"),
                 (Some(_), Some(anchored)) => match anchored.amount {
-                    SourceValue::Known(amount) => {
-                        Found::Known(amount, anchored.dependencies.clone())
-                    }
+                    // The journal is debit-positive, so a liability's
+                    // anchored balance is the negated amount owed.
+                    SourceValue::Known(amount) => Found::Known(
+                        if catalog.account_class == AccountClass::Liability {
+                            amount.checked_neg()?
+                        } else {
+                            amount
+                        },
+                        anchored.dependencies.clone(),
+                    ),
                     _ => Found::Missing("missing_date_mapping"),
                 },
             };

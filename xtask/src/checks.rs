@@ -560,6 +560,7 @@ const CUR_018_SUITES: &Suites = &[(
         "cur_018_ownership_is_effective_dated",
         "cur_018_inexact_share_is_omitted",
         "cur_018_liability_subtracts",
+        "cur_018_anchored_liability_subtracts_amount_owed",
         "cur_018_outside_perimeter_contributes_nothing",
     ],
 )];

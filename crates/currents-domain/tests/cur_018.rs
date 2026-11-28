@@ -905,9 +905,30 @@ fn cur_018_1_equal_boundary_needs_adopted_priority() {
     assert_eq!(forward, reversed);
 }
 
+/// Point a fixture request for A at `account`: its leg and its first
+/// posting.
+fn on_account(request: &mut ActivityRequestV1, account: AccountId) {
+    for item in &mut request.legs {
+        item.leg.account_id = account;
+    }
+    request.financial.as_mut().unwrap().postings[0].account_id = account;
+}
+
 /// Commit a posted activity on A of `value` on `day` against expense,
 /// recognized from movement observation `n`.
 fn movement(state: &mut DomainState, n: u32, value: i128, day: &str) -> LegId {
+    movement_on(state, account(CHECKING), n, value, day)
+}
+
+/// Commit a posted activity on `account` of `value` on `day` against
+/// expense, recognized from movement observation `n`.
+fn movement_on(
+    state: &mut DomainState,
+    account: AccountId,
+    n: u32,
+    value: i128,
+    day: &str,
+) -> LegId {
     let binding = SourceFacetBindingV1 {
         observation: id(n),
         parse_product: id(n + 1),
@@ -949,6 +970,7 @@ fn movement(state: &mut DomainState, n: u32, value: i128, day: &str) -> LegId {
         ],
     );
     let mut request = posted(binding, n + 10, EXPENSE);
+    on_account(&mut request, account);
     for item in &mut request.legs {
         item.leg.effective = date(day);
         item.leg.posting = date(day);
@@ -1438,6 +1460,68 @@ fn cur_018_liability_subtracts() {
         total(&state, REQUESTED, &[CHECKING, SAVINGS, CARD]),
         AggregateV1::Exact(amount(850))
     );
+}
+
+#[test]
+fn cur_018_anchored_liability_subtracts_amount_owed() {
+    let mut state = household(500);
+    add_account(&mut state, CARD, AccountClass::Liability, 1, "D");
+    state.accounting.as_mut().unwrap().accounts.insert(
+        account(CARD),
+        NativeAccountMappingV1 {
+            account_id: account(CARD),
+            unit_id: UnitId(id(1).0),
+            account_class: AccountClass::Liability,
+            path: format!("fixture/{}", account(CARD).0),
+        },
+    );
+    // The card's opening credits it 400.00 at the end of 2026-11-01. The
+    // opening's balance evidence binds no alias, so the card has no
+    // selected assertion.
+    let balance = evidence(&mut state, 5000, -400, None);
+    let Some(AuthoritativeRecordV1::ObservationVersion(observation)) =
+        state.records.get_mut(&id(5000))
+    else {
+        panic!()
+    };
+    observation.semantic_kind = ObservationKind::Balance;
+    let Some(AuthoritativeRecordV1::AddressedParseProduct(product)) =
+        state.records.get_mut(&id(5001))
+    else {
+        panic!()
+    };
+    product.product.facets[0].kind = ObservationKind::Balance;
+    let mut opening = posted(balance.clone(), 5100, 50);
+    on_account(&mut opening, account(CARD));
+    opening.financial.as_mut().unwrap().opening = Some(OpeningBasisV1 {
+        segment_id: id(5200),
+        component_id: id(CARD + 1),
+        amount: balance.amount,
+        cutoff: date("2026-11-01"),
+        evidence: balance,
+        included_activity: vec![],
+    });
+    let plan = RecognitionEngine::adopt(&state, &opening).unwrap();
+    apply(&mut state, &plan);
+    // A 96.00 purchase on 2026-11-03 credits the card again.
+    movement_on(&mut state, account(CARD), 5300, -96, "2026-11-03");
+
+    let response = PositionEngine::query(
+        &state,
+        &read_basis(&state, REQUESTED),
+        &AccountScope {
+            accounts: vec![],
+            components: [CHECKING, SAVINGS, CARD].map(|n| id(n + 1)).to_vec(),
+        },
+    )
+    .unwrap();
+    // The journal reports the card's credit balance; 496.00 is owed.
+    let [anchored] = response.anchored_balance.as_slice() else {
+        panic!("one anchored balance")
+    };
+    assert_eq!(anchored.amount, SourceValue::Known(amount(-496)));
+    // 1,000.00 + 250.00 - 496.00.
+    assert_eq!(response.aggregate, AggregateV1::Exact(amount(754)));
 }
 
 #[test]
