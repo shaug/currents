@@ -395,6 +395,7 @@ pub(super) fn template_catalog_commands(
                 catalog: r.catalog.clone(),
                 ownership: root.ownership.clone(),
                 origin: r.origin.clone(),
+                overlaps: vec![],
             }))
         })
         .zip(11000..)

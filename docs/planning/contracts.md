@@ -157,7 +157,7 @@ Files: `crates/currents-domain/src/{recognition,segments,correction}.rs`.
 
 ### CUR013 complete additive command route
 
-Historical `SetAccountCatalog` and `Recognize` tags and record bytes remain unchanged. Their incomplete payloads cannot establish the required ownership, date, parse and opening basis; the complete route uses `SetAccountCatalogComplete(CatalogRequestV1)` and `AdoptActivity(ActivityRequestV1)` instead. Both require schema version 1 and caller-supplied stable identities bound into preview/submit; neither samples identities or a clock.
+Historical `SetAccountCatalog` and `Recognize` tags and record bytes remain unchanged. Their incomplete payloads cannot establish the required ownership, date, parse and opening basis; the complete route uses `SetAccountCatalogComplete(CatalogRequestV1)` and `AdoptActivity(ActivityRequestV1)` instead. Both require schema version 1 (a catalog request may also use version 2; see the CUR-018 overlap declarations checkpoint) and caller-supplied stable identities bound into preview/submit; neither samples identities or a clock.
 
 `CatalogRequestV1` combines the existing catalog payload with a fresh revision ID, exact prior revision, explicit ownership and `AccountOriginV1`. A complete owner-approved creation request explicitly asserts new-account ownership and retains an unknown opening; any applicable accepted perimeter assertions must agree. No dangling predeclared Account reference, default share or perimeter rewrite is introduced. Internal control accounts require an explicit role (unresolved equity, opening equity, income flow or expense flow) and creation boundary. An immutable `AccountCatalogRevisionV1` binds metadata to the original component/account. Revision chains cannot fork, drop aliases or change native class/unit/sign/account identity. Creation freezes metadata declarations only; later metadata changes have no financial effect. Declaration must commit before financial preview at the new head.
 
@@ -459,6 +459,32 @@ Activity adoption refuses a leg or posting in a security unit, and a posting to
 any of the three new roles. Association admission refuses a leg or posting in
 a security unit. Only the C11 investment engine moves quantities. Existing
 roles, records and command tags keep their bytes.
+
+### CUR-018 overlap declarations
+
+`CatalogRequestV1` schema version 2 adds `overlaps:Vec<RecordId>`: the
+components that a new total component contains, such as a brokerage total's
+cash and holdings (ruling G6 on #27). A version-1 request has no `overlaps`
+field, keeps its bytes and results, and its wire form with the field is
+refused. Every other version is refused with `UnsupportedVersion`.
+
+`CatalogEngine::set_complete` stores the list, sorted, in the new component's
+`overlapping_components`. It refuses a list that:
+
+- comes with a revision of an existing component, since overlaps are
+  declared only at creation and never change;
+- repeats a part, or has more than 256;
+- names a part that is not a component with a current catalog revision, such
+  as the new component itself;
+- names a part whose current revision is `Closed`;
+- names a part that another total already lists, or a total;
+- names a part whose catalog ownership share differs from the new total's,
+  so the part is in a different household perimeter.
+
+The account catalog revision keeps schema version 1. Replay derives the
+version-2 request again from the revision and the component it creates, and
+refuses a commit where two totals list one part. A version-2 request that
+lists no overlaps behaves like a version-1 request.
 
 <a id="c09"></a>
 
@@ -946,6 +972,26 @@ Each in-perimeter component is omitted with the first reason that applies:
 Every other component adds its amount times its share, and a liability
 subtracts it. The total is normalized and in the reporting currency.
 
+A total component that lists overlapping parts (the CUR-018 overlap
+declarations checkpoint in C08), such as a brokerage total over its cash and
+holdings, counts once with its parts, never twice:
+
+- A total that counts represents its parts in scope. They add nothing and
+  are not omitted, even when their amounts disagree with the total.
+- A total that does not count is represented by its parts when every part is
+  in scope, in the household and counts. The total adds nothing and is not
+  omitted.
+- Otherwise each part that counts still adds, and the total and every other
+  part in scope and in the household are omitted with `overlap_unresolved`
+  in place of their own reasons.
+
+A holdings part, like any other component, counts only through an amount in
+the reporting currency, such as a source-reported market value; a quantity
+in a security unit has no valuation. When the governing
+perimeter or the reporting currency is `Unknown`, nothing counts, so each
+component keeps its own reason. A part whose total is out of scope or outside
+the household counts on its own.
+
 - `Exact(total)`: no in-perimeter component is omitted. A scope the known
   perimeter leaves wholly outside the household gives `Exact` zero.
 - `KnownSubtotal`: some components are omitted and at least one counts.
@@ -957,8 +1003,7 @@ subtracts it. The total is normalized and in the reporting currency.
   component order with its amount in its own unit and its evidence.
 
 `obstructions` lists each omission reason once, sorted. The query never
-returns `Range`; transfer adjustments and brokerage overlap belong to later
-CUR-018 work.
+returns `Range`; transfer adjustments belong to later CUR-018 work.
 
 <a id="c10"></a>
 
