@@ -499,7 +499,7 @@ lists no overlaps behaves like a version-1 request.
 
 Files: `crates/currents-domain/src/{reconciliation,position,aggregation,history,review}.rs`.
 
-`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>`; response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|KnownSubtotal{known,omitted,obstructions}|Range{low,high}|Indeterminate{components,obstructions}` (see the CUR-018 household aggregate checkpoint). Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
+`ReconciliationRequestV1 { kind:Balance|Activity|Relationship|Holdings, scope, cutoffs:DateScope, evidence, exclusions, basis }`; `ClaimV1` is the `ReconciliationClaimV1` record; `ReconciliationEngine::evaluate(state,&request)->Result<ReconciliationClaimV1,EngineError>`; `ReconciliationEngine::confirm(state,claim:RecordId,digest:Digest)->Result<DecisionPlan,EngineError>`; `record`, `dispute` and `lifecycle` follow the CUR-017 claim lifecycle checkpoint. `SetDatasetPolicyV1 { policy_id:RecordId, prior_version, effective_scope, ownership_perimeter, source_priority, freshness_thresholds, timezone, reporting_currency }` contains typed optional changes with explicit unknowns and adopted basis; `PolicyEngine::set(state:&DomainState,request:&SetDatasetPolicyV1)->Result<DecisionPlan,EngineError>` previews material meaning changes and required invalidation without altering prior policy versions. `PositionEngine::query(state:&DomainState,basis:&ReadBasis,scope:&AccountScope)->Result<PositionResponseV1,EngineError>` and `PositionEngine::explain(state,basis,component:RecordId)->Result<ExplanationV1,EngineError>` (see the CUR-018 position explanation checkpoint); response contains assertions, movements/anchored balance, selected basis, pending, freshness/coverage, discrepancies, missing inputs and `AggregateV1 = Exact(Amount)|KnownSubtotal{known,omitted,obstructions}|Range{low,high}|Indeterminate{components,obstructions}` (see the CUR-018 household aggregate checkpoint). Ownership shares exact rational; range only when alternatives evidenced. `HistoryEngine::query(state,basis,filter:HistoryFilterV1)->Result<HistoryResponseV1,EngineError>`; `ReviewEngine::set(state,request:ReviewDispositionV1)->Result<DecisionPlan,EngineError>`. Filter names account/party/category/tag/date basis/page cursor; response includes unknown/incomplete buckets. Every paged result pins the same basis. `ExplanationV1` is a scoped graph of evidence/decisions/selected policies, not unrestricted raw records.
 
 `ReconciliationClaimV1 { id, kind:ReconciliationKindV1, comparison_version, basis:ReadBasis, scope, unit, cutoffs, evidence_dependencies, decision_dependencies, accounting_dependencies, dependency_digest, matched_allocations, differences, exclusions, status, reasons:Vec<ClaimReasonV1>, reason }`.
 `status` is `Proposed`, `PartiallySupported`, `ConfirmedForScope`, `Disputed`
@@ -1057,6 +1057,64 @@ the household counts on its own.
 
 `obstructions` lists each omission reason once, sorted. The query never
 returns `Range`; transfer adjustments belong to later CUR-018 work.
+
+### CUR-018 position explanation checkpoint
+
+```text
+PositionEngine::explain(state:&DomainState,basis:&ReadBasis,component:RecordId)->Result<ExplanationV1,EngineError>
+```
+
+An explanation names the inputs behind one component's position at one
+basis. It reads the state with the position query's rules and refuses what
+the query refuses: `StaleBasis` for a basis whose `through_commit` is not the
+state's commit or a state whose accounting index lags it, and
+`InvalidReference` for an unknown component or an effective scope with no
+end or another date basis. It never answers from another commit.
+
+A position page is one scoped query of at most 256 components, and every
+page names the caller's basis (ruling G10 on #27). Each component's
+assertions, selection, labels, anchored balance, movements and pending legs
+are the same whether it is queried alone or with others at the same basis,
+and its explanation names the same selection and labels. There is no
+position cursor.
+
+`basis` is the caller's basis and `roots` is the component. `nodes` lists,
+in ID order:
+
+- `Evidence`: each observation version with a candidate balance for the
+  component (the position selection checkpoint).
+- `Decision`: the anchor's segment and opening recognition, when the
+  component's account has an active anchor whose cutoff is on or before the
+  requested date.
+- `Policy`: the governing dataset policy revision that sets the source
+  priority, ownership perimeter or reporting currency for the requested
+  date, and the one that sets the freshness thresholds when a balance is
+  selected.
+
+`edges` lists, in (from, to, relationship) order:
+
+- `selected`: the component to each selected observation version.
+- `conflicts_with`: between two candidates that conflict with different
+  amounts, from the lower observation version ID to the higher.
+- `anchors`: the segment to the component, and the opening recognition to
+  the segment.
+- `governs`: a source priority, ownership perimeter or reporting currency
+  revision to the component.
+- `labels`: the freshness thresholds revision to each selected observation
+  version.
+
+A node summary names the node's role and a date: a balance's as-of date (an
+instant's UTC date), the anchor's cutoff, or a revision's first effective
+date. It never repeats an observation's sanitized representation or a
+source's original text.
+
+The service's synthetic test planner
+(`crates/currents-service/tests/support/financial_service.rs`) answers
+`QueryPosition` and `Explain` through `PositionEngine`. `QueryPosition`
+reads the accounts and components the query names; `Explain` reads the one
+component it names. The response's `processed_head` is the state's commit,
+and `Service::query` refuses a basis other than its head. There is no
+production query dispatch.
 
 <a id="c10"></a>
 
