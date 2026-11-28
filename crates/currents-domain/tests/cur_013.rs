@@ -83,7 +83,7 @@ fn catalog_missing_ownership_and_invalid_control_reject() {
             .iter()
             .all(|r| !matches!(r, AuthoritativeRecordV1::Recognition(_)))
     );
-    request.schema_version = 2;
+    request.schema_version = 3;
     assert_eq!(
         CatalogEngine::set_complete(&state, &request)
             .unwrap_err()
@@ -915,6 +915,7 @@ fn catalog_batch_commit(
                 catalog: revision.catalog.clone(),
                 ownership: root.ownership.clone(),
                 origin: revision.origin.clone(),
+                overlaps: vec![],
             },
         )
         .unwrap();

@@ -75,15 +75,35 @@ pub(crate) fn validate_transition(
                 // Independent plans share the prior prefix. Their combined
                 // projection must still have one chain and unambiguous aliases.
                 CatalogEngine::current(next, revision.component_id)?;
+                // Only a version-2 creation request declares overlaps, and
+                // no two totals in the combined projection list one part.
+                let overlaps = if prior.records.contains_key(&revision.component_id) {
+                    vec![]
+                } else {
+                    root.overlapping_components.clone()
+                };
+                for part in &overlaps {
+                    let listed = next.records.values().filter(|r| {
+                        matches!(r, AuthoritativeRecordV1::AccountComponent(t) if t.overlapping_components.contains(part))
+                    });
+                    if listed.count() != 1 {
+                        return Err(EngineError::invalid());
+                    }
+                }
                 Some(CatalogEngine::set_complete(
                     prior,
                     &CatalogRequestV1 {
-                        schema_version: revision.schema_version,
+                        schema_version: if overlaps.is_empty() {
+                            revision.schema_version
+                        } else {
+                            2
+                        },
                         revision_id: revision.id,
                         prior_revision: revision.prior_revision,
                         catalog: revision.catalog.clone(),
                         ownership: root.ownership.clone(),
                         origin: revision.origin.clone(),
+                        overlaps,
                     },
                 )?)
             }
