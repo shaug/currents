@@ -1,7 +1,9 @@
 //! Holdings snapshots: what a source reports an account scope held on one
 //! day. A snapshot never changes a recognized quantity. A complete snapshot
 //! asserts that each position in its scope whose security it omits holds
-//! none; a partial or unknown snapshot asserts nothing about what it omits.
+//! none, unless it also lists a position whose identifier names no
+//! security; a partial or unknown snapshot asserts nothing about what it
+//! omits.
 use super::InvestmentEngine;
 use crate::catalog::unit;
 use crate::evidence::decimal;
@@ -46,6 +48,12 @@ fn fields(row: &SyntheticHoldingRowV1) -> Vec<ReportedFieldV1> {
 /// identifier names at `state` and its quantity in that security's unit, or
 /// no security when the identifier names none; a display symbol names
 /// nothing. A scope whose positions hold one security twice is refused.
+///
+/// An unmapped holding could be any security in scope, so a complete
+/// snapshot that lists one records no absence. An absence's version counts
+/// the absences recorded for its position in publication order, and `prior`
+/// names the snapshot that holds the previous version, whatever their as-of
+/// dates: a statement imported late takes the next version.
 pub(crate) fn derive(
     state: &DomainState,
     rows: &Rows,
@@ -136,7 +144,8 @@ pub(crate) fn derive(
     }
     let mut snapshot = draft.clone();
     snapshot.absences = vec![];
-    if draft.completeness == CoverageStatus::Complete {
+    let unmapped = draft.holdings.iter().any(|h| h.security.is_none());
+    if draft.completeness == CoverageStatus::Complete && !unmapped {
         for (security, position) in held {
             if listed.contains(&security) {
                 continue;
@@ -231,18 +240,38 @@ pub struct SnapshotAbsenceV1 {
     pub version: u32,
 }
 
+/// The positions a snapshot lists with no security. Any of them could be a
+/// position's security. A read result, not a record.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotUnmappedV1 {
+    pub snapshot: RecordId,
+    pub as_of: Date,
+    pub observations: Vec<RecordId>,
+}
+
+/// What snapshots report for one position. See `latest`.
+pub(crate) type Latest = (
+    Option<SnapshotQuantityV1>,
+    Option<SnapshotAbsenceV1>,
+    Option<SnapshotUnmappedV1>,
+);
+
 /// For `position` through `through`: the latest snapshot whose scope covers
-/// its quantity account and lists its security, and the latest absence
-/// assertion for it when no snapshot at least as late lists the security.
-/// Snapshots order by as-of date, then by the commit of their receipt.
+/// its quantity account and lists its security; the latest absence
+/// assertion for it when no snapshot at least as late lists the security;
+/// and the unmapped positions of the latest snapshot whose scope covers its
+/// quantity account, if it lists any. Snapshots order by as-of date, then
+/// by the commit of their receipt. The current absence is therefore the one
+/// with the latest as-of date, not the highest version.
 pub(crate) fn latest(
     state: &DomainState,
     position: &PositionV1,
     through: Date,
-) -> Result<(Option<SnapshotQuantityV1>, Option<SnapshotAbsenceV1>), EngineError> {
+) -> Result<Latest, EngineError> {
     type Keyed<T> = Option<((Date, Option<CommitSeq>), T)>;
     let mut listed: Keyed<SnapshotQuantityV1> = None;
     let mut absent: Keyed<SnapshotAbsenceV1> = None;
+    let mut covering: Keyed<(&HoldingsSnapshotV1, Date)> = None;
     for snapshot in snapshots(state) {
         let TemporalValue::Date { civil, .. } = snapshot.as_of else {
             return Err(invalid());
@@ -251,6 +280,9 @@ pub(crate) fn latest(
             continue;
         }
         let key = (civil, state.receipt_commits.get(&snapshot.receipt).copied());
+        if covering.as_ref().is_none_or(|(old, _)| key > *old) {
+            covering = Some((key, (snapshot, civil)));
+        }
         let holding = snapshot
             .holdings
             .iter()
@@ -283,5 +315,18 @@ pub(crate) fn latest(
         (None, Some((_, absence))) => Some(absence),
         _ => None,
     };
-    Ok((listed.map(|(_, value)| value), current))
+    let unmapped = covering.and_then(|(_, (snapshot, as_of))| {
+        let observations: Vec<RecordId> = snapshot
+            .holdings
+            .iter()
+            .filter(|h| h.security.is_none())
+            .map(|h| h.observation)
+            .collect();
+        (!observations.is_empty()).then_some(SnapshotUnmappedV1 {
+            snapshot: snapshot.id,
+            as_of,
+            observations,
+        })
+    });
+    Ok((listed.map(|(_, value)| value), current, unmapped))
 }
